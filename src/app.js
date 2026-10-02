@@ -5,6 +5,9 @@
 
 const api = window.mdv;
 
+/** SVG-иконки Lucide (модуль генерирует scripts/vendor.js). */
+const ICONS = window.MDV_ICONS;
+
 const $ = (id) => document.getElementById(id);
 const el = {
   tabbar: $('tabbar'), tabs: $('tabs'), btnNewTab: $('btnNewTab'),
@@ -178,7 +181,7 @@ function renderTabs() {
     }
     const x = document.createElement('button');
     x.className = 'tclose';
-    x.innerHTML = '&#xf00d;';
+    x.innerHTML = ICONS.icon('x');
     x.title = 'Закрыть (Ctrl+W)';
     x.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
     d.append(x);
@@ -305,15 +308,25 @@ function updateNavButtons() {
 function renderActive() {
   const t = active();
   const has = !!t && !!t.path;
-  el.welcome.hidden = has;
-  el.workspace.hidden = !has;
-  el.statusbar.hidden = false;
+  // Рабочую область показываем не только когда открыт файл, но и когда
+  // добавлена папка. Раньше условие было строго `has`, а дерево файлов
+  // рисуется в #paneFiles внутри скрытого #workspace: после «Папка» не было
+  // видно ничего, дерево «появлялось» лишь вместе с первым открытым файлом.
+  const show = has || roots.length > 0;
+  el.welcome.hidden = show;
+  el.workspace.hidden = !show;
   closeFind();
   if (!has) {
+    // Файла нет — основная область пустая, от прежнего документа чистим.
     el.fileName.textContent = '—';
+    el.content.innerHTML = '';
+    el.editor.hidden = true;
+    el.toTop.hidden = true;
+    el.statusbar.hidden = true;
     updateNavButtons();
     return;
   }
+  el.statusbar.hidden = false;
 
   document.title = t.name + ' — MDView';
   el.fileName.textContent = t.path;
@@ -324,7 +337,8 @@ function renderActive() {
   el.content.hidden = editing;
   el.btnSave.hidden = !editing;
   el.btnMode.querySelector('.lbl').textContent = editing ? 'Чтение' : 'Правка';
-  el.btnMode.querySelector('.ico').innerHTML = editing ? '&#xf06e;' : '&#xf044;';
+  // eye-off в режиме правки, карандаш в режиме чтения
+  el.btnMode.querySelector('.ico').innerHTML = ICONS.icon(editing ? 'eye-off' : 'pencil');
   el.btnMode.classList.toggle('active', editing);
 
   if (editing) {
@@ -381,11 +395,18 @@ function decorateCode() {
     }
     const btn = document.createElement('button');
     btn.className = 'code-copy';
-    btn.innerHTML = '&#xf0c5; Копировать';
+    btn.innerHTML = ICONS.icon('copy') + '<span>Копировать</span>';
     btn.onclick = () => {
       const text = code ? code.innerText : pre.innerText;
       navigator.clipboard.writeText(text).then(
-        () => { btn.textContent = '✓ Скопировано'; setTimeout(() => { btn.innerHTML = '&#xf0c5; Копировать'; }, 1400); },
+        () => {
+          btn.classList.add('ok');
+          btn.innerHTML = ICONS.icon('check') + '<span>Скопировано</span>';
+          setTimeout(() => {
+            btn.classList.remove('ok');
+            btn.innerHTML = ICONS.icon('copy') + '<span>Копировать</span>';
+          }, 1400);
+        },
         () => { btn.textContent = 'Не вышло'; }
       );
     };
@@ -484,6 +505,9 @@ async function addFolder(p) {
   const res = await api.listMd(p);
   roots.push({ path: p, name: basname(p), tree: res.tree, total: res.total });
   renderTree();
+  // Без этого рабочая область оставалась скрытой и дерево было не видно:
+  // показывать его должен renderActive, а не renderTree.
+  renderActive();
   status(res.total ? 'В папке ' + res.total + ' .md — ' + basname(p) : 'В папке нет .md — ' + basname(p), res.total ? 'ok' : 'err');
 }
 
@@ -509,7 +533,7 @@ function renderTree() {
     head.className = 'tree-root';
     const rm = document.createElement('button');
     rm.className = 'tree-remove';
-    rm.innerHTML = '&#xf00d;';
+    rm.innerHTML = ICONS.icon('x');
     rm.title = 'Убрать папку из списка';
     rm.onclick = () => {
       const i = roots.findIndex((x) => x.path === r.path);
@@ -529,7 +553,7 @@ function renderTree() {
         d.className = 'tree-grp';
         const n = document.createElement('div');
         n.className = 'grp-name';
-        n.innerHTML = '&#xf07b; <span></span>';
+        n.innerHTML = ICONS.icon('folder', 'grp-ico') + '<span></span>';
         n.querySelector('span').textContent = grp.dir;
         d.append(n);
         el.paneFiles.append(d);
@@ -542,7 +566,7 @@ function renderTree() {
           row.className = 'tree-item';
           row.title = it.full;
           if (active() && active().path === it.full) row.classList.add('active');
-          row.innerHTML = '<span class="fi">&#xf15c;</span><span class="fn"></span><span class="sz"></span>';
+          row.innerHTML = '<span class="fi">' + ICONS.icon('file') + '</span><span class="fn"></span><span class="sz"></span>';
           row.querySelector('.fn').textContent = it.name;
           row.querySelector('.sz').textContent = fmtSize(it.size);
           row.onclick = () => openPath(it.full, { newTab: true });
@@ -943,6 +967,20 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // ============================================================ старт
+
+// Статические <span data-i="имя"> в index.html превращаем в SVG.
+// Раньше там стояли глифы Font Awesome (&#xf07b;), которые рисовались
+// только при загруженном Nerd Font.
+ICONS.hydrate(document);
+
+/* Хук для автотестов (test/startup.js).
+   Системный диалог выбора папки из теста не открыть, а без него нельзя
+   проверить, что дерево вообще появляется: addFolder() писал его в скрытый
+   #workspace, и «Папка» визуально ничего не делала, пока не откроешь файл.
+   Основной код сюда не обращается. Через contextBridge подменить
+   диалог нельзя — объекты от contextBridge заморожены, присваивание молча
+   игнорируется (на этом сначала и споткнулся тест). */
+window.__mdvTest = { addFolder, renderTree, renderActive, roots, tabs, closeTab };
 
 newTab();
 renderTree();
