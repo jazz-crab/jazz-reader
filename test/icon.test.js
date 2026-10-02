@@ -255,8 +255,12 @@ if (fs.existsSync(svgPath)) {
   t('внешние ресурсы не тянутся (без <image>/http)',
     !/<image\b|https?:\/\/(?!www\.w3\.org)/.test(svg));
 }
-t('make-icons.sh есть и исполняемый',
-  fs.existsSync(path.join(DIR, 'make-icons.sh')) && !!(fs.statSync(path.join(DIR, 'make-icons.sh')).mode & 0o111));
+// Право на исполнение имеет смысл только на POSIX; в git на Windows файл
+// приходит с 0644, и проверять там нечего.
+const iconsScript = path.join(DIR, 'make-icons.sh');
+t('make-icons.sh есть' + (process.platform === 'win32' ? ' (режим exec на Windows не проверяем)' : ' и исполняемый'),
+  fs.existsSync(iconsScript)
+  && (process.platform === 'win32' || !!(fs.statSync(iconsScript).mode & 0o111)));
 
 console.log('\nитого: ' + pass + ' ok, ' + fail + ' FAIL\n');
 process.exit(fail ? 1 : 0);

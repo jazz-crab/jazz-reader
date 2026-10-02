@@ -13,7 +13,9 @@
     "test": "node test/math.test.js && node test/icon.test.js",
     "test:ui": "xvfb-run -a electron --no-sandbox --disable-gpu test/smoke.js && xvfb-run -a electron --no-sandbox --disable-gpu test/audit.js",
     "icons": "sh build/icon/make-icons.sh",
-    "postinstall": "node scripts/vendor.js"
+    "postinstall": "node scripts/vendor.js",
+    "test:startup": "node test/startup.js",
+    "test:all": "npm test && npm run test:startup"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -27,6 +29,11 @@
       "output": "dist",
       "buildResources": "build"
     },
+    "electronLanguages": [
+      "ru",
+      "en-US"
+    ],
+    "compression": "maximum",
     "files": [
       "main.js",
       "ipc.js",
@@ -37,13 +44,25 @@
     "win": {
       "icon": "build/icon/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "linux": {
       "icon": "build/icon/icon.png",
-      "target": ["dir"]
+      "target": [
+        "dir"
+      ]
     },
     "nsis": {
       "artifactName": "MDView-Setup-${version}-${arch}.${ext}",
@@ -55,6 +74,7 @@
     },
     "portable": {
       "artifactName": "MDView-Portable-${version}-${arch}.${ext}"
-    }
+    },
+    "afterPack": "scripts/after-pack.js"
   }
 }
