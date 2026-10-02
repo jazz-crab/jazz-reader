@@ -15,7 +15,8 @@
     "icons": "sh build/icon/make-icons.sh",
     "postinstall": "node scripts/vendor.js",
     "test:startup": "node test/startup.js",
-    "test:all": "npm test && npm run test:startup"
+    "test:all": "npm test && npm run test:startup && npm run test:tabs",
+    "test:tabs": "node test/tabs.js"
   },
   "devDependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

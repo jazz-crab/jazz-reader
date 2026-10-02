@@ -200,14 +200,38 @@ body.side-hidden .sidebar-resizer { display: none; }
 }
 .sidebar-resizer:hover { background: var(--bg-select); }
 
-.side-switch { display: flex; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
-.side-btn {
-    flex: 1 1 0; padding: 9px 6px; border: 0; border-bottom: 2px solid transparent;
-    background: transparent; color: var(--comment);
-    font-size: 12px; font-family: var(--ui); cursor: pointer;
+/* Заголовок панели: «Файлы» / «Оглавление» + крестик. Переключателя
+   «Файлы/Оглавление» больше нет — проводник всегда слева, оглавление
+   выезжает поверх по кнопке в тулбаре. */
+.side-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 6px 0 11px; height: 33px; flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
 }
-.side-btn:hover { color: var(--fg-dark); background: var(--bg-soft); }
-.side-btn.active { color: var(--fg); border-bottom-color: var(--blue); background: var(--bg-soft); }
+.side-title {
+    flex: 1 1 auto; color: var(--comment);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.side-collapse {
+    border: 0; background: transparent; color: var(--comment);
+    cursor: pointer; padding: 4px; border-radius: 5px; display: inline-flex;
+}
+.side-collapse:hover { color: var(--fg); background: var(--bg-soft); }
+.side-collapse .ico-svg { width: 13px; height: 13px; }
+
+/* Оглавление — слой поверх основной области, слева от контента */
+.toc-overlay {
+    position: absolute; inset: 0; z-index: 60;
+    display: flex; align-items: stretch;
+    background: rgba(0, 0, 0, .32);
+}
+.toc-panel {
+    width: var(--side-w, 288px); min-width: 200px; max-width: 520px;
+    display: flex; flex-direction: column;
+    background: var(--bg-alt); border-right: 1px solid var(--border);
+    box-shadow: 7px 0 22px rgba(0, 0, 0, .38);
+}
 
 .side-search { padding: 7px; flex: 0 0 auto; position: relative; }
 /* Иконка поиска внутри поля: absolute внутри .side-search, поле получило
@@ -242,7 +266,47 @@ body.side-hidden .sidebar-resizer { display: none; }
     color: var(--fg-dark); font-size: 12.5px;
 }
 .tree-item:hover { background: var(--bg-soft); color: var(--fg); }
+/* Открыт в какой-то вкладке — виден, но не активен. Текущая вкладка — ярче. */
+.tree-item.is-open { color: var(--fg); border-left-color: var(--purple); }
 .tree-item.active { background: var(--bg-select); color: var(--fg); border-left-color: var(--blue); }
+
+/* Правка: явная зелёная «Сохранить» и красная «Отменить» вместо
+   переключателя, который молча уводил из правки вместе с правками. */
+.btn-save {
+    color: var(--green); border-color: rgba(158, 206, 106, .5);
+    background: rgba(158, 206, 106, .11);
+}
+.btn-save:hover:not(:disabled) { background: rgba(158, 206, 106, .2); border-color: var(--green); }
+.btn-save .ico-svg { stroke: var(--green); }
+/* есть несохранённое — кнопка подсвечивается сильнее */
+.btn-save-dirty {
+    background: rgba(158, 206, 106, .22);
+    box-shadow: inset 0 0 0 1px rgba(158, 206, 106, .45);
+}
+.btn-cancel {
+    color: var(--red); border-color: rgba(247, 118, 142, .5);
+    background: rgba(247, 118, 142, .11);
+}
+.btn-cancel:hover:not(:disabled) { background: rgba(247, 118, 142, .2); border-color: var(--red); }
+.btn-cancel .ico-svg { stroke: var(--red); }
+
+/* Контекстное меню вкладки */
+.ctxmenu {
+    position: fixed; z-index: 700; min-width: 224px;
+    background: var(--bg-popup); border: 1px solid var(--border);
+    border-radius: 9px; padding: 5px;
+    box-shadow: 0 11px 30px rgba(0, 0, 0, .5);
+}
+.ctxmenu-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 7px 9px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--fg);
+    font-size: 12.5px; font-family: var(--ui); text-align: left; cursor: pointer;
+}
+.ctxmenu-item:hover:not(:disabled) { background: var(--bg-select); }
+.ctxmenu-item:disabled { color: var(--comment); cursor: default; opacity: .6; }
+.ctxmenu-hint { margin-left: auto; color: var(--comment); font-size: 11px; }
+.ctxmenu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .tree-item .fi { display: inline-flex; align-items: center; color: var(--blue); flex: 0 0 auto; }
 .tree-item .fi .ico-svg { width: 13px; height: 13px; }
 .tree-item.active .fi { color: var(--cyan); }

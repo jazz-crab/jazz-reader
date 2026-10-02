@@ -302,6 +302,7 @@ function evaluate(wsUrl, expression) {
     return JSON.stringify({
       hook: true,
       noFileState,
+      welcomeHiddenAfterFolder: document.getElementById('welcome').hidden,
       workspaceHidden: document.getElementById('workspace').hidden,
       welcomeHidden: document.getElementById('welcome').hidden,
       roots: pane.querySelectorAll('.tree-root').length,
@@ -322,6 +323,9 @@ function evaluate(wsUrl, expression) {
   t('после открытия папки рабочая область показана', tree.workspaceHidden === false,
     'workspaceHidden=' + tree.workspaceHidden);
   t('дерево нарисовано (корни)', tree.roots >= 1, 'roots=' + tree.roots);
+  t('после «Папка» на пустой вкладке нет заглушки (видно дерево)',
+    tree.welcomeHiddenAfterFolder === true,
+    'welcomeHidden=' + tree.welcomeHiddenAfterFolder);
   t('в дереве есть файлы', tree.items >= 2, 'items=' + tree.items);
   t('вложенная папка видна отдельной группой', tree.groups >= 1, 'groups=' + tree.groups);
   t('заглушка «Папка не открыта» исчезла', tree.emptyShown === false);

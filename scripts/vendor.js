@@ -52,7 +52,7 @@ const USED_ICONS = [
   'file-text', 'folder-open', 'folder', 'file', 'arrow-left', 'arrow-right',
   'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'download',
   'panel-left', 'x', 'copy', 'eye-off', 'printer', 'folder-search',
-  'search', 'file-down', 'file-code', 'check',
+  'search', 'file-down', 'file-code', 'check', 'list-tree',
 ];
 
 (function vendorLucide() {

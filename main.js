@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const ipc = require('./ipc');
@@ -23,6 +23,8 @@ const OVERLAY = { color: '#16161e', symbolColor: '#a9b1d6', height: 40 };
 
 let logPath = null;
 let fatalShown = false;
+/** Захваченные системные хоткеи (см. registerTabShortcuts). */
+const shortcuts = [];
 
 function resolveLogPath() {
   // Portable: рядом с .exe. Установленная: Program Files не writable — берём userData.
@@ -172,8 +174,11 @@ function buildMenu() {
     {
       label: 'Вид',
       submenu: [
-        { label: 'Панель файлов / оглавление', accelerator: 'CmdOrCtrl+B', click: () => send('mdv:menu', 'toggle-sidebar') },
+        { label: 'Проводник', accelerator: 'CmdOrCtrl+B', click: () => send('mdv:menu', 'toggle-sidebar') },
+        { label: 'Оглавление', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('mdv:menu', 'toggle-toc') },
+        { type: 'separator' },
         { label: 'Режим правки', accelerator: 'CmdOrCtrl+E', click: () => send('mdv:menu', 'toggle-mode') },
+        { label: 'Отменить правки', accelerator: 'Escape', click: () => send('mdv:menu', 'cancel-edit') },
         { type: 'separator' },
         { label: 'Назад', accelerator: 'Alt+Left', click: () => send('mdv:menu', 'back') },
         { label: 'Вперёд', accelerator: 'Alt+Right', click: () => send('mdv:menu', 'forward') },
@@ -193,8 +198,11 @@ function buildMenu() {
         { label: 'Новая вкладка', accelerator: 'CmdOrCtrl+T', click: () => send('mdv:menu', 'new-tab') },
         { label: 'Закрыть вкладку', accelerator: 'CmdOrCtrl+W', click: () => send('mdv:menu', 'close-tab') },
         { type: 'separator' },
-        { label: 'Следующая вкладка', accelerator: 'Ctrl+Tab', click: () => send('mdv:menu', 'next-tab') },
-        { label: 'Предыдущая вкладка', accelerator: 'Ctrl+Shift+Tab', click: () => send('mdv:menu', 'prev-tab') },
+        // Акселераторы у этих двух пунктов намеренно НЕ заданы: Windows считает
+        // Ctrl+Tab системной комбинацией и съедает её раньше меню. Перехват
+        // делает globalShortcut (registerTabShortcuts), он шлёт то же действие.
+        { label: 'Следующая вкладка', click: () => send('mdv:menu', 'next-tab') },
+        { label: 'Предыдущая вкладка', click: () => send('mdv:menu', 'prev-tab') },
       ],
     },
     {
@@ -207,8 +215,12 @@ function buildMenu() {
           detail: 'Офлайн-читалка Markdown с поддержкой LaTeX (KaTeX).\n'
             + 'Порт инструмента github.com/jazz-crab/jazz-reader/.\n\n'
             + 'Ctrl+O — открыть .md\nCtrl+Shift+O — открыть папку\n'
-            + 'Ctrl+E — режим правки\nCtrl+S — сохранить / скачать MD\n'
-            + 'Alt+← / Alt+→ — назад / вперёд\nF5 — перезагрузить файл с диска',
+            + 'Ctrl+E — правка; выход — кнопками «Сохранить»/«Отменить»\n'
+            + 'Ctrl+S — сохранить / скачать MD\n'
+            + 'Ctrl+Tab — следующая вкладка, Ctrl+Shift+Tab — предыдущая\n'
+            + 'ПКМ по вкладке — закрыть вкладки\n'
+            + 'Alt+← / Alt+→ — назад / вперёд\n'
+            + 'F5 — перезагрузить файл с диска',
           buttons: ['Ок'],
         }),
       }],
@@ -221,6 +233,43 @@ function cliPaths() {
   return process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith('-'));
 }
 
+/**
+ * Ctrl+Tab / Ctrl+Shift+Tab до renderer'а не доходят: Windows считает их
+ * системными (переключение окон/вкладок) и съедает раньше, чем дойдёт до
+ * Chromium, поэтому keydown в renderer'е молчит. Проверено синтетическим
+ * keybd_event по настоящему окну: вкладка не менялась, keydown не сработал.
+ *
+ * Выход — globalShortcut, он перехватывает комбинацию до ОС. Регистрация
+ * обязательно снимается на will-quit: иначе хоткей залипает и Ctrl+Tab не
+ * работает во всей системе до перезагрузки.
+ */
+function registerTabShortcuts() {
+  const grab = (accel, action) => {
+    try {
+      const ok = globalShortcut.register(accel, () => {
+        const target = BrowserWindow.getFocusedWindow() || win;
+        if (target && !target.isDestroyed()) target.webContents.send('mdv:menu', action);
+      });
+      if (ok) { shortcuts.push(accel); return; }
+      log('хоткей ' + accel + ' занят другой программой — переключение вкладок им не сработает');
+    } catch (e) {
+      log('globalShortcut ' + accel + ': ' + (e.message || e));
+    }
+  };
+  grab('Ctrl+Tab', 'next-tab');
+  grab('Ctrl+Shift+Tab', 'prev-tab');
+  log('перехвачены хоткеи вкладок: ' + (shortcuts.join(', ') || 'нет'));
+}
+
+function releaseTabShortcuts() {
+  for (const a of shortcuts) {
+    try { globalShortcut.unregister(a); } catch { /* уже снят */ }
+  }
+  shortcuts = [];
+}
+
+app.on('will-quit', releaseTabShortcuts);
+
 app.whenReady()
   .then(() => {
     logPath = resolveLogPath();
@@ -228,6 +277,7 @@ app.whenReady()
 
     ipc.register();
     buildMenu();
+    registerTabShortcuts();
     createWindow();
 
     const targets = cliPaths();

@@ -13,9 +13,10 @@ const el = {
   tabbar: $('tabbar'), tabs: $('tabs'), btnNewTab: $('btnNewTab'),
   btnOpenFile: $('btnOpenFile'), btnOpenFolder: $('btnOpenFolder'),
   btnBack: $('btnBack'), btnForward: $('btnForward'),
-  btnMode: $('btnMode'), btnSave: $('btnSave'),
+  btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
   btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), zoomVal: $('zoomVal'),
   dlBtn: $('dlBtn'), dlMenu: $('dlMenu'), btnSidebar: $('btnSidebar'),
+  btnToc: $('btnToc'), tocOverlay: $('tocOverlay'),
   welcome: $('welcome'), wOpenFile: $('wOpenFile'), wOpenFolder: $('wOpenFolder'),
   workspace: $('workspace'), sidebar: $('sidebar'), sidebarResizer: $('sidebarResizer'),
   paneFiles: $('paneFiles'), paneToc: $('paneToc'), treeFilter: $('treeFilter'),
@@ -66,6 +67,21 @@ function cycleTab(dir) {
   selectTab(visit[ni], false);
 }
 
+/**
+ * Ctrl+Tab / Ctrl+Shift+Tab — по ПОРЯДКУ вкладок, а не по истории
+ * посещений. Раньше обе комбинации шли в cycleTab(), то есть по стеку
+ * visit: туда-сюда-обратно, а ожидаешь спокойного шага «следующая/предыдущая».
+ * По кругу: с последней вкладки переходим на первую.
+ */
+function stepTab(dir) {
+  const ids = [...tabs.keys()];
+  if (ids.length < 2) return;
+  const i = ids.indexOf(activeId);
+  if (i === -1) { selectTab(ids[0]); return; }
+  const n = (i + dir + ids.length) % ids.length;
+  selectTab(ids[n]);
+}
+
 // ------------------------------------------------------------------ утилиты
 
 function status(msg, kind) {
@@ -96,6 +112,8 @@ function dirOf(p) {
 
 /** Небольшой confirm без window.confirm (его в Electron нет). */
 function askConfirm(title, okText) {
+  // Тесты подменяют ответ, чтобы не открывать диалог.
+  if (__confirmHook) return Promise.resolve(!!__confirmHook(title, okText));
   return new Promise((resolve) => {
     const back = document.createElement('div');
     back.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center';
@@ -138,18 +156,25 @@ function newTab() {
   tabs.set(id, {
     id, path: null, name: 'Пусто', raw: '', html: null,
     dirty: false, mode: 'read', baseUrl: '', encoding: '', size: 0,
+    // blank: пользователь явно попросил новую пустую вкладку -> показывать
+    // дефолтную заглушку, даже если папка уже открыта.
+    blank: true,
     hist: [], hi: -1, scroll: 0,
   });
   selectTab(id);
   return tabs.get(id);
 }
 
-async function closeTab(id) {
+async function closeTab(id, opts) {
   const t = tabs.get(id);
-  if (!t) return;
+  if (!t) return false;
+  // silent — массовое закрытие («все кроме этой», «все справа»): не засоряем
+  // экран пятью одинаковыми вопросами подряд. Но несохранённое не теряем:
+  // такие вкладки просто не закрываем и сообщаем, сколько осталось.
   if (t.dirty) {
+    if (opts && opts.silent) return false;
     const ok = await askConfirm('В «' + t.name + '» есть несохранённые изменения. Закрыть вкладку?', 'Закрыть');
-    if (!ok) return;
+    if (!ok) return false;
   }
   tabs.delete(id);
   if (activeId === id) {
@@ -160,6 +185,122 @@ async function closeTab(id) {
   } else {
     renderTabs();
   }
+  refreshTreeSelection();
+  return true;
+}
+
+/** Перерисовать подсветку открытых файлов в дереве (дешёво, без сборки дерева заново). */
+function refreshTreeSelection() {
+  const cur = active() ? active().path : null;
+  for (const row of el.paneFiles.querySelectorAll('.tree-item')) {
+    const full = row.dataset.path || '';
+    const isCur = samePath(cur, full);
+    const openInSome = isCur || [...tabs.values()].some((x) => samePath(x.path, full));
+    row.classList.toggle('is-open', openInSome);
+    row.classList.toggle('active', isCur);
+    // Подсказку держим только пока файл открыт в НЕактивной вкладке
+    row.title = openInSome && !isCur ? full + ' — открыт в другой вкладке' : full;
+  }
+}
+
+/** Контекстное меню вкладки (ПКМ): закрыть / остальные / справа / слева / все. */
+/** Массовое закрытие: несохранённые пропускаем, а не теряем. */
+async function closeMany(list, keepId) {
+  let closed = 0, skipped = 0;
+  for (const k of list) {
+    if (k === keepId) continue;
+    const t = tabs.get(k);
+    if (t && t.dirty) { skipped++; continue; }
+    if (await closeTab(k, { silent: true })) closed++;
+  }
+  if (skipped) {
+    status('Закрыто ' + closed + ', с несохранёнными пропущено: ' + skipped
+      + ' — сохрани или отмени в них', 'err');
+  } else if (closed) {
+    status('Закрыто вкладок: ' + closed, 'ok');
+  }
+  if (keepId !== undefined && tabs.has(keepId)) selectTab(keepId);
+  return closed;
+}
+function closeOthers(id) {
+  return closeMany([...tabs.keys()], id);
+}
+function closeToRight(id) {
+  const ids = [...tabs.keys()];
+  const i = ids.indexOf(id);
+  if (i < 0) return Promise.resolve(0);
+  return closeMany(ids.slice(i + 1), id);
+}
+function closeToLeft(id) {
+  const ids = [...tabs.keys()];
+  const i = ids.indexOf(id);
+  if (i < 0) return Promise.resolve(0);
+  return closeMany(ids.slice(0, i), id);
+}
+async function closeAll() {
+  const ids = [...tabs.keys()];
+  for (const k of ids) {
+    const t = tabs.get(k);
+    if (t && t.dirty) {
+      const ok = await askConfirm(
+        'В «' + t.name + '» есть несохранённые изменения. Закрыть все вкладки?',
+        'Закрыть все'
+      );
+      if (!ok) return;
+    }
+  }
+  for (const k of ids) await closeTab(k, { silent: true });
+  if (!tabs.size) newTab();
+}
+
+function tabContextMenu(id, x, y) {
+  document.querySelector('.ctxmenu')?.remove();
+  const ids = [...tabs.keys()];
+  const i = ids.indexOf(id);
+  const count = ids.length;
+  const other = count - 1;
+
+  const m = document.createElement('div');
+  m.className = 'ctxmenu';
+  m.style.left = Math.min(x, window.innerWidth - 232) + 'px';
+  m.style.top = Math.min(y, window.innerHeight - 232) + 'px';
+
+  const items = [
+    { label: 'Закрыть вкладку', hint: 'Ctrl+W', act: () => closeTab(id) },
+    { label: 'Закрыть все кроме этой', hint: other ? other + ' шт.' : '', act: () => closeOthers(id), off: other < 1 },
+    { label: 'Закрыть все справа', hint: count - i - 1 ? count - i - 1 + ' шт.' : '', act: () => closeToRight(id), off: i >= count - 1 },
+    { label: 'Закрыть все слева', hint: i ? i + ' шт.' : '', act: () => closeToLeft(id), off: i < 1 },
+    { sep: true },
+    { label: 'Закрыть все вкладки', hint: count ? count + ' шт.' : '', act: () => closeAll(), off: count < 1 },
+  ];
+
+  for (const it of items) {
+    if (it.sep) {
+      const s = document.createElement('div');
+      s.className = 'ctxmenu-sep';
+      m.append(s);
+      continue;
+    }
+    const b = document.createElement('button');
+    b.className = 'ctxmenu-item';
+    b.disabled = !!it.off;
+    const l = document.createElement('span');
+    l.textContent = it.label;
+    const h = document.createElement('span');
+    h.className = 'ctxmenu-hint';
+    h.textContent = it.hint || '';
+    b.append(l, h);
+    b.onclick = () => { m.remove(); it.act(); };
+    m.append(b);
+  }
+
+  document.body.append(m);
+  const kill = (e) => {
+    if (!m.contains(e.target)) { m.remove(); document.removeEventListener('mousedown', kill, true); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', kill, true), 0);
+  // Alt+F4 и контекстное меню не должны закрывать вкладку по умолчанию
+  m.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 function renderTabs() {
@@ -168,6 +309,7 @@ function renderTabs() {
     const d = document.createElement('div');
     d.className = 'tab' + (t.id === activeId ? ' active' : '');
     d.title = t.path || t.name;
+    if (t.id === activeId) d.focus();   // чтобы Shift+F10 и клавиатура работали на активной вкладке
     const nm = document.createElement('span');
     nm.className = 'tname';
     nm.textContent = t.name;
@@ -187,6 +329,17 @@ function renderTabs() {
     d.append(x);
     d.onclick = () => selectTab(t.id);
     d.onauxclick = (e) => { if (e.button === 1) closeTab(t.id); };
+    d.oncontextmenu = (e) => { e.preventDefault(); tabContextMenu(t.id, e.clientX, e.clientY); };
+    // Shift+F10 и «контекстное меню» с клавиатуры прилетают как отдельный
+    // keydown без координат — без этого меню по Tab-у не открывалось.
+    d.tabIndex = 0;
+    d.onkeydown = (e) => {
+      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+        e.preventDefault();
+        const r = d.getBoundingClientRect();
+        tabContextMenu(t.id, r.left + 8, r.bottom + 2);
+      }
+    };
     el.tabs.append(d);
   }
   // активную вкладку видно
@@ -194,10 +347,22 @@ function renderTabs() {
   if (act) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
+/**
+ * Один и тот же файл приходит двумя способами: из дерева — через path.join
+ * («C:\dir\file.md»), из openPath — с прямыми слэшами («C:/dir/file.md»).
+ * Наивное === их не считывает, из-за чего подсветка открытого файла в дереве
+ * не работала. Здесь оба приводятся к одному виду и к нижнему регистру
+ * (Windows регистр не различает).
+ */
+function samePath(a, b) {
+  if (!a || !b) return false;
+  const norm = (s) => String(s).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  return norm(a) === norm(b);
+}
+
 function findTabByPath(p) {
-  const norm = String(p).replace(/\//g, '\\').toLowerCase();
   for (const t of tabs.values()) {
-    if (t.path && t.path.replace(/\//g, '\\').toLowerCase() === norm) return t;
+    if (samePath(t.path, p)) return t;
   }
   return null;
 }
@@ -215,6 +380,7 @@ function applyData(t, data) {
     path: data.path, name: data.name, raw: data.text, html: null,
     dirty: false, mode: 'read', baseUrl: data.baseUrl,
     encoding: data.encoding, size: data.size || data.text.length,
+    blank: false,
   });
   t._diskRaw = data.text;   // как лежит на диске — база для «есть изменения»
 }
@@ -313,16 +479,35 @@ function renderActive() {
   // рисуется в #paneFiles внутри скрытого #workspace: после «Папка» не было
   // видно ничего, дерево «появлялось» лишь вместе с первым открытым файлом.
   const show = has || roots.length > 0;
-  el.welcome.hidden = show;
-  el.workspace.hidden = !show;
+  // Пустая вкладка (нет файла) показывает дефолтную заглушку. Но если
+  // открыта папка, заглушка не нужна — показываем проводник с деревом,
+  // иначе «Папка» снова выглядит как ничего не сделавшая кнопка.
+  const isBlank = !has;
+  // Заглушка нужна в двух разных случаях, и их нельзя смешивать:
+  //  • папка не открыта — показываем экран приветствия;
+  //  • пользователь нажал «новая вкладка» (blank=true) — тоже заглушка,
+  //    даже если папка уже открыта.
+  // Если же папку открыли при пустой вкладке (blank сброшен в addFolder),
+  // заглушку не показываем — иначе «Папка» снова выглядит как кнопка,
+  // которая ничего не делает.
+  const wantWelcome = isBlank && (!roots.length || (t && t.blank));
+  el.welcome.hidden = !wantWelcome;
+  // Показываем что-то одно: заглушку ИЛИ рабочую область. Иначе при
+  // открытой папке и новой пустой вкладке welcome ложился поверх дерева.
+  el.workspace.hidden = wantWelcome || !show;
   closeFind();
-  if (!has) {
-    // Файла нет — основная область пустая, от прежнего документа чистим.
+  if (isBlank) {
+    if (!el.tocOverlay.hidden) el.tocOverlay.hidden = true;
     el.fileName.textContent = '—';
     el.content.innerHTML = '';
     el.editor.hidden = true;
     el.toTop.hidden = true;
     el.statusbar.hidden = true;
+    el.btnMode.hidden = true;
+    el.btnSave.hidden = true;
+    el.btnCancelEdit.hidden = true;
+    el.btnToc.hidden = true;
+    document.title = 'MDView';
     updateNavButtons();
     return;
   }
@@ -335,11 +520,16 @@ function renderActive() {
   const editing = t.mode === 'edit';
   el.editor.hidden = !editing;
   el.content.hidden = editing;
+  // В правке — зелёная «Сохранить» и красная «Отменить» вместо одного
+  // переключателя. Раньше он просто уводил из правки, оставляя изменения
+  // в памяти: их можно было потерять молча, ничего не спрашивая.
+  el.btnMode.hidden = editing;
   el.btnSave.hidden = !editing;
-  el.btnMode.querySelector('.lbl').textContent = editing ? 'Чтение' : 'Правка';
-  // eye-off в режиме правки, карандаш в режиме чтения
-  el.btnMode.querySelector('.ico').innerHTML = ICONS.icon(editing ? 'eye-off' : 'pencil');
-  el.btnMode.classList.toggle('active', editing);
+  el.btnCancelEdit.hidden = !editing;
+  el.btnSave.classList.toggle('btn-save-dirty', editing && t.dirty);
+  // Кнопка оглавления нужна только при открытом файле (и то, когда есть
+  // что показывать — заголовки строятся в buildToc() ниже).
+  el.btnToc.hidden = false;
 
   if (editing) {
     el.editor.value = t.raw;
@@ -360,6 +550,9 @@ function renderActive() {
   buildToc();
   updateNavButtons();
   updateZoom();
+  refreshTreeSelection();
+  // Нет заголовков — прятать кнопку бессмысленно.
+  el.btnToc.hidden = !t.path || el.paneToc.querySelector('.toc-hint') !== null;
 }
 
 function reload() {
@@ -505,6 +698,10 @@ async function addFolder(p) {
   const res = await api.listMd(p);
   roots.push({ path: p, name: basname(p), tree: res.tree, total: res.total });
   renderTree();
+  // Открытие папки на пустой вкладке должно показать дерево, а не заглушку:
+  // сбрасываем флаг «пользователь хотел пустую вкладку».
+  const a = active();
+  if (a && a.blank && !a.path) a.blank = false;
   // Без этого рабочая область оставалась скрытой и дерево было не видно:
   // показывать его должен renderActive, а не renderTree.
   renderActive();
@@ -565,10 +762,16 @@ function renderTree() {
           const row = document.createElement('div');
           row.className = 'tree-item';
           row.title = it.full;
-          if (active() && active().path === it.full) row.classList.add('active');
+          // Открытый в любой вкладке файл — выделен, текущая вкладка — ещё и ярче.
+          const isCur = active() && samePath(active().path, it.full);
+          const openInSome = isCur || [...tabs.values()].some((x) => samePath(x.path, it.full));
+          if (openInSome) row.classList.add('is-open');
+          if (isCur) row.classList.add('active');
           row.innerHTML = '<span class="fi">' + ICONS.icon('file') + '</span><span class="fn"></span><span class="sz"></span>';
           row.querySelector('.fn').textContent = it.name;
           row.querySelector('.sz').textContent = fmtSize(it.size);
+          row.dataset.path = it.full;
+          if (openInSome && !isCur) row.title = it.full + ' — открыт в другой вкладке';
           row.onclick = () => openPath(it.full, { newTab: true });
           box.append(row);
         }
@@ -790,28 +993,51 @@ el.btnForward.onclick = () => go(1);
 el.btnSave.onclick = save;
 el.toTop.onclick = () => el.content.scrollTo({ top: 0, behavior: 'smooth' });
 
+/** Выйти из правки с явным решением: сохранить или отменить. */
+async function exitEdit(saveIt) {
+  const t = active();
+  if (!t || !t.path || t.mode !== 'edit') return;
+
+  if (!saveIt && t.dirty) {
+    // Отмена необратима — спрашиваем. Раньше выход из правки был без вопроса.
+    const ok = await askConfirm(
+      'Отменить правки в «' + t.name + '»?\n\nНесохранённые изменения будут потеряны.',
+      'Отменить правки'
+    );
+    if (!ok) return;
+  }
+
+  if (saveIt) {
+    await save();
+    return;
+  }
+
+  // Отмена: возвращаем то, что реально лежит на диске.
+  t.raw = t._diskRaw;
+  t.dirty = false;
+  t.mode = 'read';
+  t.html = null;
+  renderTabs();
+  renderActive();
+  status('Правки отменены', 'ok');
+}
+
 el.btnMode.onclick = async () => {
   const t = active();
   if (!t || !t.path) return;
-  if (t.mode === 'edit') {
-    // Возврат в чтение: правки остаются в памяти, но файл на диске не тронут.
-    t.raw = el.editor.value;
-    t.dirty = t.raw !== t._diskRaw;
-    t.mode = 'read';
-    renderActive();
-    if (t.dirty) status('Правки не сохранены на диск — Ctrl+S', 'err');
-  } else {
-    t.mode = 'edit';
-    renderActive();
-    el.editor.focus();
-  }
+  t.mode = 'edit';
+  renderActive();
+  el.editor.focus();
 };
+
+el.btnCancelEdit.onclick = () => exitEdit(false);
 
 el.editor.addEventListener('input', () => {
   const t = active();
   if (!t) return;
   t.dirty = el.editor.value !== t._diskRaw;
   renderTabs();
+  el.btnSave.classList.toggle('btn-save-dirty', t.dirty);
 });
 
 el.btnZoomIn.onclick = () => setZoom(zoom + 0.1);
@@ -839,17 +1065,19 @@ el.dlMenu.onclick = async (e) => {
   }
 };
 
-// --- переключение панелей сайдбара
-for (const b of document.querySelectorAll('.side-btn')) {
-  b.onclick = () => {
-    for (const x of document.querySelectorAll('.side-btn')) x.classList.toggle('active', x === b);
-    const pane = b.dataset.pane;
-    el.paneFiles.hidden = pane !== 'files';
-    el.paneToc.hidden = pane !== 'toc';
-    el.treeFilter.closest('.side-search').hidden = pane !== 'files';
-    if (pane === 'toc') updateSpy();
-  };
+// --- оглавление: выдвижная панель, проводник всегда слева
+function toggleToc(force) {
+  const show = force === undefined ? el.tocOverlay.hidden : force;
+  el.tocOverlay.hidden = !show;
+  if (show) {
+    buildToc();
+    updateSpy();
+  }
 }
+el.btnToc.onclick = () => toggleToc();
+$('btnCloseToc').onclick = () => toggleToc(false);
+el.tocOverlay.addEventListener('click', (e) => { if (e.target === el.tocOverlay) toggleToc(false); });
+
 el.treeFilter.addEventListener('input', renderTree);
 
 // --- ресайз сайдбара
@@ -918,13 +1146,18 @@ api.onMenu((action) => {
     case 'print': api.print(); break;
     case 'find': openFind(); break;
     case 'toggle-sidebar': document.body.classList.toggle('side-hidden'); break;
-    case 'toggle-mode': el.btnMode.click(); break;
+    case 'toggle-toc': toggleToc(); break;
+    // Ctrl+E только входит в правку. Выйти из неё — явными кнопками
+    // «Сохранить»/«Отменить» (или Esc), чтобы правки не терялись молча.
+    case 'toggle-mode': if (active() && active().mode !== 'edit') el.btnMode.click(); break;
+    case 'cancel-edit': exitEdit(false); break;
     case 'back': go(-1); break;
     case 'forward': go(1); break;
     case 'new-tab': newTab(); break;
     case 'close-tab': if (activeId !== null) closeTab(activeId); break;
-    case 'next-tab': cycleTab(1); break;
-    case 'prev-tab': cycleTab(-1); break;
+    // По порядку вкладок, а не по стеку visit.
+    case 'next-tab': stepTab(1); break;
+    case 'prev-tab': stepTab(-1); break;
     case 'reload': reload(); break;
   }
 });
@@ -945,6 +1178,20 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); go(-1); return; }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); go(1); return; }
+  // Ctrl+Tab / Ctrl+Shift+Tab — по порядку вкладок, по кругу.
+  // Здесь же renderer ловит то, что Chromium отдаёт системе: настоящие
+  // Ctrl+Tab/Ctrl+Shift+Tab перехватывает ОС и в renderer они не приходят.
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Tab') {
+    e.preventDefault();
+    stepTab(e.shiftKey ? -1 : 1);
+    return;
+  }
+  if (e.key === 'Escape') {
+    const t = active();
+    // Esc в правке — отмена (с вопросом, если есть несохранённое).
+    if (t && t.mode === 'edit') { e.preventDefault(); exitEdit(false); return; }
+    if (!el.tocOverlay.hidden) { e.preventDefault(); toggleToc(false); return; }
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     const t = active();
@@ -980,7 +1227,15 @@ ICONS.hydrate(document);
    Основной код сюда не обращается. Через contextBridge подменить
    диалог нельзя — объекты от contextBridge заморожены, присваивание молча
    игнорируется (на этом сначала и споткнулся тест). */
-window.__mdvTest = { addFolder, renderTree, renderActive, roots, tabs, closeTab };
+/* setConfirm подменяет вопрос «отменить правки?» — в тестах системный диалог
+   открывать нельзя, он бы заблокировал renderer. */
+let __confirmHook = null;
+window.__mdvTest = {
+  addFolder, renderTree, renderActive, refreshTreeSelection,
+  roots, tabs, closeTab,
+  newTab, openPath, active, stepTab, selectTab, samePath,
+  setConfirm: (fn) => { __confirmHook = fn; },
+};
 
 newTab();
 renderTree();
