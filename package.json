@@ -1,0 +1,60 @@
+{
+  "name": "mdview-desktop",
+  "version": "1.0.0",
+  "description": "MDView — офлайн-читалка Markdown (порт github.com/jazz-crab/jazz-reader) с поддержкой LaTeX/KaTeX",
+  "main": "main.js",
+  "author": "jc",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64",
+    "dist:dir": "electron-builder --win --x64 --dir",
+    "test": "node test/math.test.js && node test/icon.test.js",
+    "test:ui": "xvfb-run -a electron --no-sandbox --disable-gpu test/smoke.js && xvfb-run -a electron --no-sandbox --disable-gpu test/audit.js",
+    "icons": "sh build/icon/make-icons.sh",
+    "postinstall": "node scripts/vendor.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "katex": "^0.16.11"
+  },
+  "build": {
+    "appId": "com.jazzcrab.jazzreader",
+    "productName": "MDView",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "ipc.js",
+      "preload.js",
+      "src/**/*",
+      "!src/**/*.map"
+    ],
+    "win": {
+      "icon": "build/icon/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon/icon.png",
+      "target": ["dir"]
+    },
+    "nsis": {
+      "artifactName": "MDView-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MDView"
+    },
+    "portable": {
+      "artifactName": "MDView-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}

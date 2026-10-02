@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MDView — иконка приложения.
+  Тема TokyoNight:  bg #1a1b26 / #16161e, fg #c0caf5, blue #7aa2f7, cyan #7dcfff,
+                     fg_gutter #3b4261 (обводка), terminal_black #414868.
+  Метрики текста посчитаны по инку глифов (Lato Black 900, letter-spacing -4):
+  font-size 94 при x=126 / y=162.3 кладёт «MD» шириной ровно 150 и высотой 68.6
+  по центру плитки 256×256. Если правишь текст — прогони make-icons.sh и сверь
+  test/icon.test.js, он проверяет геометрию по пикселям.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2333"/>
+      <stop offset="1" stop-color="#16161e"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7aa2f7"/>
+      <stop offset="0.5" stop-color="#7aa2f7"/>
+      <stop offset="1" stop-color="#7dcfff"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="54"
+        fill="url(#plate)" stroke="#3b4261" stroke-width="4"/>
+
+  <text x="126" y="162.3" text-anchor="middle"
+        font-family="Lato, 'DejaVu Sans', sans-serif" font-size="94"
+        font-weight="900" letter-spacing="-4" fill="url(#ink)">MD</text>
+</svg>
