@@ -1,7 +1,8 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const ipc = require('./ipc');
 
 // Множественные экземпляры — намеренно НЕ используем requestSingleInstanceLock().
@@ -12,9 +13,67 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
   app.commandLine.appendSwitch('no-sandbox');
 }
 
+// ───────────────────────────── Диагностика ─────────────────────────────
+// Electron — приложение с подсистемой GUI, поэтому stdout/stderr не идут
+// в консоль, из которой его запустили. Раньше это означало, что любая ошибка
+// на старте выглядела как «программа ничего не делает». Поэтому пишем лог на
+// диск и показываем диалог, а не падаем молча.
+
+const OVERLAY = { color: '#16161e', symbolColor: '#a9b1d6', height: 40 };
+
+let logPath = null;
+let fatalShown = false;
+
+function resolveLogPath() {
+  // Portable: рядом с .exe. Установленная: Program Files не writable — берём userData.
+  const candidates = [app.isPackaged ? path.dirname(process.execPath) : __dirname, null];
+  try { candidates.splice(1, 0, app.getPath('userData')); } catch { /* до ready */ }
+  for (const dir of candidates) {
+    if (!dir) continue;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      return path.join(dir, 'mdview.log');
+    } catch { /* пробуем следующий */ }
+  }
+  return null;
+}
+
+function log(...args) {
+  const line = `[${new Date().toISOString()}] ` + args.join(' ') + '\n';
+  try { process.stderr.write(line); } catch { /* нет stderr */ }
+  if (logPath) {
+    try { fs.appendFileSync(logPath, line); } catch { /* диск недоступен */ }
+  }
+}
+
+/** Необработанная ошибка: пишем в лог и один раз показываем окно с текстом. */
+function reportFatal(where, err) {
+  const text = err && err.stack ? err.stack : String(err);
+  log(`FATAL ${where}: ${text}`);
+  if (fatalShown) return;
+  fatalShown = true;
+  try {
+    dialog.showErrorBox(
+      'MDView — ошибка при запуске',
+      `${where}\n\n${text}\n\n` +
+      `Подробности: ${logPath || '(лог недоступен)'}\n` +
+      'Если окно с приложением не появилось — пришлите этот файл, разберёмся.'
+    );
+  } catch { /* до ready диалога нет */ }
+}
+
+process.on('uncaughtException', (err) => reportFatal('uncaughtException', err));
+process.on('unhandledRejection', (err) => reportFatal('unhandledRejection', err));
+
+// ───────────────────────────── Окно ─────────────────────────────
+
 let win = null;
 
 function createWindow() {
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+
   win = new BrowserWindow({
     width: 1320, height: 880, minWidth: 760, minHeight: 480,
     backgroundColor: '#1a1b26',
@@ -22,7 +81,13 @@ function createWindow() {
     show: false,
     // titleBarStyle — только опция конструктора (метода setTitleBarStyle нет).
     // Прячем системный заголовок, чтобы полоса вкладок шла до самого верха.
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    // ВАЖНО: overlay обязан быть включён ЗДЕСЬ, в конструкторе.
+    // Раньше его включали только вызовом setTitleBarOverlay() после создания окна —
+    // тот бросал «Titlebar overlay is not enabled», исключение уходило в
+    // app.whenReady().then() как unhandledRejection, окно не создавалось вообще,
+    // и приложение молча висело без единого окна. Плюс app.asar на 6 МБ.
+    ...(isWin ? { titleBarOverlay: OVERLAY } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -32,13 +97,26 @@ function createWindow() {
     },
   });
 
-  // Системные кнопки окна рисует ОС поверх нашей полосы вкладок.
-  if (process.platform === 'win32') {
-    win.setTitleBarOverlay({ color: '#16161e', symbolColor: '#a9b1d6', height: 40 });
+  // Страховка: если overlay всё-таки недоступен (старая Windows, доп. реестр),
+  // окно должно показаться, а не исчезнуть вместе с ошибкой.
+  if (isWin) {
+    try {
+      win.setTitleBarOverlay(OVERLAY);
+    } catch (e) {
+      log('setTitleBarOverlay недоступен, продолжаем без него: ' + e.message);
+    }
   }
 
+  // Страховка от «невидимого» окна: показываем по ready-to-show, но если событие
+  // не пришло за 6 с — показываем всё равно.
+  const showTimer = setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 6000);
+  win.once('ready-to-show', () => { clearTimeout(showTimer); win.show(); });
+
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    log(`did-fail-load code=${code} desc=${desc} url=${url}`);
+  });
+
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
-  win.once('ready-to-show', () => win.show());
 
   // Внешние ссылки — в системный браузер.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -143,14 +221,26 @@ function cliPaths() {
   return process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith('-'));
 }
 
-app.whenReady().then(() => {
-  ipc.register();
-  buildMenu();
-  createWindow();
+app.whenReady()
+  .then(() => {
+    logPath = resolveLogPath();
+    log(`--- старт MDView ${app.getVersion()} · electron ${process.versions.electron} · ${process.platform}/${process.arch} · portable=${app.isPackaged}`);
 
-  const targets = cliPaths();
-  if (targets.length) win.webContents.once('did-finish-load', () => send('mdv:cli', targets));
-});
+    ipc.register();
+    buildMenu();
+    createWindow();
+
+    const targets = cliPaths();
+    if (targets.length) win.webContents.once('did-finish-load', () => send('mdv:cli', targets));
+
+    log('окно создано, targets=' + JSON.stringify(targets));
+  })
+  .catch((err) => {
+    // Раньше здесь был bare .then() — любая ошибка становилась unhandledRejection
+    // без окна и без вывода. Теперь это явная ошибка с диалогом и кодом возврата 1.
+    reportFatal('Не удалось создать окно', err);
+    app.exit(1);
+  });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
