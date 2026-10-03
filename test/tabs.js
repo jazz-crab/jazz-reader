@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Правка, вкладки, оглавление, дерево — регрессии, которые не видно на
  * статичном скриншоте.
  *
@@ -87,6 +87,24 @@ const SILENCE_CONFIRM = `(() => {
     fs.writeFileSync(path.join(notesDir, n), '# ' + n + '\n\nтекст\n', 'utf8');
   }
   fs.writeFileSync(path.join(notesDir, 'sub', 'd.md'), '# d\n\nтекст\n', 'utf8');
+
+  // Отдельная папка для проверки ленты вкладок: длинные имена нужны, чтобы
+  // 18 вкладок гарантированно переполняют ленту и обрезка в середине была
+  // видна — в notes имена короткие и влезают без обрезки.
+  const tabsDir = path.join(tmpDir, 'many');
+  fs.mkdirSync(tabsDir, { recursive: true });
+  const MANY_FILES = [];
+  for (let i = 1; i <= 18; i++) {
+    const n = String(i).padStart(2, '0');
+    const f = 'Заметка-с-длинным-именем-' + n + '.md';
+    fs.writeFileSync(path.join(tabsDir, f), '# Заметка ' + i + '\n\nтекст\n', 'utf8');
+    MANY_FILES.push(f);
+  }
+  // Отдельный файл: его открытие проверяет индикатор загрузки
+  fs.writeFileSync(path.join(tabsDir, 'Открываемый.md'), '# Открываемый\n\nтекст\n', 'utf8');
+
+  // Путь для renderer: слэши вперёд, как ждёт openPath
+  const TABS_DIR = tabsDir.replace(/\\/g, '/');
 
   const port = await freePort();
   const child = spawn(electron, [
@@ -499,28 +517,37 @@ const SILENCE_CONFIRM = `(() => {
     const brand = document.getElementById('appBrand');
     const plus = document.getElementById('btnNewTab');
     const kids = [...bar.children].map(k => k.id || k.className);
-    const iTabs = [...bar.children].indexOf(bar.querySelector('.tabs'));
+    // Лента вкладок теперь внутри .tabs-wrap — там же шевроны прокрутки.
+    const wrap = document.getElementById('tabsWrap');
+    const iWrap = [...bar.children].indexOf(wrap);
     const iPlus = [...bar.children].indexOf(plus);
     const iSpacer = [...bar.children].indexOf(bar.querySelector('.tabbar-spacer'));
-    const svg = brand.querySelector('svg');
+    const img = brand.querySelector('img');
     return JSON.stringify({
-      kids, iTabs, iPlus, iSpacer,
+      kids, iWrap, iPlus, iSpacer,
       brandLeft: bar.children[0] === brand,
       brandIsButton: brand.tagName === 'BUTTON',
-      plusAfterTabs: iTabs >= 0 && iTabs < iPlus,
+      brandIsImg: !!img && !brand.querySelector('svg'),
+      brandSrc: img ? img.getAttribute('src') : null,
+      brandLoaded: img ? img.naturalWidth : 0,
+      brandPx: img ? Math.round(img.getBoundingClientRect().width) : 0,
+      plusAfterTabs: iWrap >= 0 && iWrap < iPlus,
       plusBeforeSpacer: iPlus >= 0 && iPlus < iSpacer,
-      brandPx: svg ? Math.round(svg.getBoundingClientRect().width) : 0,
       plusIsIcon: !!plus.querySelector('svg'),
       noMiniMenu: !document.getElementById('newTabWrap')
         && !document.getElementById('newTabMenu'),
       // стиль кнопки-иконки: без нативной рамки/фона
       brandBorder: getComputedStyle(brand).borderTopWidth,
       brandBg: getComputedStyle(brand).backgroundColor,
+      hasChevrons: !!document.getElementById('tabsLeft') && !!document.getElementById('tabsRight'),
     });
   })()`));
 
   t('иконка приложения первая слева', r.brandLeft === true, JSON.stringify(r.kids));
   t('иконка приложения — <button>', r.brandIsButton === true);
+  t('иконка приложения — картинка, не нарисованный svg',
+    r.brandIsImg === true && /app-icon\.png$/.test(r.brandSrc || ''), String(r.brandSrc));
+  t('картинка иконки загрузилась', r.brandLoaded >= 32, r.brandLoaded + 'px');
   t('плюс после вкладок и перед распоркой',
     r.plusAfterTabs === true && r.plusBeforeSpacer === true, JSON.stringify(r.kids));
   t('плюс крупный', r.plusIsIcon === true);
@@ -528,6 +555,7 @@ const SILENCE_CONFIRM = `(() => {
   t('у иконки нет нативной рамки', r.brandBorder === '0px', r.brandBorder);
   t('у иконки прозрачный фон', /rgba\(0, 0, 0, 0\)|transparent/.test(r.brandBg), r.brandBg);
   t('мини-меню у плюсика удалено', r.noMiniMenu === true);
+  t('шевроны прокрутки ленты есть', r.hasChevrons === true);
 
   // Плюс сразу открывает вкладку, без меню
   r = JSON.parse(await js(`(async () => {
@@ -765,6 +793,201 @@ const SILENCE_CONFIRM = `(() => {
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
     return 1;
   })()`);
+
+  // ------------------------------------------- лента вкладок при переполнении
+  console.log('\n== лента вкладок: переполнение, имена, крестик ==');
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const blank = M.newTab();
+    return JSON.stringify({ name: blank.name, path: blank.path });
+  })()`));
+
+  t('пустая вкладка называется «Новая вкладка»', r.name === 'Новая вкладка', r.name);
+  t('у пустой вкладки нет пути', r.path === null);
+
+  // Много вкладок -> лента переполняется, появляются шевроны
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const T = ${JSON.stringify(TABS_DIR)};
+    const files = ${JSON.stringify(MANY_FILES)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    for (const f of files) await M.openPath(T + '/' + f, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    const tabs = document.getElementById('tabs');
+    const wrap = document.getElementById('tabsWrap');
+    const left = document.getElementById('tabsLeft');
+    const right = document.getElementById('tabsRight');
+    return JSON.stringify({
+      count: M.tabs.size,
+      many: tabs.classList.contains('many'),
+      hasOverflow: wrap.classList.contains('has-overflow'),
+      overflowPx: tabs.scrollWidth - tabs.clientWidth,
+      rightShown: !right.hidden,
+      leftShown: !left.hidden,
+      // лента обязана сжиматься, иначе вкладки просто уедут за окно
+      shrinkable: getComputedStyle(tabs).minWidth === '0px',
+    });
+  })()`));
+
+  t('открыто много вкладок', r.count >= 12, String(r.count));
+  t('много вкладок -> узкие', r.many === true);
+  t('лента сжимается (min-width:0)', r.shrinkable === true);
+  t('лента переполняется', r.overflowPx > 100, r.overflowPx + 'px');
+  t('обёрка знает о переполнении', r.hasOverflow === true);
+  t('шеврон вправо показан', r.rightShown === true);
+
+  // прокрутка шевроном
+  r = JSON.parse(await js(`(async () => {
+    const tabs = document.getElementById('tabs');
+    tabs.scrollLeft = 0;
+    await new Promise(r2 => setTimeout(r2, 200));
+    document.getElementById('tabsRight').click();
+    await new Promise(r2 => setTimeout(r2, 900));
+    return JSON.stringify({
+      after: Math.round(tabs.scrollLeft),
+      leftShown: !document.getElementById('tabsLeft').hidden,
+    });
+  })()`));
+
+  t('шеврон вправо листает ленту', r.after > 20, 'scrollLeft=' + r.after);
+  t('после прокрутки виден шеврон влево', r.leftShown === true);
+
+  // колесо мыши над лентой
+  r = JSON.parse(await js(`(async () => {
+    const tabs = document.getElementById('tabs');
+    tabs.scrollLeft = 0;
+    await new Promise(r2 => setTimeout(r2, 200));
+    const ev = new WheelEvent('wheel', { deltaY: 200, bubbles: true, cancelable: true });
+    tabs.dispatchEvent(ev);
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ after: Math.round(tabs.scrollLeft), prevented: ev.defaultPrevented });
+  })()`));
+
+  t('колесо листает ленту вбок', r.after > 20, 'scrollLeft=' + r.after);
+  t('колесо не прокручивает страницу', r.prevented === true, String(r.prevented));
+
+  // крестик строго справа, ничего не обрезано
+  r = JSON.parse(await js(`(async () => {
+    const out = [];
+    for (const d of [...document.querySelectorAll('.tab')]) {
+      const n = d.querySelector('.tname').getBoundingClientRect();
+      const x = d.querySelector('.tclose').getBoundingClientRect();
+      const t = d.getBoundingClientRect();
+      out.push({
+        gap: Math.round(x.left - n.right),
+        tail: Math.round(t.right - x.right),
+        clipped: x.right > t.right + 0.5,
+      });
+    }
+    return JSON.stringify({
+      n: out.length,
+      anyClipped: out.some(o => o.clipped),
+      gaps: [...new Set(out.map(o => o.gap))],
+      tails: [...new Set(out.map(o => o.tail))],
+    });
+  })()`));
+
+  // Порог 8, а не «на глаз»: отступ крестика от правого края вкладки равен
+  // паддингу .tab (8px) минус паддинг самой кнопки (3px), то есть 5-6px.
+  // Если имя вкладки перестало тянуться (flex-grow 0), добавляется ровно
+  // свободная ширина — на ужатых вкладках это +5px, и порог 12 такое
+  // пропускал, а 8 — ловит.
+  t('крестик не обрезан ни в одной вкладке', r.anyClipped === false, JSON.stringify(r));
+  t('крестик прижат к правому краю', r.tails.every((x) => x >= 0 && x <= 8), JSON.stringify(r.tails));
+  t('между именем и крестиком ровный зазор', r.gaps.every((x) => x >= 0 && x <= 12), JSON.stringify(r.gaps));
+
+  // при перетаскивании имя не выделяется
+  r = JSON.parse(await js(`(() => {
+    const d = document.querySelector('.tab');
+    const cs = getComputedStyle(d);
+    return JSON.stringify({ userSelect: cs.userSelect, webkit: cs.webkitUserSelect });
+  })()`));
+  t('имя вкладки не выделяется мышью',
+    r.userSelect === 'none' && r.webkit === 'none', JSON.stringify(r));
+
+  // обрезка длинного имени в середине: хвост с номером должен остаться виден
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const T = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    for (const n of ['07', '24', '12']) await M.openPath(T + '/Заметка-с-длинным-именем-' + n + '.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    return JSON.stringify({
+      names: [...document.querySelectorAll('.tname')].map(x => x.textContent),
+      full: [...document.querySelectorAll('.tname')].map(x => x.dataset.full),
+      scrollW: document.getElementById('tabs').scrollWidth,
+      clientW: document.getElementById('tabs').clientWidth,
+    });
+  })()`));
+
+  t('длинные имена обрезаны', r.scrollW <= r.clientW + 1,
+    'scroll=' + r.scrollW + ' client=' + r.clientW);
+  t('полное имя сохранено в data-full',
+    (r.full || []).every((x, i) => x === (r.full || [])[i] && x.length > 20), JSON.stringify(r.full));
+  t('обрезка не в самом конце (хвост виден)',
+    (r.names || []).every((x) => x.includes('…') && x.length > 8), JSON.stringify(r.names));
+  t('различающиеся хвосты имён видны',
+    new Set((r.names || []).map((x) => x.slice(-5))).size === (r.names || []).length,
+    JSON.stringify(r.names));
+
+  // ------------------------------------------------- индикатор загрузки
+  console.log('\n== индикатор загрузки ==');
+
+  r = JSON.parse(await js(`(() => {
+    const el = document.getElementById('loading');
+    el.hidden = true;
+    const hiddenDisplay = getComputedStyle(el).display;
+    el.hidden = false;
+    const shownDisplay = getComputedStyle(el).display;
+    el.hidden = true;
+    return JSON.stringify({ hiddenDisplay, shownDisplay });
+  })()`));
+  // Без .loading[hidden]{display:none} индикатор висел бы всегда: правило с
+  // классом перебивает [hidden] из UA-таблицы по специфичности.
+  t('скрытый индикатор не отрисован', r.hiddenDisplay === 'none', r.hiddenDisplay);
+  t('видимый индикатор отрисован', r.shownDisplay === 'flex', r.shownDisplay);
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const f = ${JSON.stringify(TABS_DIR)} + '/Открываемый.md';
+    const el = document.getElementById('loading');
+    const txt = document.getElementById('loadingText');
+    let sawVisible = false;
+    let sample = '';
+    const p = M.openPath(f, { newTab: true });
+    for (let i = 0; i < 200; i++) {
+      if (!el.hidden) { sawVisible = true; sample = txt.textContent; }
+      await new Promise(r2 => setTimeout(r2, 5));
+      if (el.hidden && sawVisible) break;
+    }
+    const t = await p;
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify({
+      sawVisible, sample, opened: !!t,
+      hiddenAfter: el.hidden, name: M.active().name,
+    });
+  })()`));
+
+  t('индикатор показывается при открытии', r.sawVisible === true);
+  t('в индикаторе имя файла', /Открываемый\.md/.test(r.sample || ''), r.sample);
+  t('файл после индикатора открыт', r.opened === true && r.name === 'Открываемый.md', r.name);
+  t('после открытия индикатор убран', r.hiddenAfter === true);
+
+  // Переключение вкладки гасит индикатор
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const el = document.getElementById('loading');
+    const txt = document.getElementById('loadingText');
+    txt.textContent = 'Открываю что-то.md';
+    el.hidden = false;
+    const before = el.hidden;
+    await M.newTab();
+    await new Promise(r2 => setTimeout(r2, 200));
+    return JSON.stringify({ before, after: el.hidden });
+  })()`));
+  t('переключение вкладки гасит индикатор', r.before === false && r.after === true,
+    JSON.stringify(r));
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

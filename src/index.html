@@ -16,16 +16,26 @@
     <!-- ============ Вкладки ============
          Слева иконка приложения, справа «+». Раньше «+» стоял перед вкладками,
          а справа была пустая распорка — визуально кнопка «новая вкладка»
-         прилипала к первой вкладке и читалась как часть её. -->
+         прилипала к первой вкладке и читалась как часть её.
+
+         Полоса вкладок обёрнута в .tabs-wrap: внутри неё сама лента и две
+         кнопки-шеврона, которые появляются только когда вкладки не влезают.
+         Раньше лента просто уезжала за край окна без всякой прокрутки. -->
     <div class="tabbar" id="tabbar">
       <button class="tabbar-brand" id="appBrand" title="MDView — меню приложения" aria-haspopup="menu">
-        <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true" focusable="false">
-          <rect x="2" y="2" width="60" height="60" rx="12" fill="#16161e" stroke="#3b4261" stroke-width="2"></rect>
-          <text x="32" y="43" text-anchor="middle" font-family="Consolas,monospace" font-size="28" font-weight="700" fill="#7aa2f7">M</text>
-          <text x="47" y="43" text-anchor="middle" font-family="Consolas,monospace" font-size="28" font-weight="700" fill="#7dcfff">D</text>
-        </svg>
+        <img src="assets/app-icon.png" width="26" height="26" alt="" draggable="false">
       </button>
-      <div class="tabs" id="tabs"></div>
+
+      <div class="tabs-wrap" id="tabsWrap">
+        <button class="tabs-nav left" id="tabsLeft" title="Вкладки левее" aria-label="Вкладки левее" hidden>
+          <span class="ico" data-i="chevron-left"></span>
+        </button>
+        <div class="tabs" id="tabs"></div>
+        <button class="tabs-nav right" id="tabsRight" title="Вкладки правее" aria-label="Вкладки правее" hidden>
+          <span class="ico" data-i="chevron-right"></span>
+        </button>
+      </div>
+
       <!-- Плюсик просто открывает новую вкладку. Мини-меню убрано: ради
            пустой вкладки не надо в неё нырять, а файлы/папки открываются
            кнопками тулбара. -->
@@ -87,6 +97,18 @@
 
       <button class="btn ico-only" id="btnToc" title="Оглавление (Ctrl+Shift+B)" hidden><span class="ico" data-i="list-tree"></span></button>
       <button class="btn ico-only" id="btnSidebar" title="Панель (Ctrl+B)"><span class="ico" data-i="panel-left"></span></button>
+    </div>
+
+    <!-- ============ Индикатор загрузки ============
+         Показывается на всё время открытия файла: чтение с диска, рендер
+         Markdown и вставка в DOM на большой заметке занимают доли секунды,
+         и без него окно выглядит просто зависшим. -->
+    <div class="loading" id="loading" hidden aria-live="polite">
+      <div class="loading-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-text" id="loadingText">Открываю…</div>
+        <div class="loading-sub" id="loadingSub"></div>
+      </div>
     </div>
 
     <!-- ============ Пустое состояние / дропзона ============ -->

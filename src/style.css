@@ -1,4 +1,4 @@
-/* ===== Шрифт: JetBrains Mono (основной) =====
+﻿/* ===== Шрифт: JetBrains Mono (основной) =====
    @font-face-блоки генерирует scripts/vendor.js в src/fonts.css
    (кириллица + латиница, 400/500/700 и 400 italic). Подключается отдельным
    <link> в index.html — раньше он был встроен сюда четырьмя блоками с
@@ -83,6 +83,11 @@ code, pre, kbd, .icode { font-family: var(--mono); }
 }
 .tabbar-brand:hover { opacity: 1; background: var(--bg-soft); }
 .tabbar-brand:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+/* Иконка та же, что у exe: PNG-рендер build/icon/icon.svg, а не нарисованный
+   руками SVG с текстом. Тот SVG опирался на шрифт Lato, которого на Windows
+   нет, и «MD» выглядело криво. Теперь картинка пиксель-в-пиксель совпадает
+   с иконкой приложения. */
+.tabbar-brand img { display: block; border-radius: 6px; }
 .tabbar-brand svg { display: block; border-radius: 5px; }
 .tabbar-brand:hover { opacity: 1; }
 .tab-new {
@@ -95,16 +100,57 @@ code, pre, kbd, .icode { font-family: var(--mono); }
 }
 .tab-new .ico-svg { width: 15px; height: 15px; }
 .tab-new:hover { background: var(--bg-soft); color: var(--fg); border-color: var(--border); }
-.tabs { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* Лента вкладок живёт внутри .tabs-wrap, чтобы шевроны прокрутки можно было
+   положить поверх краёв и показать только при переполнении.
+
+   flex: 0 1 auto — полоса занимает ровно столько места, сколько нужно вкладкам,
+   остальное забирает распорка справа. С flex: 1 1 auto полоса расползалась на
+   всю ширину, вкладки раздувались до 1235px, и переполнение наступало только
+   в самом конце: при 12 вкладках в окне 1320px скролла ещё не было.
+
+   min-width:0 обязателен в обоих: без него flex-элемент не сжимается ниже
+   своего содержимого, и лента вылезает за окно вместо прокрутки. */
+.tabs-wrap {
+    position: relative; flex: 0 1 auto; min-width: 0;
+    display: flex; align-items: stretch;
+}
+.tabs {
+    display: flex; align-items: stretch; gap: 4px;
+    flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -ms-overflow-style: none;
+    scroll-behavior: smooth;
+}
 .tabs::-webkit-scrollbar { height: 0; }
+
+/* Шевроны по краям ленты, видны только когда есть что листать */
+.tabs-nav {
+    -webkit-app-region: no-drag;
+    position: absolute; top: 0; bottom: 0; width: 20px; z-index: 3;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 0; padding: 0; cursor: pointer;
+    background: transparent; color: var(--fg);
+    opacity: 0; transition: opacity .12s;
+}
+.tabs-nav.left  { left: 0;  box-shadow:  8px 0 8px -8px rgba(0, 0, 0, .55); }
+.tabs-nav.right { right: 0; box-shadow: -8px 0 8px -8px rgba(0, 0, 0, .55); }
+.tabs-wrap.has-overflow .tabs-nav:not([hidden]) { opacity: .85; }
+.tabs-nav:hover { opacity: 1 !important; }
+.tabs-nav .ico-svg { width: 15px; height: 15px; }
+
+/* Много вкладок — жмём ширину, иначе полезут за край после третьей */
+.tabs.many .tab { max-width: 158px; min-width: 84px; padding: 0 5px 0 9px; gap: 5px; }
+.tabs.many .tab .tclose { padding: 3px 3px; }
+
 .tab {
     -webkit-app-region: no-drag;
     display: flex; align-items: center; gap: 8px;
-    padding: 0 8px 0 12px; max-width: 240px; min-width: 110px;
+    padding: 0 8px 0 12px; max-width: 240px; min-width: 104px;
     background: transparent; border: 1px solid transparent;
     border-radius: 7px 7px 0 0; cursor: pointer;
     color: var(--fg-dark); font-size: 13px; font-family: var(--ui);
     white-space: nowrap; overflow: hidden;
+    /* Иначе при перетаскивании выделяется текст названия. */
+    user-select: none; -webkit-user-select: none;
 }
 .tab:hover { background: var(--bg-soft); }
 
@@ -117,7 +163,13 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     background: var(--bg); color: var(--fg);
     border-color: var(--border); border-bottom-color: var(--bg);
 }
-.tab .tname { overflow: hidden; text-overflow: ellipsis; }
+/* Имя обязано ТЯНУТЬСЯ (flex-grow: 1), иначе вкладка с коротким именем
+   оставляет свободное место справа от него, и крестик висит левее правого
+   края — ровно то, на что жаловались. Например у «Пусто» свободного места
+   было около 20px.
+   min-width: 0 — страховка: у .tname свой overflow:hidden, из-за чего
+   automatic minimum size и так ноль, но полагаться на это не стоит. */
+.tab .tname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tab .dirty { color: var(--orange); font-family: var(--mono); font-size: 15px; }
 .tab .tclose {
     border: 0; background: transparent; color: var(--comment);
@@ -379,6 +431,7 @@ body.side-hidden .sidebar-resizer { display: none; }
    левого края (разъезд ~290px). Именно это и было видно в заметке. */
 .content > * { max-width: var(--content-max-width); margin-inline: auto; }
 
+
 .content h1, .content h2, .content h3,
 .content h4, .content h5, .content h6 {
     /* margin-block, а НЕ margin — и обязательно ДВА значения: margin-block
@@ -582,24 +635,145 @@ body.side-hidden .sidebar-resizer { display: none; }
     text-align: left;
 }
 
-/* ---- Настройки ---- */
+/* ---- Настройки ----
+   Каждая настройка — карточка: заголовок со значением справа, контрол под ним,
+   подсказка внизу. Раньше была таблица в две колонки, и подсказки выпадали
+   отдельной строкой под меткой — выглядело как отчёт, а не как диалог. */
 .set-row {
-    display: grid; grid-template-columns: 128px 1fr; gap: 10px;
-    align-items: center; padding: 7px 0;
-    border-bottom: 1px solid var(--border);
+    padding: 11px 13px 12px;
+    background: rgba(255, 255, 255, .022);
+    border: 1px solid var(--border);
+    border-radius: 9px;
 }
-.set-row:last-of-type { border-bottom: none; }
-.set-label { font-size: 13px; color: var(--fg); }
-.set-control { display: flex; justify-content: flex-start; min-width: 0; }
-.set-inline { display: flex; align-items: center; gap: 10px; width: 100%; }
-.set-inline input[type="range"] { flex: 1 1 auto; accent-color: #7aa2f7; min-width: 0; }
+.set-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-bottom: 9px;
+}
+.set-label { font-size: 13.5px; color: var(--fg); font-weight: 500; }
 .set-val {
     font-family: var(--mono); font-size: 12px; color: var(--cyan);
-    min-width: 54px; text-align: right;
+    min-width: 54px; text-align: right; flex: 0 0 auto;
 }
-.set-hint {
-    grid-column: 2; font-size: 11px; color: var(--comment); line-height: 1.5;
-    margin-top: -2px;
-}
-.set-control input[type="checkbox"] { accent-color: #7aa2f7; width: 15px; height: 15px; cursor: pointer; }
+.set-hint { font-size: 11.5px; color: var(--comment); line-height: 1.45; margin-top: 8px; }
 
+/* Ползунок: системный вид слишком толстый и светлый для тёмной темы */
+.set-row input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    display: block; width: 100%; height: 18px;
+    background: transparent; cursor: pointer; margin: 0;
+}
+.set-row input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--blue) 0 var(--fill, 0%), var(--border) var(--fill, 0%) 100%);
+}
+.set-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; margin-top: -5px;
+    border-radius: 50%; background: #cdd6f4;
+    border: 2px solid var(--bg-alt);
+    box-shadow: 0 0 0 1px var(--comment);
+}
+.set-row input[type="range"]:hover::-webkit-slider-thumb { background: #fff; }
+.set-row input[type="range"]:focus-visible { outline: 1px solid var(--blue); outline-offset: 3px; border-radius: 3px; }
+
+/* Переключатель вместо системного чекбокса */
+.set-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.set-switch-input { position: absolute; opacity: 0; width: 0; height: 0; }
+.set-switch .knob {
+    width: 38px; height: 21px; border-radius: 11px;
+    background: var(--border); border: 1px solid var(--comment);
+    position: relative; transition: background .14s, border-color .14s;
+}
+.set-switch .knob::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--comment); transition: transform .14s, background .14s;
+}
+.set-switch-input:checked + .knob { background: #2a3f6b; border-color: var(--blue); }
+.set-switch-input:checked + .knob::after { transform: translateX(17px); background: #cdd6f4; }
+.set-switch-input:focus-visible + .knob { outline: 1px solid var(--blue); outline-offset: 2px; }
+
+/* ================= Индикатор загрузки ================= */
+.loading {
+    position: absolute; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+    font-family: var(--ui);
+}
+/* Без этого правила индикатор висел бы всегда: у [hidden] из UA-таблицы
+   специфичность ниже, чем у селектора с классом, и наш display:flex его
+   перебивал. */
+.loading[hidden] { display: none; }
+.loading-card { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.loading-text { font-size: 14px; color: var(--fg); }
+.loading-sub {
+    font-size: 12px; color: var(--comment); font-family: var(--mono);
+    min-height: 15px; text-align: center;
+}
+.spinner {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--blue);
+    animation: mdv-spin .7s linear infinite;
+}
+@keyframes mdv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2.4s; }
+}
+
+/* ================= Печать =================
+   Без этого блока на принтер уходила тёмная тема: заливка печаталась (printBackground),
+   и лист получался почти чёрным с блоком принтера. Для бумаги нужна светлая тема
+   и отсутствие всего, что не относится к тексту заметки. */
+@media print {
+    html, body {
+        background: #fff !important;
+        color: #1a1b26 !important;
+    }
+    /* Служебное — на бумаге нет. */
+    .tabbar, .topbar, .sidebar, .welcome, .toc-overlay, .findbar,
+    .loading, .ctxmenu, .dropdown-menu, .code-copy, .to-top {
+        display: none !important;
+    }
+
+    /* Контент на весь лист без внутренней прокрутки. */
+    #app, .main, .content {
+        position: static !important;
+        inset: auto !important;
+        overflow: visible !important;
+        height: auto !important;
+        padding: 0 !important;
+        scroll-behavior: auto !important;
+        background: #fff !important;
+    }
+    .content > * { max-width: none !important; margin-inline: 0 !important; }
+
+    /* Текст и заголовки — чёрным по белому. */
+    .content p, .content li, .content td, .content th,
+    .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+        color: #1a1b26 !important;
+    }
+    .content h2, .content h3 { border-color: #ccc !important; }
+    .content a { color: #1a4fb0 !important; border-bottom-color: #1a4fb0 !important; }
+
+    /* Код и таблицы — с рамками, иначе на бумаге сливаются в кашу. */
+    .content pre, .content blockquote {
+        background: #f6f6f6 !important;
+        border: 1px solid #ccc !important;
+        color: #1a1b26 !important;
+        page-break-inside: avoid;
+    }
+    .content code { background: #eee !important; color: #1a1b26 !important; }
+    .content table { page-break-inside: avoid; }
+    .content th, .content td { border-color: #999 !important; color: #1a1b26 !important; }
+    .content th { background: #eee !important; }
+    .content hr { border-color: #ccc !important; }
+
+    /* Иконки задач печатаем галочками: SVG с stroke не всегда переносится. */
+    .content .mdv-task-wrap { display: inline-block; }
+
+    /* Не разрывать заголовок от его текста. */
+    .content h1, .content h2, .content h3, .content h4 {
+        page-break-after: avoid;
+        break-after: avoid;
+    }
+}

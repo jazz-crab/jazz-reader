@@ -11,7 +11,9 @@ const ICONS = window.MDV_ICONS;
 const $ = (id) => document.getElementById(id);
 const el = {
   tabbar: $('tabbar'), tabs: $('tabs'), btnNewTab: $('btnNewTab'),
-  appBrand: $('appBrand'),
+  appBrand: $('appBrand'), tabsWrap: $('tabsWrap'),
+  tabsLeft: $('tabsLeft'), tabsRight: $('tabsRight'),
+  loading: $('loading'), loadingText: $('loadingText'), loadingSub: $('loadingSub'),
   btnOpenFile: $('btnOpenFile'), btnOpenFolder: $('btnOpenFolder'),
   btnBack: $('btnBack'), btnForward: $('btnForward'),
   btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
@@ -54,6 +56,12 @@ function selectTab(id, touch) {
     visit.push(id);
     visitPos = visit.length - 1;
   }
+  // Переключились на другую вкладку — незавершённая загрузка первой больше
+  // не актуальна, иначе индикатор остался бы висеть поверх готового текста.
+  // Счётчик загрузки loadSeq здесь трогать НЕЛЬЗЯ: по нему openPath()
+  // понимает, что его вытеснил более новый запрос, а blankTab() внутри
+  // openPath() вызывает selectTab() совершенно штатно.
+  hideLoading();
   renderTabs();
   renderActive();
   updateNavButtons();
@@ -202,12 +210,47 @@ function wireModal(back, focusTarget) {
 
 function toast(msg) { status(msg); }
 
+// ------------------------------------------------------- индикатор загрузки
+
+let loadSeq = 0;
+
+/**
+ * Открытие большой заметки занимает доли секунды: чтение, рендер Markdown и
+ * вставка в DOM. Без индикатора окно выглядит просто зависшим, поэтому
+ * показываем его ДО чтения и прячем только после того, как кадр с содержимым
+ * ушёл на экран.
+ *
+ * requestAnimationFrame в свёрнутом или скрытом окне не срабатывает (так
+ * работает и наш собственный --mdview-hidden), поэтому ждём кадр, но
+ * страхуемся таймером: иначе openPath() навечно завис бы на скрытом окне.
+ */
+function nextPaint() {
+  return new Promise((resolve) => {
+    let done = false;
+    const fin = () => { if (!done) { done = true; resolve(); } };
+    requestAnimationFrame(() => setTimeout(fin, 0));
+    setTimeout(fin, 60);
+  });
+}
+
+function showLoading(text, sub) {
+  el.loadingText.textContent = text || 'Открываю…';
+  el.loadingSub.textContent = sub || '';
+  el.loading.hidden = false;
+}
+
+function hideLoading() {
+  el.loading.hidden = true;
+  el.loadingText.textContent = 'Открываю…';
+  el.loadingSub.textContent = '';
+}
+
 // ------------------------------------------------------------------- вкладки
 
 function newTab() {
   const id = ++seq;
   tabs.set(id, {
-    id, path: null, name: 'Пусто', raw: '', html: null,
+    id, path: null, name: 'Новая вкладка', raw: '', html: null,
     dirty: false, mode: 'read', baseUrl: '', encoding: '', size: 0,
     // blank: пользователь явно попросил новую пустую вкладку -> показывать
     // дефолтную заглушку, даже если папка уже открыта.
@@ -568,8 +611,78 @@ function initTabDrag() {
   });
 }
 
+/**
+ * Лента вкладок: прокрутка и шевроны.
+ *
+ * Раньше лента имела overflow-x:auto, но без min-width:0 на самой ленте и её
+ * обёртке flex-элемент не сжимался ниже содержимого — вкладки просто уезжали
+ * за край окна, и доехать до них было нечем. Теперь колесо над лентой листает
+ * её вбок, а по краям появляются шевроны, когда есть что листать.
+ */
+function initTabsScroll() {
+  const step = () => Math.max(120, Math.round(el.tabs.clientWidth * 0.6));
+
+  el.tabsLeft.onclick = () => el.tabs.scrollBy({ left: -step(), behavior: 'smooth' });
+  el.tabsRight.onclick = () => el.tabs.scrollBy({ left: step(), behavior: 'smooth' });
+
+  // Вертикальный скролл над полосой вкладок должен листать её, а не страницу.
+  // Важно: scroll-behavior:smooth делает присваивание scrollLeft отложенным,
+  // поэтому сразу после присваивания scrollLeft ещё старый. Значит сравнивать
+  // «изменилось ли» бесполезно — решаем по наличию переполнения и отменяем
+  // событие сразу.
+  el.tabs.addEventListener('wheel', (e) => {
+    if (!e.deltaY || e.deltaX) return;
+    if (el.tabs.scrollWidth <= el.tabs.clientWidth + 1) return;
+    e.preventDefault();
+    el.tabs.scrollLeft += e.deltaY;
+  }, { passive: false });
+
+  // Ширина ленты меняется при ресайзе окна и при появлении/скрытии панели
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => updateTabsNav()).observe(el.tabs);
+  } else {
+    window.addEventListener('resize', () => updateTabsNav());
+  }
+}
+
+/** Показываем шеврон только с той стороны, где есть что листать. */
+function updateTabsNav() {
+  const max = el.tabs.scrollWidth - el.tabs.clientWidth;
+  el.tabsWrap.classList.toggle('has-overflow', max > 2);
+  el.tabsLeft.hidden = max <= 2 || el.tabs.scrollLeft <= 2;
+  el.tabsRight.hidden = max <= 2 || el.tabs.scrollLeft >= max - 2;
+}
+
+/**
+ * Обрезать длинное имя в середине: «Заметка-с-длинным…-24.md» вместо
+ * «Заме…». У заметок различается обычно хвост (дата, номер, версия), а
+ * при обрезке слева все вкладки выглядят одинаково.
+ * Ширину меряем в два прохода: сначала вписываем полное имя, потом ищем
+ * самый длинный вариант с многоточием двоичным поиском.
+ */
+function elideMiddle(el, full) {
+  if (!full) return;
+  if (el.scrollWidth <= el.clientWidth + 1) { el.textContent = full; return; }
+  const build = (n) => {
+    // 55% головы + многоточие + 45% хвоста, без наложения
+    const head = Math.ceil(n * 0.55);
+    const tail = n - head;
+    return full.slice(0, head) + '…' + (tail > 0 ? full.slice(full.length - tail) : '');
+  };
+  let lo = 1;
+  let hi = full.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    el.textContent = build(mid);
+    if (el.scrollWidth <= el.clientWidth + 1) lo = mid; else hi = mid - 1;
+  }
+  el.textContent = build(lo);
+}
+
 function renderTabs() {
   el.tabs.innerHTML = '';
+  // Много вкладок — жмём ширину, чтобы меньше уезжало за край
+  el.tabs.classList.toggle('many', tabs.size > 7);
   for (const t of tabs.values()) {
     const d = document.createElement('div');
     d.className = 'tab' + (t.id === activeId ? ' active' : '');
@@ -580,6 +693,7 @@ function renderTabs() {
     const nm = document.createElement('span');
     nm.className = 'tname';
     nm.textContent = t.name;
+    nm.dataset.full = t.name;
     d.append(nm);
     if (t.dirty) {
       const dot = document.createElement('span');
@@ -609,9 +723,13 @@ function renderTabs() {
     };
     el.tabs.append(d);
   }
+  // Ширины вкладок известны только после того, как они в DOM, поэтому
+  // обрезаем имена вторым проходом.
+  for (const nm of el.tabs.querySelectorAll('.tname')) elideMiddle(nm, nm.dataset.full);
   // активную вкладку видно
   const act = el.tabs.querySelector('.tab.active');
   if (act) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  updateTabsNav();
 }
 
 /**
@@ -672,9 +790,17 @@ async function openPath(p, opts) {
     return existing;
   }
   const prevActive = activeId;
+  const my = ++loadSeq;
   try {
     status('Открываю ' + basname(p) + '…');
+    // Показываем индикатор и отдаём кадр, иначе он появится уже после того,
+    // как всё отрисовалось, и толку от него не будет.
+    showLoading('Открываю ' + basname(p) + '…');
+    await nextPaint();
     const data = await api.read(p);
+    if (my !== loadSeq) return null;
+    showLoading('Открываю ' + basname(p) + '…', fmtSize(data.size));
+    await nextPaint();
     noteRecent(data.path);
     const t = opts.newTab ? blankTab() : (active() && active().path ? active() : blankTab());
     applyData(t, data);
@@ -700,9 +826,13 @@ async function openPath(p, opts) {
     } else {
       selectTab(t.id);
     }
+    // Прячем после кадра с содержимым, иначе индикатор гаснет раньше текста.
+    await nextPaint();
+    if (my === loadSeq) hideLoading();
     status(data.encoding.toUpperCase() + ' · ' + fmtSize(t.size) + ' · ' + t.name, 'ok');
     return t;
   } catch (e) {
+    if (my === loadSeq) hideLoading();
     status('Не удалось открыть: ' + (e.message || e), 'err');
     return null;
   }
@@ -1422,6 +1552,15 @@ const SETTINGS_DEFAULT = {
 // показывает пиксели и переводит их в zoom — одна шкала вместо двух.
 const BASE_TEXT_PX = 15;
 
+/** Залить левую часть ползунка до текущего значения (CSS рисует по --fill). */
+function paintRange(inp) {
+  const min = +inp.min;
+  const max = +inp.max;
+  const span = max - min || 1;
+  const pct = ((+inp.value - min) / span) * 100;
+  inp.style.setProperty('--fill', pct.toFixed(1) + '%');
+}
+
 async function loadSettings() {
   let saved = {};
   try { saved = (await api.settingsGet()) || {}; } catch { saved = {}; }
@@ -1448,28 +1587,49 @@ function applySettings(s) {
 
 function settingsDialog() {
   const back = modalShell();
-  const box = modalBox('Настройки', 430, 340);
+  const box = modalBox('Настройки', 470, 460);
 
   const rows = [];
-  function addRow(label, control, hint) {
-    const row = document.createElement('label');
+
+  /**
+   * Одна настройка — карточка: заголовок со значением справа, сам контрол под
+   * ним, подсказка внизу мелким шрифтом. Раньше была сетка «метка слева,
+   * контрол справа» в две колонки, и подсказки вылезали отдельной строкой
+   * под меткой — окно выглядело как таблица, а не как диалог.
+   * Возвращает карточку, чтобы положить в неё контрол.
+   */
+  function addCard(label, valueEl, hint) {
+    const row = document.createElement('div');
     row.className = 'set-row';
+
+    const head = document.createElement('div');
+    head.className = 'set-head';
     const l = document.createElement('span');
     l.className = 'set-label';
     l.textContent = label;
-    const c = document.createElement('span');
-    c.className = 'set-control';
-    c.append(control);
-    row.append(l, c);
+    head.append(l);
+    if (valueEl) head.append(valueEl);
+    row.append(head);
+
+    let hintEl = null;
     if (hint) {
-      const h = document.createElement('span');
-      h.className = 'set-hint';
-      h.textContent = hint;
-      row.append(h);
+      hintEl = document.createElement('div');
+      hintEl.className = 'set-hint';
+      hintEl.textContent = hint;
+      row.append(hintEl);
     }
     box.append(row);
     rows.push(row);
-    return control;
+
+    // Контрол кладём ПЕРЕД подсказкой, а не в конец: иначе порядок получается
+    // «заголовок → подсказка → ползунок», и текст висит над самим элементом,
+    // к которому относится.
+    row._before = hintEl;
+    row.addControl = (ctl) => {
+      row.insertBefore(ctl, hintEl || null);
+      return ctl;
+    };
+    return row;
   }
 
   const next = Object.assign({}, currentSettings);
@@ -1487,14 +1647,12 @@ function settingsDialog() {
   font.value = String(zoomToPx(next.zoom));
   const syncFont = () => {
     fontOut.textContent = font.value + ' px';
+    paintRange(font);
     previewSettings({ zoom: pxToZoom(+font.value) });
   };
   font.oninput = syncFont;
   syncFont();
-  const fontWrap = document.createElement('span');
-  fontWrap.className = 'set-inline';
-  fontWrap.append(font, fontOut);
-  addRow('Размер текста', fontWrap, 'Синхронизирован с масштабом в тулбаре.');
+  addCard('Размер текста', fontOut, 'Тот же масштаб, что и в тулбаре.').addControl(font);
 
   // Ширина колонки
   const widthOut = document.createElement('span');
@@ -1507,21 +1665,27 @@ function settingsDialog() {
   width.value = String(next.columnWidth);
   const syncWidth = () => {
     widthOut.textContent = width.value + ' px';
+    paintRange(width);
     previewSettings({ columnWidth: +width.value });
   };
   width.oninput = syncWidth;
   syncWidth();
-  const widthWrap = document.createElement('span');
-  widthWrap.className = 'set-inline';
-  widthWrap.append(width, widthOut);
-  addRow('Ширина колонки', widthWrap, 'Ширше — длинные строки читаются тяжелее.');
+  addCard('Ширина колонки', widthOut, 'Узкая колонка читается спокойнее.').addControl(width);
 
-  // Автосохранение
-  const auto = document.createElement('input');
-  auto.type = 'checkbox';
-  auto.checked = !!next.autosave;
-  auto.onchange = () => previewSettings({ autosave: auto.checked });
-  addRow('Автосохранение', auto, 'Выход из правки сразу пишет файл, без «Сохранить».');
+  // Автосохранение. Настоящий <input type=checkbox> прячем, а рисуем
+  // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
+  const autoIn = document.createElement('input');
+  autoIn.type = 'checkbox';
+  autoIn.className = 'set-switch-input';
+  autoIn.checked = !!next.autosave;
+  const auto = document.createElement('label');
+  auto.className = 'set-switch';
+  const knob = document.createElement('span');
+  knob.className = 'knob';
+  auto.append(autoIn, knob);
+  autoIn.onchange = () => previewSettings({ autosave: autoIn.checked });
+  addCard('Автосохранение', null,
+    'Выход из правки сразу пишет файл — кнопка «Сохранить» не нужна.').addControl(auto);
 
   // Предпросмотр должен откатываться при отмене
   const before = Object.assign({}, currentSettings);
@@ -1542,7 +1706,7 @@ function settingsDialog() {
     const d = SETTINGS_DEFAULT;
     font.value = String(zoomToPx(d.zoom));
     width.value = String(d.columnWidth);
-    auto.checked = d.autosave;
+    autoIn.checked = d.autosave;
     syncFont();
     syncWidth();
     previewSettings(Object.assign({}, d));
@@ -1554,7 +1718,7 @@ function settingsDialog() {
     const val = {
       zoom: pxToZoom(+font.value),
       columnWidth: +width.value,
-      autosave: auto.checked,
+      autosave: autoIn.checked,
     };
     currentSettings = val;
     applySettings(val);
@@ -1698,6 +1862,7 @@ el.treeFilter.addEventListener('input', renderTree);
 
 // Перетаскивание вкладок
 initTabDrag();
+initTabsScroll();
 
 // --- ресайз сайдбара
 (() => {

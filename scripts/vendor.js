@@ -52,7 +52,7 @@ const USED_ICONS = [
   'file-text', 'folder-open', 'folder', 'file', 'arrow-left', 'arrow-right',
   'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'download',
   'panel-left', 'x', 'copy', 'eye-off', 'printer', 'folder-search',
-  'search', 'file-down', 'file-code', 'check', 'list-tree', 'plus',
+  'search', 'file-down', 'file-code', 'check', 'list-tree', 'plus', 'chevron-left', 'chevron-right',
   // Чекбоксы task-list (- [x] / 1. [ ]): marked рендерит их нативными
   // <input type=checkbox>, они выглядели чужеродно в тёмной теме.
   'square-check-big', 'square',
