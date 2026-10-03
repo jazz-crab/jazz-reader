@@ -18,9 +18,12 @@ const el = {
   btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
   btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), zoomVal: $('zoomVal'),
   dlBtn: $('dlBtn'), dlMenu: $('dlMenu'), btnSidebar: $('btnSidebar'),
-  btnToc: $('btnToc'), tocOverlay: $('tocOverlay'),
+  btnToc: $('btnToc'),
   welcome: $('welcome'), wOpenFile: $('wOpenFile'), wOpenFolder: $('wOpenFolder'),
-  workspace: $('workspace'), sidebar: $('sidebar'), sidebarResizer: $('sidebarResizer'),
+    workspace: $('workspace'),
+    tocSide: $('tocSide'), filesSide: $('filesSide'),
+    tocResizer: $('tocResizer'), filesResizer: $('filesResizer'),
+    topbar: document.querySelector('.topbar'),
   paneFiles: $('paneFiles'), paneToc: $('paneToc'), treeFilter: $('treeFilter'),
   content: $('content'), editor: $('editor'), toTop: $('toTop'),
   statusbar: $('statusbar'), statusText: $('statusText'), fileName: $('fileName'),
@@ -450,8 +453,12 @@ async function closeAll() {
  * Один код и для вкладки, и для файла в дереве — иначе две копии разъедутся.
  */
 function showContextMenu(x, y, items, opts) {
-  document.querySelector('.ctxmenu')?.remove();
   const o = opts || {};
+  // Подменю не выкидывает родителя: галочки «Вид» должны остаться на месте,
+  // пока курсор над цепочкой. Флаг ставим ДО чистки — иначе подменю успевает
+  // снести меню, из которого его открыли, и вместо двух меню остаётся одно.
+  if (o.parent && o.keepParent) o.parent._keep = true;
+  for (const c of document.querySelectorAll('.ctxmenu')) if (!c._keep) c.remove();
   const w = o.width || 232;
   const h = o.height || (items.length * 30 + 14);
 
@@ -459,6 +466,19 @@ function showContextMenu(x, y, items, opts) {
   m.className = 'ctxmenu';
   m.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 6)) + 'px';
   m.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 6)) + 'px';
+
+  /*
+   * Элемент меню:
+   *   check: true|false — галочка, пункт-переключатель в подменю «Вид»
+   *   items: [...]      — подменю, раскрывается вправо по наведению
+   *   off               — пункт неактивен
+   */
+  const closeAll = () => {
+    for (const c of document.querySelectorAll('.ctxmenu')) c.remove();
+    document.removeEventListener('mousedown', kill, true);
+    window.removeEventListener('blur', onBlur);
+    document.removeEventListener('keydown', onEsc);
+  };
 
   for (const it of items) {
     if (it.sep) {
@@ -470,38 +490,52 @@ function showContextMenu(x, y, items, opts) {
     const b = document.createElement('button');
     b.className = 'ctxmenu-item' + (it.danger ? ' ctxmenu-danger' : '');
     b.disabled = !!it.off;
+
     const l = document.createElement('span');
-    l.textContent = it.label;
+    l.className = 'ctxmenu-label';
+    if (it.check !== undefined) {
+      const tick = document.createElement('span');
+      tick.className = 'ctxmenu-check';
+      tick.textContent = it.check ? '✓' : '';
+      l.append(tick);
+    }
+    l.append(document.createTextNode(it.label));
     const hn = document.createElement('span');
     hn.className = 'ctxmenu-hint';
-    hn.textContent = it.hint || '';
+    hn.textContent = it.hint !== undefined ? it.hint : (it.items ? '\u203a' : '');
     b.append(l, hn);
-    b.onclick = () => { m.remove(); it.act(); };
+
+    if (it.items) {
+      // Подменю держим открытым, пока курсор над цепочкой.
+      b.classList.add('ctxmenu-parent');
+      let sub = null;
+      b.onmouseenter = () => {
+        if (sub) return;
+        const r = b.getBoundingClientRect();
+        sub = showContextMenu(r.right - 4, r.top - 5, it.items, {
+          width: o.subWidth || 232, parent: m, keepParent: true,
+        });
+      };
+      b.onclick = (e) => e.stopPropagation();
+    } else {
+      b.onclick = () => { closeAll(); it.act(); };
+    }
     m.append(b);
   }
 
   document.body.append(m);
+  if (o.parent && o.keepParent) o.parent._keep = true;
+  // Клик мимо закрывает всю цепочку. Клик внутри подменю не закрывает:
+  // подменю — отдельный .ctxmenu, и e.target.closest('.ctxmenu') его найдёт.
   const kill = (e) => {
-    if (!m.contains(e.target)) {
-      m.remove();
-      document.removeEventListener('mousedown', kill, true);
-      window.removeEventListener('blur', onBlur);
-      document.removeEventListener('keydown', onEsc);
-    }
+    if (!e.target.closest || !e.target.closest('.ctxmenu')) closeAll();
   };
   // По Esc меню закрывается — иначе после ПКМ его нечем убрать с клавиатуры.
   const onEsc = (e) => {
     if (e.key !== 'Escape') return;
-    m.remove();
-    document.removeEventListener('mousedown', kill, true);
-    window.removeEventListener('blur', onBlur);
-    document.removeEventListener('keydown', onEsc);
+    closeAll();
   };
-  const onBlur = () => {
-    m.remove();
-    document.removeEventListener('mousedown', kill, true);
-    document.removeEventListener('keydown', onEsc);
-  };
+  const onBlur = () => closeAll();
   setTimeout(() => {
     document.addEventListener('mousedown', kill, true);
     document.addEventListener('keydown', onEsc);
@@ -602,12 +636,7 @@ async function trashFile(full, label) {
   // Закрываем вкладку с удалённым файлом, чтобы не повисла со старым текстом.
   if (open) await closeTab(open.id);
   // Пересобираем дерево: файл мог лежать в корне или во вложенной папке.
-  for (const r of roots) {
-    const fresh = await api.listMd(r.path);
-    if (fresh) { r.tree = fresh.tree; r.total = fresh.total; }
-  }
-  renderTree();
-  refreshTreeSelection();
+  await refreshRoots();
   status('Удалено в корзину: ' + label, 'ok');
 }
 
@@ -1076,7 +1105,7 @@ function renderActive() {
   el.workspace.hidden = wantWelcome || !show;
   closeFind();
   if (isBlank) {
-    if (!el.tocOverlay.hidden) el.tocOverlay.hidden = true;
+
     // Файла нет — не пишем ничего. Чёрточка-разделитель читалась как
     // «имя файла, но я не знаю какое».
     el.fileName.textContent = '';
@@ -1092,7 +1121,7 @@ function renderActive() {
     updateNavButtons();
     return;
   }
-  el.statusbar.hidden = false;
+  el.statusbar.hidden = !view.statusbar;
   el.modeDock.hidden = false;
 
   document.title = t.name + ' — MDView';
@@ -1593,18 +1622,101 @@ el.content.addEventListener('click', (e) => {
 // Плюсик снова просто открывает пустую вкладку: меню ради одной кнопки было
 // лишним кликом, а открыть файл/папку и так есть чем в тулбаре.
 el.btnNewTab.onclick = () => newTab();
+/*
+ * ПКМ по «+» открывает то же, что ЛКМ делает раньше: открыть файл или
+ * папку. Сам «+» остаётся новой пустой вкладкой — так привычнее.
+ */
+el.btnNewTab.oncontextmenu = (e) => {
+  e.preventDefault();
+  const r = el.btnNewTab.getBoundingClientRect();
+  showContextMenu(r.left - 60, r.bottom + 4, [
+    { label: 'Открыть .md', hint: 'Ctrl+O', act: openFileDialog },
+    { label: 'Открыть папку', hint: 'Ctrl+Shift+O', act: openFolderDialog },
+  ], { width: 232, height: 80 });
+};
 
-// Иконка приложения слева — меню приложения: новый файл, новый проект,
-// недавние и настройки.
+// ------------------------------------------------------- временный файл / папка
+
+/**
+ * Ctrl+N: заметка без пути — в tmpdir, чтобы можно было набрать текст и сразу
+ * читать, не создавая файл в живом месте. При сохранении такой вкладки
+ * предлагаем «Сохранить как…».
+ */
+async function newTempNote() {
+  let res;
+  try { res = await api.newTemp('Безымянный'); }
+  catch (e) { status('Не удалось создать временную заметку: ' + (e.message || e), 'err'); return; }
+  if (!res) return;
+  if (!res.ok) { status('Не удалось создать временную заметку: ' + (res.error || 'ошибка'), 'err'); return; }
+  const t = await openPath(res.path, { newTab: true });
+  if (t) { t.temp = true; renderTabs(); }
+  status('Временная заметка: ' + basname(res.path), 'ok');
+}
+
+/**
+ * Ctrl+Shift+N: папка внутри открытой. Без открытой папки пункт недоступен —
+ * создавать папку «где-то» незачем.
+ */
+function folderForNew() {
+  const t = active();
+  if (t && t.path) return dirOf(t.path);
+  if (roots.length) return roots[0].path;
+  return null;
+}
+
+async function newFolderInOpen() {
+  const parent = folderForNew();
+  if (!parent) { status('Сначала открой папку с заметками', 'err'); return; }
+  let res;
+  try { res = await api.newFolder(parent, 'Новая папка'); }
+  catch (e) { status('Не удалось создать папку: ' + (e.message || e), 'err'); return; }
+  if (!res) return;
+  if (!res.ok) { status('Не удалось создать папку: ' + (res.error || 'ошибка'), 'err'); return; }
+  await refreshRoots();
+  status('Создана папка: ' + res.name, 'ok');
+}
+
+/** Перечитать деревья открытых папок после появления новой. */
+async function refreshRoots() {
+  for (const r of roots) {
+    const fresh = await api.listMd(r.path).catch(() => null);
+    if (fresh) { r.tree = fresh.tree; r.total = fresh.total; }
+  }
+  renderTree();
+  refreshTreeSelection();
+}
+
+// ------------------------------------------------- меню иконки приложения
+
+/** Пункты «Вид» с галочками. Значения берутся из view, а не хранятся в меню. */
+function viewMenuItems() {
+  return [
+    { label: 'Проводник', check: view.files, act: () => toggleView('files') },
+    { label: 'Оглавление', check: view.toc, act: () => toggleView('toc') },
+    { label: 'Верхняя панель', check: view.topbar, act: () => toggleView('topbar') },
+    { label: 'Нижняя панель', check: view.statusbar, act: () => toggleView('statusbar') },
+  ];
+}
+
 el.appBrand.onclick = (e) => {
   const r = el.appBrand.getBoundingClientRect();
   showContextMenu(r.left, r.bottom + 4, [
-    { label: 'Новый файл', hint: 'Ctrl+N', act: newFileAction },
-    { label: 'Новый проект', hint: 'папка с заметками', act: newProjectAction },
+    {
+      label: 'Файл',
+      items: [
+        { label: 'Новый файл', hint: 'Ctrl+N', act: newTempNote },
+        { label: 'Новая папка', hint: 'Ctrl+Shift+N', act: newFolderInOpen, off: !folderForNew() },
+        { sep: true },
+        { label: 'Открыть .md', hint: 'Ctrl+O', act: openFileDialog },
+        { label: 'Открыть папку', hint: 'Ctrl+Shift+O', act: openFolderDialog },
+        { sep: true },
+        { label: 'Недавние', act: recentDialog },
+      ],
+    },
+    { label: 'Вид', items: viewMenuItems() },
     { sep: true },
-    { label: 'Недавние', hint: 'выбор из списка', act: recentDialog },
-    { label: 'Настройки', hint: 'шрифт, колонка', act: settingsDialog },
-  ], { width: 250, height: 190, anchor: 'left' });
+    { label: 'Настройки', hint: 'Ctrl+,', act: settingsDialog },
+  ], { width: 250, height: 190, subWidth: 240 });
 };
 el.appBrand.oncontextmenu = (e) => {
   e.preventDefault();
@@ -1758,7 +1870,31 @@ async function loadSettings() {
     }
   }
   applySettings(merged);
+  // Вид хранится рядом с настройками, но это объект, а не число/флаг:
+  // берём только известные ключи, чтобы битый файл не навязал лишнего.
+  if (saved.view && typeof saved.view === 'object') {
+    for (const k of Object.keys(VIEW_DEFAULT)) {
+      if (typeof saved.view[k] === 'boolean') view[k] = saved.view[k];
+    }
+  }
+  applyView();
+  syncViewButtons();
   return merged;
+}
+
+/** Актуальное состояние панелей на кнопках тулбара. */
+function syncViewButtons() {
+  el.btnToc.classList.toggle('on', view.toc);
+  el.btnSidebar.classList.toggle('on', view.files);
+}
+
+/**
+ * Открыта ли пустая вкладка. Проверка стояла инлайном в renderActive, а
+ * понадобилась ещё и в applyView — для галочек вида.
+ */
+function isBlankTab() {
+  const t = active();
+  return !t || !t.path;
 }
 
 function applySettings(s) {
@@ -2027,7 +2163,7 @@ el.editor.addEventListener('input', () => {
 el.btnZoomIn.onclick = () => setZoom(zoom + 0.1);
 el.btnZoomOut.onclick = () => setZoom(zoom - 0.1);
 
-el.btnSidebar.onclick = () => document.body.classList.toggle('side-hidden');
+el.btnSidebar.onclick = () => toggleView('files');
 
 el.dlBtn.onclick = (e) => { e.stopPropagation(); el.dlBtn.parentElement.classList.toggle('open'); };
 document.addEventListener('click', () => el.dlBtn.parentElement.classList.remove('open'));
@@ -2049,18 +2185,51 @@ el.dlMenu.onclick = async (e) => {
   }
 };
 
-// --- оглавление: выдвижная панель, проводник всегда слева
-function toggleToc(force) {
-  const show = force === undefined ? el.tocOverlay.hidden : force;
-  el.tocOverlay.hidden = !show;
-  if (show) {
-    buildToc();
-    updateSpy();
-  }
+// ---------------------------------------------------------- вид и панели
+
+/*
+ * Что показывать: оглавление слева, проводник справа, панели и полосы — по
+ * галочкам в меню «Вид». Полоса вкладок не скрывается никогда: без неё
+ * нельзя ни открыть файл, ни понять, что открыто.
+ *
+ * Состояние лежит в settings.json рядом с остальными настройками.
+ */
+const VIEW_DEFAULT = { toc: true, files: true, topbar: true, statusbar: true };
+let view = Object.assign({}, VIEW_DEFAULT);
+
+function applyView() {
+  el.tocSide.hidden = !view.toc;
+  el.tocResizer.hidden = !view.toc;
+  el.filesSide.hidden = !view.files;
+  el.filesResizer.hidden = !view.files;
+  el.topbar.hidden = !view.topbar;
+  el.statusbar.hidden = !view.statusbar || isBlankTab();
+  if (view.toc && !isBlankTab()) { buildToc(); updateSpy(); }
+  // Полоса вкладок живёт в своём контейнере и от панелей не зависит, но
+  // шевроны прокрутки зависят от доступной ширины — пересчитываем.
+  if (typeof updateTabsNav === 'function') updateTabsNav();
 }
-el.btnToc.onclick = () => toggleToc();
-$('btnCloseToc').onclick = () => toggleToc(false);
-el.tocOverlay.addEventListener('click', (e) => { if (e.target === el.tocOverlay) toggleToc(false); });
+
+/** Переключить часть интерфейса и запомнить выбор. */
+async function toggleView(key, force) {
+  const next = force === undefined ? !view[key] : !!force;
+  if (view[key] === next) return view[key];
+  view[key] = next;
+  applyView();
+  syncViewButtons();
+  try {
+    currentSettings = Object.assign({}, currentSettings, { view: Object.assign({}, view) });
+    await api.settingsSet({ view: Object.assign({}, view) });
+  } catch (e) {
+    status('Вид не сохранён: ' + (e.message || e), 'err');
+  }
+  return view[key];
+}
+
+function toggleToc(force) { return toggleView('toc', force); }
+el.btnToc.onclick = () => toggleView('toc');
+$('btnHideToc').onclick = () => toggleView('toc', false);
+$('btnHideFiles').onclick = () => toggleView('files', false);
 
 el.treeFilter.addEventListener('input', renderTree);
 
@@ -2068,16 +2237,30 @@ el.treeFilter.addEventListener('input', renderTree);
 initTabDrag();
 initTabsScroll();
 
-// --- ресайз сайдбара
+// --- ресайз панелей: слева тянем за правый край, справа — за левый
 (() => {
-  let dragging = false;
-  el.sidebarResizer.addEventListener('mousedown', (e) => { dragging = true; e.preventDefault(); });
+  let drag = null;
+  const start = (side) => (e) => {
+    drag = side;
+    e.preventDefault();
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+  el.tocResizer.addEventListener('mousedown', start('toc'));
+  el.filesResizer.addEventListener('mousedown', start('files'));
+
   window.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    const w = Math.max(170, Math.min(620, e.clientX));
-    el.sidebar.style.width = w + 'px';
+    if (!drag) return;
+    const panel = drag === 'toc' ? el.tocSide : el.filesSide;
+    const w = Math.max(170, Math.min(620, drag === 'toc' ? e.clientX : innerWidth - e.clientX));
+    panel.style.width = w + 'px';
   });
-  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('mouseup', () => {
+    if (!drag) return;
+    drag = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
 })();
 
 // --- скролл: scroll-spy + кнопка «наверх»
@@ -2133,7 +2316,7 @@ api.onMenu((action) => {
     case 'download-html': downloadHtml(); break;
     case 'print': api.print(); break;
     case 'find': openFind(); break;
-    case 'toggle-sidebar': document.body.classList.toggle('side-hidden'); break;
+    case 'toggle-sidebar': toggleView('files'); break;
     case 'toggle-toc': toggleToc(); break;
     // Ctrl+E только входит в правку. Выйти из неё — явными кнопками
     // «Сохранить»/«Отменить» (или Esc), чтобы правки не терялись молча.
@@ -2178,7 +2361,15 @@ document.addEventListener('keydown', (e) => {
     const t = active();
     // Esc в правке — отмена (с вопросом, если есть несохранённое).
     if (t && t.mode === 'edit') { e.preventDefault(); exitEdit(false); return; }
-    if (!el.tocOverlay.hidden) { e.preventDefault(); toggleToc(false); return; }
+
+  }
+  // Ctrl+N — временная заметка в tmpdir, Ctrl+Shift+N — папка в открытой.
+  if (e.ctrlKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'n' && !e.shiftKey) { e.preventDefault(); newTempNote(); return; }
+    if (k === 'n' && e.shiftKey) { e.preventDefault(); newFolderInOpen(); return; }
+    // Ctrl+, — настройки. shiftKey важен: Ctrl+Shift+, в Chromium это zoom out.
+    if (k === ',' && !e.shiftKey) { e.preventDefault(); settingsDialog(); return; }
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
@@ -2245,6 +2436,8 @@ window.__mdvTest = {
   // Меню иконки приложения, недавние, настройки
   newFileAction, newProjectAction, recentDialog, settingsDialog,
   loadSettings, applySettings, previewSettings, noteRecent,
+  view: () => Object.assign({}, view),
+  setView: (patch) => { Object.assign(view, patch); applyView(); syncViewButtons(); },
   settings: () => currentSettings,
   setSettings: (v) => { currentSettings = Object.assign({}, currentSettings, v); applySettings(currentSettings); },
   modalShell, modalBox, wireModal,

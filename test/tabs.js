@@ -279,32 +279,41 @@ const SILENCE_CONFIRM = `(() => {
   fs.writeFileSync(tocFile,
     '# Один\n\nтекст\n\n## Два\n\nтекст\n\n### Три\n\nтекст\n\n## Четыре\n', 'utf8');
 
+  // Оглавление теперь постоянная панель слева, а не выезжающий слой.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
+    const tocSide = document.getElementById('tocSide');
     await M.openPath(${JSON.stringify(tocFile)}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 400));
     const res = {};
-    const ov = document.getElementById('tocOverlay');
-    res.tocBtnHidden = document.getElementById('btnToc').hidden;
-    res.overlayHiddenInitially = ov.hidden;
-    document.getElementById('btnToc').click();
-    await new Promise(r2 => setTimeout(r2, 200));
-    res.overlayShown = !ov.hidden;
+    res.tocShownByDefault = !tocSide.hidden;
+    res.tocOnLeft = Math.round(tocSide.getBoundingClientRect().left) === 0;
     res.tocEntries = document.querySelectorAll('#paneToc a').length;
     // переключателя панелей быть не должно
     res.oldSwitchGone = document.querySelectorAll('.side-btn').length === 0;
-    res.filesPaneVisible = !document.getElementById('paneFiles').closest('.side-pane').hidden;
-    document.getElementById('btnCloseToc').click();
-    res.overlayHiddenAfter = ov.hidden;
+    res.noOverlay = !document.getElementById('tocOverlay');
+    res.filesOnRight = Math.round(
+      innerWidth - document.getElementById('filesSide').getBoundingClientRect().right) === 0;
+    // крестик в шапке панели её прячет
+    document.getElementById('btnHideToc').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    res.tocHiddenAfterX = tocSide.hidden;
+    res.resizerHidden = document.getElementById('tocResizer').hidden;
+    document.getElementById('btnToc').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    res.tocBack = !tocSide.hidden;
     return JSON.stringify(res);
   })()`));
 
-  t('кнопка «Оглавление» видна при открытом файле', r.tocBtnHidden === false);
-  t('по умолчанию оглавление свёрнуто', r.overlayHiddenInitially === true);
-  t('кнопка открывает оглавление', r.overlayShown === true);
+  t('оглавление видно по умолчанию', r.tocShownByDefault === true);
+  t('оглавление слева', r.tocOnLeft === true);
+  t('проводник справа', r.filesOnRight === true);
+  t('выезжающего слоя больше нет', r.noOverlay === true);
   t('в оглавлении есть пункты', r.tocEntries >= 3, 'пунктов: ' + r.tocEntries);
   t('старый переключатель «Файлы/Оглавление» убран', r.oldSwitchGone === true);
-  t('проводник остался в панели файлов', r.filesPaneVisible === true);
-  t('крестик закрывает оглавление', r.overlayHiddenAfter === true);
+  t('крестик в панели прячет оглавление', r.tocHiddenAfterX === true);
+  t('ресайзер панели тоже спрятан', r.resizerHidden === true);
+  t('кнопка в тулбаре возвращает оглавление', r.tocBack === true);
 
   // Shift+F10 / ContextMenu: в тесте контекстное меню открывалось только по
   // contextmenu с координатами, а с клавиатуры (Shift+F10) — нет.
@@ -590,10 +599,12 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('клик по иконке открывает меню', r.shown === true);
-  t('в меню есть «Новый файл»', (r.labels || []).some((l) => /Новый файл/.test(l)),
+  // Меню иконки раскрытое: Файл и Вид — подменю, их содержимое проверяется
+  // отдельно ниже, по наведению.
+  t('в меню есть «Файл»', (r.labels || []).some((l) => /Файл/.test(l)),
     JSON.stringify(r.labels));
-  t('в меню есть «Новый проект»', (r.labels || []).some((l) => /Новый проект/.test(l)));
-  t('в меню есть «Недавние»', (r.labels || []).some((l) => /Недавние/.test(l)));
+  t('в меню есть «Вид»', (r.labels || []).some((l) => /Вид/.test(l)),
+    JSON.stringify(r.labels));
   t('в меню есть «Настройки»', (r.labels || []).some((l) => /Настройки/.test(l)));
 
   // «Недавние» открывают МОДАЛЬНОЕ окно со списком, а не выпадающее
@@ -732,8 +743,8 @@ const SILENCE_CONFIRM = `(() => {
   // Автосохранение: выход из правки пишет файл сам
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    const D = 'keysample/';
-    await M.openPath(D + 'AAA.md', { newTab: true });
+    const D = ${JSON.stringify(notesDir.replace(/\\/g, '/'))};
+    await M.openPath(D + '/a.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 300));
     const t = M.active();
     t.mode = 'edit'; t.raw = t._diskRaw + '\\n\\nПРАВКА АВТОСОХРАНЕНИЯ\\n';
@@ -777,9 +788,10 @@ const SILENCE_CONFIRM = `(() => {
   t('автосохранение сняло флаг правок', r.dirty === false);
   t('в статусе написано «Автосохранено»', /Автосохранено/.test(r.status || ''), r.status);
 
-  // автосохранение реально записало в keysample/AAA.md — откатываем файл,
-  // иначе следующие прогоны видели бы растущий файл
-  fs.writeFileSync(path.join(notesDir, 'AAA.md'), '# AAA\n\nПервый.\n', 'utf8');
+  // Автосохранение реально пишет в файл — откатываем, иначе следующие прогоны
+  // видели бы растущий файл. Раньше тест правил keysample/AAA.md (общий образец),
+  // а восстанавливал notesDir/AAA.md, которого не трогал: мусор копился годами.
+  fs.writeFileSync(path.join(notesDir, 'a.md'), '# a.md\n\nтекст\n', 'utf8');
 
   // возвращаем дефолты и убираем мусор из ключевых файлов
   await js(`(async () => {
@@ -1465,6 +1477,219 @@ const SILENCE_CONFIRM = `(() => {
   t('«Отменить» выбрасывает правки', r.keptSecond === false && r.dirty === false);
   t('на диске изменений нет', r.onDisk === false);
   t('статус жёлтый «Правки отменены»', /Правки отменены/.test(r.status || ''), r.status);
+
+  // ---------------------------------------------- панели, вид, меню иконки
+  console.log('\n== панели, вид, меню иконки ==');
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    await M.addFolder(D);
+    await M.openPath(D + '/Открываемый.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    const ws = document.getElementById('workspace');
+    const toc = document.getElementById('tocSide');
+    const files = document.getElementById('filesSide');
+    const main = document.querySelector('.main');
+    return JSON.stringify({
+      order: [...ws.children].map(k => k.id || k.className.split(' ')[0]),
+      tocLeft: Math.round(toc.getBoundingClientRect().left),
+      filesRight: Math.round(innerWidth - files.getBoundingClientRect().right),
+      mainBetween: main.getBoundingClientRect().left >= toc.getBoundingClientRect().right - 1
+        && main.getBoundingClientRect().right <= files.getBoundingClientRect().left + 1,
+      hasResizers: !!document.getElementById('tocResizer') && !!document.getElementById('filesResizer'),
+      noOverlay: !document.getElementById('tocOverlay'),
+      tocFilled: document.getElementById('paneToc').children.length > 0,
+      filesFilled: document.getElementById('paneFiles').children.length > 0,
+    });
+  })()`));
+
+  t('порядок в области: оглавление, заметка, проводник',
+    JSON.stringify(r.order) === JSON.stringify(['tocSide', 'tocResizer', 'main', 'filesResizer', 'filesSide', 'toTop']),
+    JSON.stringify(r.order));
+  t('оглавление слева', r.tocLeft === 0, r.tocLeft + 'px');
+  t('проводник справа', r.filesRight === 0, r.filesRight + 'px');
+  t('заметка между панелями', r.mainBetween === true);
+  t('у каждой панели свой ресайзер', r.hasResizers === true);
+  t('оверлей оглавления удалён', r.noOverlay === true);
+  t('оглавление наполнено', r.tocFilled === true);
+  t('проводник наполнен', r.filesFilled === true);
+
+  // Меню иконки: Файл ▸, Вид ▸, Настройки
+  r = JSON.parse(await js(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 300));
+    const top = document.querySelector('.ctxmenu');
+    const out = {
+      labels: [...top.querySelectorAll('.ctxmenu-label')].map(x => x.textContent),
+      parents: [...top.querySelectorAll('.ctxmenu-parent')].map(x => x.querySelector('.ctxmenu-label').textContent),
+      hint: ([...top.querySelectorAll('.ctxmenu-item')]
+        .find(x => /Настройки/.test(x.textContent)) || {}).querySelector
+        ? ([...top.querySelectorAll('.ctxmenu-item')]
+          .find(x => /Настройки/.test(x.textContent))
+          .querySelector('.ctxmenu-hint').textContent)
+        : '',
+    };
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    return JSON.stringify(out);
+  })()`));
+
+  t('в меню иконки три пункта',
+    JSON.stringify(r.labels) === JSON.stringify(['Файл', 'Вид', 'Настройки']), JSON.stringify(r.labels));
+  t('«Файл» и «Вид» — подменю', (r.parents || []).includes('Файл') && (r.parents || []).includes('Вид'));
+  // Проверяем подстроками: в регулярке «Ctrl+,\+» значило «Ctrl, затем плюс
+  // один или более», а не «Ctrl+,».
+  t('у «Настройки» подсказка Ctrl+,',
+    (r.hint || '').indexOf('Ctrl') >= 0 && (r.hint || '').indexOf(',') >= 0, r.hint);
+
+  // Подменю «Вид» с галочками
+  r = JSON.parse(await js(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    const view = [...document.querySelectorAll('.ctxmenu-parent')]
+      .find(b => /Вид/.test(b.textContent));
+    view.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const menus = [...document.querySelectorAll('.ctxmenu')];
+    const sub = menus[menus.length - 1];
+    const res = {
+      menus: menus.length,
+      labels: [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.replace('✓', '')),
+      checks: [...sub.querySelectorAll('.ctxmenu-check')].map(x => x.textContent),
+      parentKept: !!menus[0]._keep,
+    };
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    return JSON.stringify(res);
+  })()`));
+
+  t('подменю «Вид» открылось', r.menus >= 2, 'меню: ' + r.menus);
+  t('родительское меню осталось', r.parentKept === true);
+  t('в «Вид» четыре пункта',
+    JSON.stringify(r.labels) === JSON.stringify(['Проводник', 'Оглавление', 'Верхняя панель', 'Нижняя панель']),
+    JSON.stringify(r.labels));
+  t('у каждого пункта галочка', (r.checks || []).length === 4, JSON.stringify(r.checks));
+  t('все панели включены по умолчанию', (r.checks || []).every((x) => x === '✓'), JSON.stringify(r.checks));
+
+  // Щелчок по галочке выключает панель и это запоминается
+  r = JSON.parse(await js(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    [...document.querySelectorAll('.ctxmenu-parent')].find(b => /Вид/.test(b.textContent))
+      .dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    const menus = [...document.querySelectorAll('.ctxmenu')];
+    [...menus[menus.length - 1].querySelectorAll('.ctxmenu-item')]
+      .find(b => /Проводник/.test(b.textContent)).click();
+    await new Promise(r2 => setTimeout(r2, 600));
+    const saved = await window.mdv.settingsGet();
+    return JSON.stringify({
+      filesHidden: document.getElementById('filesSide').hidden,
+      resizerHidden: document.getElementById('filesResizer').hidden,
+      tocHidden: document.getElementById('tocSide').hidden,
+      btnOff: !document.getElementById('btnSidebar').classList.contains('on'),
+      mainRight: Math.round(document.querySelector('.main').getBoundingClientRect().right),
+      winW: innerWidth,
+      menusGone: document.querySelectorAll('.ctxmenu').length,
+      saved: saved.view,
+    });
+  })()`));
+
+  t('проводник скрылся', r.filesHidden === true);
+  t('его ресайзер тоже скрылся', r.resizerHidden === true);
+  t('оглавление не тронуто', r.tocHidden === false);
+  t('заметка заняла освободившееся место', r.mainRight === r.winW, r.mainRight + '/' + r.winW);
+  t('кнопка в тулбаре погасла', r.btnOff === true);
+  t('меню закрылось после выбора', r.menusGone === 0);
+  t('выбор вида сохранён', r.saved && r.saved.files === false, JSON.stringify(r.saved));
+
+  // Полоса вкладок не скрывается никогда
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.setView({ topbar: false, statusbar: false, toc: false, files: false });
+    await new Promise(r2 => setTimeout(r2, 400));
+    const res = {
+      topbarHidden: document.querySelector('.topbar').hidden,
+      statusbarHidden: document.getElementById('statusbar').hidden,
+      tocHidden: document.getElementById('tocSide').hidden,
+      filesHidden: document.getElementById('filesSide').hidden,
+      tabbarHidden: document.querySelector('.tabbar').hidden,
+      tabsPresent: document.querySelectorAll('.tab').length,
+      workspace: !document.getElementById('workspace').hidden,
+    };
+    await M.setView({ topbar: true, statusbar: true, toc: true, files: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify(res);
+  })()`));
+
+  t('верхняя панель скрывается', r.topbarHidden === true);
+  t('нижняя панель скрывается', r.statusbarHidden === true);
+  t('обе боковые скрываются', r.tocHidden === true && r.filesHidden === true);
+  t('полоса вкладок НЕ скрывается', r.tabbarHidden === false);
+  t('вкладки на месте', r.tabsPresent > 0, String(r.tabsPresent));
+  t('заметка всё ещё видна', r.workspace === true);
+
+  // Кнопки в тулбара дублируют переключение
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.getElementById('btnSidebar').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const off = { filesHidden: document.getElementById('filesSide').hidden };
+    document.getElementById('btnSidebar').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const on = { filesHidden: document.getElementById('filesSide').hidden };
+    document.getElementById('btnToc').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const tocOff = { tocHidden: document.getElementById('tocSide').hidden };
+    document.getElementById('btnToc').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ off, on, tocOff, tocBack: document.getElementById('tocSide').hidden });
+  })()`));
+
+  t('кнопка тулбара скрывает проводник', r.off.filesHidden === true);
+  t('повторный клик возвращает проводник', r.on.filesHidden === false);
+  t('кнопка тулбара скрывает оглавление', r.tocOff.tocHidden === true);
+  t('повторный клик возвращает оглавление', r.tocBack === false);
+
+  // ПКМ по «+»
+  r = JSON.parse(await js(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    const plus = document.getElementById('btnNewTab');
+    const before = window.__mdvTest.tabs.size;
+    plus.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 20 }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    const m = document.querySelector('.ctxmenu');
+    const res = {
+      shown: !!m,
+      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent) : [],
+      tabsUnchanged: window.__mdvTest.tabs.size === before,
+    };
+    document.querySelectorAll('.ctxmenu').forEach(x => x.remove());
+    return JSON.stringify(res);
+  })()`));
+
+  t('ПКМ по «+» открывает меню', r.shown === true);
+  t('в нём «Открыть .md» и «Открыть папку»',
+    JSON.stringify(r.labels) === JSON.stringify(['Открыть .md', 'Открыть папку']), JSON.stringify(r.labels));
+  t('ПКМ по «+» не создаёт вкладку', r.tabsUnchanged === true);
+
+  // Ctrl+, открывает настройки
+  r = JSON.parse(await js(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const back = document.querySelector('.modal-back');
+    const res = {
+      opened: !!back,
+      title: back ? (back.querySelector('.modal-title') || {}).textContent : '',
+    };
+    document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    return JSON.stringify(res);
+  })()`));
+
+  t('Ctrl+, открывает настройки', r.opened === true && /Настройки/.test(r.title || ''), r.title);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

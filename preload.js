@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('mdv', {
    * место, иначе кнопка «+» уезжает под них и становится недоступной.
    */
   caption: () => ipcRenderer.invoke('mdv:caption'),
+  /** Временная заметка для Ctrl+N (tmpdir) и новая папка для Ctrl+Shift+N. */
+  newTemp: (seedName) => ipcRenderer.invoke('mdv:newTemp', seedName),
+  newFolder: (parent, seedName) => ipcRenderer.invoke('mdv:newFolder', parent, seedName),
   /** Меню иконки приложения */
   newFile: (seedName) => ipcRenderer.invoke('mdv:newFile', seedName),
   newProject: (seedName) => ipcRenderer.invoke('mdv:newProject', seedName),

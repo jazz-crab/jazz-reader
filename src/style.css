@@ -278,24 +278,27 @@ kbd {
 /* ================= Рабочая область ================= */
 .workspace { flex: 1 1 auto; display: flex; min-height: 0; position: relative; }
 
+/* Панели: оглавление слева, проводник справа. Каждая скрывается сама по
+   себе, поэтому и рамки у них с разных сторон. */
 .sidebar {
     width: 280px; flex: 0 0 auto; min-width: 170px; max-width: 620px;
     display: flex; flex-direction: column;
-    background: var(--bg-alt); border-right: 1px solid var(--border);
+    background: var(--bg-alt);
     overflow: hidden;
 }
-body.side-hidden .sidebar,
-body.side-hidden .sidebar-resizer { display: none; }
+.sidebar.side-left { border-right: 1px solid var(--border); }
+.sidebar.side-right { border-left: 1px solid var(--border); }
+.sidebar[hidden], .sidebar-resizer[hidden] { display: none; }
 
 .sidebar-resizer {
     width: 5px; flex: 0 0 auto; cursor: col-resize;
-    background: transparent; border-right: 1px solid var(--border);
+    background: transparent;
 }
 .sidebar-resizer:hover { background: var(--bg-select); }
+#tocResizer { border-right: 1px solid var(--border); }
+#filesResizer { border-left: 1px solid var(--border); }
 
-/* Заголовок панели: «Файлы» / «Оглавление» + крестик. Переключателя
-   «Файлы/Оглавление» больше нет — проводник всегда слева, оглавление
-   выезжает поверх по кнопке в тулбаре. */
+/* Заголовок панели: название + крестик. Каждая панель своя. */
 .side-head {
     display: flex; align-items: center; gap: 6px;
     padding: 0 6px 0 11px; height: 33px; flex: 0 0 auto;
@@ -312,19 +315,6 @@ body.side-hidden .sidebar-resizer { display: none; }
 }
 .side-collapse:hover { color: var(--fg); background: var(--bg-soft); }
 .side-collapse .ico-svg { width: 13px; height: 13px; }
-
-/* Оглавление — слой поверх основной области, слева от контента */
-.toc-overlay {
-    position: absolute; inset: 0; z-index: 60;
-    display: flex; align-items: stretch;
-    background: rgba(0, 0, 0, .32);
-}
-.toc-panel {
-    width: var(--side-w, 288px); min-width: 200px; max-width: 520px;
-    display: flex; flex-direction: column;
-    background: var(--bg-alt); border-right: 1px solid var(--border);
-    box-shadow: 7px 0 22px rgba(0, 0, 0, .38);
-}
 
 .side-search { padding: 7px; flex: 0 0 auto; position: relative; }
 /* Иконка поиска внутри поля: absolute внутри .side-search, поле получило
@@ -761,7 +751,7 @@ body.side-hidden .sidebar-resizer { display: none; }
         color: #1a1b26 !important;
     }
     /* Служебное — на бумаге нет. */
-    .tabbar, .topbar, .sidebar, .welcome, .toc-overlay, .findbar,
+    .tabbar, .topbar, .sidebar, .welcome, .findbar,
     .loading, .ctxmenu, .dropdown-menu, .code-copy, .to-top {
         display: none !important;
     }
@@ -876,3 +866,25 @@ body.side-hidden .sidebar-resizer { display: none; }
 .dlgbtn-primary:hover:not(:disabled) { background: #33497f; }
 .dlgbtn-danger { background: #4a2733; border-color: #7a3b4c; color: #ffc4cf; }
 .dlgbtn-danger:hover:not(:disabled) { background: #5c2f3e; }
+
+/* ================= Вид: скрываемые части интерфейса =================
+   Панели и полосы скрываются атрибутом hidden, а не классом на body:
+   у каждой своё состояние, и «скрыть проводник» не должен прятать ещё и
+   оглавление, как это делал общий body.side-hidden. */
+.topbar[hidden], .statusbar[hidden] { display: none; }
+
+/* ================= Меню: галочки и подменю ================= */
+.ctxmenu-label { flex: 1 1 auto; text-align: left; display: flex; align-items: center; gap: 6px; }
+.ctxmenu-check {
+    width: 12px; flex: 0 0 auto; text-align: center;
+    color: var(--green); font-size: 12px; line-height: 1;
+}
+.ctxmenu-parent { color: var(--fg); }
+.ctxmenu-parent .ctxmenu-hint { color: var(--comment); font-size: 15px; }
+
+/* Кнопки панелей показывают, включена ли соответствующая панель */
+.btn.on {
+    background: var(--bg-select);
+    border-color: var(--comment);
+    color: var(--fg);
+}

@@ -51,7 +51,7 @@ function rel(p) { return path.relative(process.cwd(), p); }
 const USED_ICONS = [
   'file-text', 'folder-open', 'folder', 'file', 'arrow-left', 'arrow-right',
   'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'folder-output',
-  'panel-left', 'x', 'copy', 'eye-off', 'printer', 'folder-search',
+  'panel-left', 'panel-right', 'x', 'copy', 'eye-off', 'printer', 'folder-search',
   'search', 'file-down', 'file-code', 'check', 'list-tree', 'plus', 'chevron-left', 'chevron-right',
   // Чекбоксы task-list (- [x] / 1. [ ]): marked рендерит их нативными
   // <input type=checkbox>, они выглядели чужеродно в тёмной теме.

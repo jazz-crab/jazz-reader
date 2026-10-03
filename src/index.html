@@ -91,8 +91,8 @@
         </div>
       </div>
 
-      <button class="btn ico-only" id="btnToc" title="Оглавление (Ctrl+Shift+B)" hidden><span class="ico" data-i="list-tree"></span></button>
-      <button class="btn ico-only" id="btnSidebar" title="Панель (Ctrl+B)"><span class="ico" data-i="panel-left"></span></button>
+      <button class="btn ico-only" id="btnToc" title="Оглавление (Ctrl+Shift+B)"><span class="ico" data-i="list-tree"></span></button>
+      <button class="btn ico-only" id="btnSidebar" title="Проводник (Ctrl+B)"><span class="ico" data-i="panel-right"></span></button>
       </div>
     </div>
 
@@ -126,36 +126,21 @@
       </div>
     </div>
 
-    <!-- ============ Основная область ============ -->
+    <!-- ============ Основная область ============
+         Оглавление слева, проводник справа. Раньше проводник был слева, а
+         оглавление выезжало поверх текста — ради оглавления приходилось
+         терять проводник, а ради проводника — текст.
+         Обе панели скрываются независимо: иконка приложения -> Вид.
+         Вкладки не скрываются никогда. -->
     <div class="workspace" id="workspace" hidden>
-      <!-- Проводник всегда слева и без переключателя: он нужен постоянно.
-           Оглавление убрано в отдельный выдвижной оверлей по кнопке-бургеру
-           в тулбаре — раньше оно делило с проводником одну панель переключателем
-           «Файлы/Оглавление», и ради оглавления приходилось терять проводник. -->
-      <aside class="sidebar" id="sidebar">
+      <aside class="sidebar side-left" id="tocSide">
         <div class="side-head">
-          <span class="side-title">Файлы</span>
-          <button class="side-collapse" id="btnCollapseToc" title="Скрыть проводник (Ctrl+B)"><span class="ico" data-i="x"></span></button>
+          <span class="side-title">Оглавление</span>
+          <button class="side-collapse" id="btnHideToc" title="Скрыть оглавление"><span class="ico" data-i="x"></span></button>
         </div>
-        <div class="side-search">
-          <span class="s-ico" data-i="search"></span>
-          <input type="text" id="treeFilter" placeholder="Фильтр по имени&#8230;" spellcheck="false">
-        </div>
-        <div class="side-pane" id="paneFiles"></div>
+        <div class="side-pane" id="paneToc"></div>
       </aside>
-
-      <div class="sidebar-resizer" id="sidebarResizer" title="Потяни, чтобы изменить ширину"></div>
-
-      <!-- Оглавление: выдвижная панель поверх основной области -->
-      <div class="toc-overlay" id="tocOverlay" hidden>
-        <div class="toc-panel">
-          <div class="side-head">
-            <span class="side-title">Оглавление</span>
-            <button class="side-collapse" id="btnCloseToc" title="Закрыть оглавление (Esc)"><span class="ico" data-i="x"></span></button>
-          </div>
-          <div class="side-pane" id="paneToc"></div>
-        </div>
-      </div>
+      <div class="sidebar-resizer" id="tocResizer" title="Потяни, чтобы изменить ширину"></div>
 
       <main class="main">
         <article class="content" id="content"></article>
@@ -180,6 +165,20 @@
           </button>
         </div>
       </main>
+
+      <div class="sidebar-resizer" id="filesResizer" title="Потяни, чтобы изменить ширину"></div>
+
+      <aside class="sidebar side-right" id="filesSide">
+        <div class="side-head">
+          <span class="side-title">Проводник</span>
+          <button class="side-collapse" id="btnHideFiles" title="Скрыть проводник"><span class="ico" data-i="x"></span></button>
+        </div>
+        <div class="side-search">
+          <span class="s-ico" data-i="search"></span>
+          <input type="text" id="treeFilter" placeholder="Фильтр по имени&#8230;" spellcheck="false">
+        </div>
+        <div class="side-pane" id="paneFiles"></div>
+      </aside>
 
       <button class="to-top" id="toTop" title="Наверх" hidden><span class="ico" data-i="arrow-up"></span></button>
     </div>

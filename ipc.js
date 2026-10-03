@@ -7,6 +7,7 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
+const os = require('os');
 const fsp = require('fs/promises');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -357,6 +358,52 @@ function register() {
     const next = Object.assign({}, cur, patch || {});
     await writeStore('settings.json', next);
     return next;
+  });
+
+  /*
+   * Ctrl+N: временная заметка в os.tmpdir()/mdview. Имена «Безымянный-N.md»
+   * перебираются, пока не найдётся свободное: заметка не должна молча
+   * перезаписать прошлую, если пользователь её не сохранил.
+   */
+  ipcMain.handle('mdv:newTemp', async (_e, seedName) => {
+    try {
+      const dir = path.join(os.tmpdir(), 'mdview');
+      await fsp.mkdir(dir, { recursive: true });
+      const base = String(seedName || 'Безымянный');
+      let file = '';
+      for (let n = 1; n < 1000; n++) {
+        file = path.join(dir, base + (n === 1 ? '' : ' ' + n) + '.md');
+        if (!fs.existsSync(file)) break;
+      }
+      if (fs.existsSync(file)) return { ok: false, error: 'слишком много временных заметок' };
+      await fsp.writeFile(file, '# ' + path.basename(file, '.md') + '\n\n', 'utf8');
+      return { ok: true, path: file };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  /*
+   * Ctrl+Shift+N: папка внутри уже открытой. Имя по умолчанию «Новая папка»,
+   * при совпадении добавляем номер — молча переиспользовать чужое имя нельзя.
+   */
+  ipcMain.handle('mdv:newFolder', async (_e, parent, seedName) => {
+    try {
+      if (!parent) return { ok: false, error: 'не открыта папка' };
+      const st = await fsp.stat(parent).catch(() => null);
+      if (!st || !st.isDirectory()) return { ok: false, error: 'не каталог' };
+      const base = String(seedName || 'Новая папка');
+      let dir = '';
+      for (let n = 1; n < 1000; n++) {
+        dir = path.join(parent, base + (n === 1 ? '' : ' ' + n));
+        if (!fs.existsSync(dir)) break;
+      }
+      if (fs.existsSync(dir)) return { ok: false, error: 'слишком много папок' };
+      await fsp.mkdir(dir, { recursive: true });
+      return { ok: true, path: dir, name: path.basename(dir) };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
   });
 
   /*
