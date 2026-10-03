@@ -549,9 +549,53 @@ kbd {
     padding: 20px clamp(14px, 2vw, 30px) 60px;
 }
 
-/* Место для разделения: пока вкладку тянут над полем заметки, показываем
-   рамку на месте будущей правой панели. */
+/* ---------------- Перетаскивание: где встанет вкладка ----------------
+   Вместо прежней мгновенной полоски `box-shadow: inset` теперь два
+   анимированных места: щель в ленте вкладок и рамка на месте будущей
+   правой панели. Раньше было видно только «под курсором встало», и не было
+   видно ни куда именно, ни как разделится экран. */
+
+/* Щель в ленте: растёт от нуля до ширины вкладки, поэтому место под
+   перетаскиваемую открывается на глазах, а не появляется готовым. */
+.tab-gap {
+    flex: 0 0 0px; min-width: 0;
+    border-radius: 7px 7px 0 0;
+    background: rgba(122, 162, 247, .09);
+    box-shadow: inset 2px 0 0 rgba(122, 162, 247, .5),
+                inset -2px 0 0 rgba(122, 162, 247, .5);
+    transition: flex-basis .13s ease, min-width .13s ease;
+    pointer-events: none;
+}
+.tab-gap.open { flex-basis: var(--gap-w, 180px); min-width: 0; }
+
+/* Предпросмотр разделения: рабочая область прижимается, на её месте
+   показывается контур будущей правой панели. */
 .main.drop-split { box-shadow: inset -4px 0 0 var(--blue); }
+.split.split-preview > #mainPane {
+    transition: flex-basis .15s ease;
+    flex: 0 0 50%;
+}
+.split.split-preview > #panel2 {
+    display: flex !important;
+    flex: 0 0 50%;
+    width: auto;
+    border-left: 1px dashed var(--blue);
+    background: rgba(122, 162, 247, .05);
+    opacity: .55;
+    pointer-events: none;
+}
+/* В предпросмотре панель — контур, а не документ: прячем шапку и текст,
+   иначе видны пустой заголовок с крестиком и обрывки второй заметки. */
+.split.split-preview > #panel2 > .second-head,
+.split.split-preview > #panel2 > .content-second { display: none !important; }
+.split.split-preview > #panel2::after {
+    content: 'вторая панель';
+    align-self: center; justify-self: center; margin: auto;
+    color: var(--comment); font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tab-gap, .split.split-preview > #mainPane { transition: none; }
+}
 
 /* Вкладка, открытая в правой панели, помечена кромкой слева: одна полоса
    вкладок на обе панели, и без метки не понять, где какая заметка. */

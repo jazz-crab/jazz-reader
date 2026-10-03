@@ -2037,6 +2037,7 @@ const SILENCE_CONFIRM = `(() => {
     const M = window.__mdvTest;
     const tabsEl = document.getElementById('tabs');
     const content = document.getElementById('content');
+    const out = {};
     // берём первую НЕактивную вкладку
     const inactive = [...document.querySelectorAll('.tab')].find(d => !d.classList.contains('active'));
     const wantId = +inactive.dataset.id;
@@ -2050,18 +2051,34 @@ const SILENCE_CONFIRM = `(() => {
     const over = new Event('dragover', { bubbles: true, cancelable: true });
     over.dataTransfer = { dropEffect: '' };
     content.dispatchEvent(over);
-    await new Promise(r2 => setTimeout(r2, 50));
-    const hinted = document.querySelector('.main').classList.contains('drop-split');
+    await new Promise(r2 => setTimeout(r2, 250));
+    const split = document.getElementById('split');
+    const hinted = document.getElementById('mainPane').classList.contains('drop-split');
+    // Предпросмотр читаем ЗДЕСЬ: после отпускания мыши класс снимается, и
+    // проверять надо то, что было видно в момент перетаскивания.
+    const previewWhileHovering = split.classList.contains('split-preview');
+    const mainWhileHovering = Math.round(document.getElementById('mainPane')
+      .getBoundingClientRect().width);
+    const splitWidth = Math.round(split.getBoundingClientRect().width);
 
     const drop = new Event('drop', { bubbles: true, cancelable: true });
     drop.dataTransfer = { dropEffect: '' };
     content.dispatchEvent(drop);
     await new Promise(r2 => setTimeout(r2, 500));
 
-    const main = document.querySelector('.main').getBoundingClientRect();
+    out.previewWhileHovering = previewWhileHovering;
+    out.mainWhileHovering = mainWhileHovering;
+    out.splitWidth = splitWidth;
+    out.previewGoneAfterDrop = !document.getElementById('split')
+      .classList.contains('split-preview');
+    const main = document.getElementById('mainPane').getBoundingClientRect();
     const panel = document.getElementById('panel2').getBoundingClientRect();
     return JSON.stringify({
       wantId, hinted,
+      previewWhileHovering: out.previewWhileHovering,
+      mainWhileHovering: out.mainWhileHovering,
+      splitWidth: out.splitWidth,
+      previewGoneAfterDrop: out.previewGoneAfterDrop,
       second: M.secondId(),
       panelHidden: document.getElementById('panel2').hidden,
       dividerHidden: document.getElementById('splitDivider').hidden,
@@ -2079,6 +2096,11 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('над полем заметки показано место разделения', r.hinted === true);
+  t('предпросмотр разделения включился', r.previewWhileHovering === true);
+  t('в предпросмотре рабочая область сжата вдвое',
+    Math.abs(r.mainWhileHovering - r.splitWidth / 2) <= 6,
+    r.mainWhileHovering + '/' + r.splitWidth);
+  t('после отпускания предпросмотр снят', r.previewGoneAfterDrop === true);
   t('отпустили в поле — экран разделён', r.second === r.wantId && r.panelHidden === false);
   t('рамка разделения появилась', r.dividerHidden === false);
   t('панели не наезжают друг на друга', r.mainRight <= r.panelLeft + 1,
@@ -2606,6 +2628,95 @@ const SILENCE_CONFIRM = `(() => {
   t('клик по левой панели возвращает фокус', r.focusBack === 'main', r.focusBack);
   t('правая панель сохранила свою заметку', r.rightKept === true);
   t('новая вкладка ушла в левую панель', r.leftGotNew === true);
+
+  // ------------------------------- перетаскивание: щель и предпросмотр
+  console.log('\n== перетаскивание: щель и предпросмотр ==');
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    const files = ${JSON.stringify(MANY_FILES.slice(0, 4))};
+    for (const f of files) await M.openPath(D + '/' + f, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+
+    const tabsEl = document.getElementById('tabs');
+    const dragOn = (tab) => {
+      const ev = new Event('dragstart', { bubbles: true, cancelable: true });
+      ev.dataTransfer = { effectAllowed: '', setData() {}, setDragImage() {} };
+      tab.dispatchEvent(ev);
+    };
+    const hover = (el, atLeft) => {
+      const r = el.getBoundingClientRect();
+      const ev = new Event('dragover', { bubbles: true, cancelable: true });
+      ev.dataTransfer = { dropEffect: '' };
+      Object.defineProperty(ev, 'clientX', { value: atLeft ? r.left + 4 : r.right - 4 });
+      Object.defineProperty(ev, 'clientY', { value: r.top + 4 });
+      el.dispatchEvent(ev);
+    };
+    const out = {};
+    const first = tabsEl.querySelectorAll('.tab')[0];
+    const third = tabsEl.querySelectorAll('.tab')[2];
+
+    dragOn(first);
+    hover(third, true);
+    await new Promise(r2 => setTimeout(r2, 350));
+    let gap = tabsEl.querySelector('.tab-gap');
+    out.gapExists = !!gap;
+    out.gapBeforeThird = gap ? [...tabsEl.children].indexOf(gap) === 2 : false;
+    out.gapOpen = gap ? gap.classList.contains('open') : false;
+    out.gapWidth = gap ? Math.round(gap.getBoundingClientRect().width) : 0;
+    out.gapBefore300 = gap ? out.gapWidth > 40 : false;
+    out.hintAlsoOn = third.classList.contains('drop-before');
+
+    // Щель переехала, когда навели на правую половину третьей вкладки
+    hover(third, false);
+    await new Promise(r2 => setTimeout(r2, 350));
+    gap = tabsEl.querySelector('.tab-gap');
+    out.gapAfterThird = gap ? [...tabsEl.children].indexOf(gap) === 3 : false;
+    out.hintAfter = third.classList.contains('drop-after');
+
+    // Уход из ленты — щель исчезает
+    const content = document.getElementById('content');
+    hover(content, false);
+    await new Promise(r2 => setTimeout(r2, 350));
+    out.gapGoneOverContent = !tabsEl.querySelector('.tab-gap');
+
+    // Предпросмотр разделения
+    const split = document.getElementById('split');
+    const main = document.getElementById('mainPane');
+    const panel = document.getElementById('panel2');
+    out.splitPreview = split.classList.contains('split-preview');
+    out.mainHalf = Math.abs(main.getBoundingClientRect().width
+      - split.getBoundingClientRect().width / 2) < 6;
+    out.panelShown = panel.getBoundingClientRect().width > 10;
+    out.panelEmpty = getComputedStyle(panel.querySelector('.content-second')).display === 'none';
+
+    // Уход с рабочей области — предпросмотр исчезает
+    first.dispatchEvent(new Event('dragend', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.previewGone = !split.classList.contains('split-preview');
+    out.panelHiddenAgain = document.getElementById('panel2').hidden;
+    out.gapAfterEnd = !tabsEl.querySelector('.tab-gap');
+
+    return JSON.stringify(out);
+  })()`));
+
+  t('в ленте появляется щель', r.gapExists === true);
+  t('щель открывается анимацией (ширина > 40px)', r.gapBefore300 === true, r.gapWidth + 'px');
+  t('щель встаёт перед вкладкой под курсором', r.gapBeforeThird === true);
+  t('щель помечена классом open', r.gapOpen === true);
+  t('старая полоска на вкладке тоже осталась', r.hintAlsoOn === true);
+  t('щель уезжает за вкладку при наведении справа', r.gapAfterThird === true);
+  t('указатель сменился на «после»', r.hintAfter === true);
+  t('над полем заметки щель убирается', r.gapGoneOverContent === true);
+  t('показан предпросмотр разделения', r.splitPreview === true);
+  t('рабочая область сжимается вдвое', r.mainHalf === true);
+  t('место второй панели показано', r.panelShown === true);
+  t('в предпросмотре панель пустая', r.panelEmpty === true);
+  t('после отпускания предпросмотр убран', r.previewGone === true);
+  t('вторая панель снова скрыта', r.panelHiddenAgain === true);
+  t('после отпускания щели нет', r.gapAfterEnd === true);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

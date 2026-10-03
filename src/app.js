@@ -835,9 +835,53 @@ function showDragGhost(e, label) {
  * вторая панель: иначе непонятно, что будет, если отпустить. Кромка снимается
  * при уходе курсора и при отпускании — либо её повесил drop мимо цели.
  */
+/*
+ * Подсказки при перетаскивании.
+ *
+ * Пока вкладку тянут, показываем ДВА места, а не одно:
+ *   • в ленте вкладок — щель, которая откроется (место, куда вкладка встанет);
+ *   • в рабочей области — рамку на месте будущей правой панели.
+ *
+ * Обе анимированы. Раньше вместо этого была одна мгновенная полоска
+ * `box-shadow: inset` на вкладке под курсором: она прыгала без всякого
+ * указания, куда вкладка встанет, и как экран разделится — тоже.
+ */
+
+/** Щель в ленте вкладок на месте будущей вкладки. */
+let dropGap = null;
+
+/** Рамка на месте будущей правой панели. */
 function hintSplitPlace(on) {
-  const main = document.querySelector('.main');
+  const main = document.getElementById('mainPane');
   if (main) main.classList.toggle('drop-split', !!on);
+  document.getElementById('split').classList.toggle('split-preview', !!on);
+}
+
+/** Показать щель перед вкладкой after (или в конце, если after === null). */
+function showDropGap(afterId) {
+  hideDropGap();
+  const tab = afterId === null ? null : el.tabs.querySelector('.tab[data-id="' + afterId + '"]');
+  dropGap = document.createElement('div');
+  dropGap.className = 'tab-gap';
+  // Ширину берём у соседней вкладки, чтобы щель была ровно такой, какой
+  // станет вкладка. flex: 1 1 180px у .tab сделает её такой и без нас, но
+  // тогда анимировать нечего: сначала 0, потом ширина — и видно, как
+  // открывается место.
+  const near = tab || el.tabs.lastElementChild;
+  dropGap.style.flexBasis = near ? Math.round(near.getBoundingClientRect().width) + 'px' : '180px';
+  if (tab) el.tabs.insertBefore(dropGap, tab);
+  else el.tabs.append(dropGap);
+  // Один кадр без transition, потом включаем: иначе щель не растёт, а просто
+  // появляется готовой.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (dropGap) dropGap.classList.add('open');
+  }));
+}
+
+function hideDropGap() {
+  if (!dropGap) return;
+  dropGap.remove();
+  dropGap = null;
 }
 
 function initTabDrag() {
@@ -862,6 +906,7 @@ function initTabDrag() {
 
   el.tabs.addEventListener('dragend', () => {
     dragId = null;
+    hideDropGap();
     el.tabs.classList.remove('dragging-active');
     hintSplitPlace(false);
     for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('dragging', 'drop-before', 'drop-after');
@@ -873,10 +918,11 @@ function initTabDrag() {
   // курсор над лентой. Над самой лентой работает перестановка вкладок.
   window.addEventListener('dragover', (e) => {
     if (dragId === null) return;
-    if (el.tabs.contains(e.target)) return;
+    if (el.tabs.contains(e.target)) { hintSplitPlace(false); return; }
     if (!el.split.contains(e.target)) { hintSplitPlace(false); return; }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    hideDropGap();          // над полем заметки щель в ленте не нужна
     hintSplitPlace(true);
   });
   window.addEventListener('drop', (e) => {
@@ -885,9 +931,15 @@ function initTabDrag() {
     if (!el.split.contains(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
+    hideDropGap();
     const id = dragId;
     dragId = null;
     el.tabs.classList.remove('dragging-active');
+    // Предпросмотр снимаем ЗДЕСЬ, а не только по dragend: после отпускания
+    // мыши над чужой вкладкой dragend может не прийти (или придёт позже), а
+    // класс split-preview иначе остаётся, и панель навсегда остаётся
+    // контуром с пустой шапкой.
+    hintSplitPlace(false);
     openSecond(id);
   });
 
@@ -897,14 +949,23 @@ function initTabDrag() {
     e.dataTransfer.dropEffect = 'move';
     const over = e.target.closest('.tab');
     for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('drop-before', 'drop-after');
-    if (!over || +over.dataset.id === dragId) return;
+    if (!over || +over.dataset.id === dragId) { hideDropGap(); return; }
     const r = over.getBoundingClientRect();
-    over.classList.add(e.clientX < r.left + r.width / 2 ? 'drop-before' : 'drop-after');
+    const before = e.clientX < r.left + r.width / 2;
+    over.classList.add(before ? 'drop-before' : 'drop-after');
+    // Щель открывается ПОСЛЕ той вкладки, за которой встанет перетаскиваемая.
+    if (before) showDropGap(+over.dataset.id);
+    else {
+      const ids = [...el.tabs.querySelectorAll('.tab')].map((x) => +x.dataset.id);
+      const i = ids.indexOf(+over.dataset.id);
+      showDropGap(i + 1 < ids.length ? ids[i + 1] : null);
+    }
   });
 
   el.tabs.addEventListener('drop', (e) => {
     if (dragId === null) return;
     e.preventDefault();
+    hideDropGap();
     const over = e.target.closest('.tab');
     for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('drop-before', 'drop-after');
     if (over && +over.dataset.id !== dragId) {
@@ -1393,6 +1454,7 @@ function openSecond(id) {
   // Правая панель только что появилась, но фокус остаётся у левой: человек
   // тянул вкладку из правой части экрана, а не работал в новой панели.
   setPaneFocus('main');
+  hintSplitPlace(false);
   renderSecond();
   renderTabs();
   status('Справа: ' + tabs.get(id).name, 'ok');
