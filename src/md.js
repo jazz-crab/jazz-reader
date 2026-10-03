@@ -226,16 +226,53 @@
     return html;
   }
 
+  // ------------------------------------------------------- чекбоксы task-list
+
+  /**
+   * marked превращает «- [x]» / «1. [ ]» в нативный <input type="checkbox">.
+   * В тёмной теме они выглядят как серые плашки из другой вселенной (и на
+   * Windows вообще рисуются системным стилем, мимо CSS), поэтому заменяем их
+   * на SVG-иконки Lucide: square-check-big для отмеченного и square для
+   * неотмеченного. Разметка остаётся в <li>, сам input исчезает.
+   *
+   * Порядок атрибутов у marked бывает разным (checked="" disabled="" type=
+   * и наоборот), поэтому ищем по типу, а не по точному тегу.
+   */
+  const INPUT_RE = /<input\b([^>]*)\btype="checkbox"([^>]*)>/g;
+  const CHECKED_RE = /\bchecked\b/;
+
+  function hasClass(attrs) {
+    return /class="([^"]*)"/.exec(attrs);
+  }
+
+  function replaceCheckboxes(html) {
+    const I = global.MDV_ICONS;
+    return html.replace(INPUT_RE, (_m, pre, post) => {
+      const attrs = pre + post;
+      const done = CHECKED_RE.test(attrs);
+      const cls = hasClass(attrs);
+      const extra = cls ? ' ' + cls[1] : '';
+      // Без icons.js (например, в node-тестах) оставляем как есть.
+      if (!I || !I.icon) return _m;
+      const name = done ? 'square-check-big' : 'square';
+      const icon = I.icon(name, 'mdv-task' + (done ? ' mdv-task-done' : '') + extra);
+      return icon ? '<span class="mdv-task-wrap">' + icon + '</span>' : _m;
+    });
+  }
+
   // ------------------------------------------------------------ публичное API
 
   /** src -> HTML. baseUrl — file://URL каталога файла (картинки/ссылки). */
   MDV.renderMd = function (src, baseUrl) {
     const { text, blocks } = extractMath(src);
     let html = global.marked.parse(text, { gfm: true, breaks: false });
+    html = replaceCheckboxes(html);
     html = restoreMath(html, blocks);
     html = resolveUrls(html, baseUrl);
     return html;
   };
+
+  MDV.replaceCheckboxes = replaceCheckboxes;
 
   MDV.extractMath = extractMath;
   MDV.restoreMath = restoreMath;

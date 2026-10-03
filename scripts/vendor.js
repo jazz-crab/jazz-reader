@@ -53,6 +53,9 @@ const USED_ICONS = [
   'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'download',
   'panel-left', 'x', 'copy', 'eye-off', 'printer', 'folder-search',
   'search', 'file-down', 'file-code', 'check', 'list-tree',
+  // Чекбоксы task-list (- [x] / 1. [ ]): marked рендерит их нативными
+  // <input type=checkbox>, они выглядели чужеродно в тёмной теме.
+  'square-check-big', 'square',
 ];
 
 (function vendorLucide() {

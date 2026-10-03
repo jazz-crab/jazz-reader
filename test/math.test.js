@@ -5,6 +5,9 @@ const path = require('path');
 
 global.marked = require(path.join(__dirname, '..', 'src', 'vendor', 'marked.min.js'));
 global.katex = require(path.join(__dirname, '..', 'src', 'vendor', 'katex', 'katex.min.js'));
+// md.js рисует чекбоксы task-list через MDV_ICONS; без него оставил бы
+// нативные <input>, поэтому грузим иконки ДО md.js.
+require(path.join(__dirname, '..', 'src', 'icons.js'));
 const MDV = require(path.join(__dirname, '..', 'src', 'md.js'));
 
 let pass = 0, fail = 0;
@@ -74,6 +77,51 @@ t('путь с кириллицей декодирован', /Лекция 1\.md
 // 12. картинки
 h = MDV.renderMd('![схема](img%2Fсхема.png)', 'file:///home/u/uchoba/Электротехника/');
 t('img -> абсолютный file://', /<img[^>]+src="file:\/\/\/home\/u\/uchoba\/%D0%AD/.test(h), h);
+
+// 13. task-list: нативные <input type=checkbox> -> SVG Lucide
+console.log('\n== task-list (- [x] / - [ ]) ==');
+
+h = MDV.renderMd('- [x] сделано\n- [ ] не сделано\n');
+t('нативных checkbox не осталось', !/type="checkbox"/.test(h), h);
+t('есть обёртка mdv-task-wrap', /mdv-task-wrap/.test(h), h);
+t('отмеченный -> mdv-task-done', /mdv-task mdv-task-done/.test(h), h);
+t('неотмеченный -> без mdv-task-done', (h.match(/mdv-task-done/g) || []).length === 1, h);
+t('иконки — это svg, а не глифы', (h.match(/<svg/g) || []).length === 2, h);
+t('текст задачи сохранён', /сделано/.test(h) && /не сделано/.test(h), h);
+
+// нумерованный список — самый частый случай в заметках
+h = MDV.renderMd('1. [x] первый\n2. [ ] второй\n');
+t('нумерованный: checkbox заменён', !/type="checkbox"/.test(h), h);
+t('нумерованный: один done', (h.match(/mdv-task-done/g) || []).length === 1, h);
+
+// вложенность
+h = MDV.renderMd('- [x] да\n  - [ ] вложенная\n');
+t('вложенная задача обработана', !/type="checkbox"/.test(h), h);
+t('вложенная: один done один нет', (h.match(/mdv-task-done/g) || []).length === 1, h);
+
+// обычный список не должен пострадать
+h = MDV.renderMd('- просто пункт\n- [ ] с галочкой\n');
+t('в обычном пункте нет иконки', !/mdv-task-wrap[\s\S]*просто пункт/.test(h), h);
+t('в обычном пункте нет task-wrap вообще', (h.match(/mdv-task-wrap/g) || []).length === 1, h);
+
+// без пробела после скобок — это НЕ task, и не должно ломаться
+h = MDV.renderMd('- [x]слитно\n');
+t('[x] без пробела не трогаем', !/mdv-task/.test(h), h);
+
+// инлайн-код с [x] не должен превратиться в чекбокс
+h = MDV.renderMd('- `[x]` в коде\n');
+t('[x] в inline-коде не стал иконкой', !/mdv-task-wrap/.test(h), h);
+
+// реальный файл из заметок пользователя
+const REAL = 'sample.md';
+if (fs.existsSync(REAL)) {
+  const src = fs.readFileSync(REAL, 'utf8');
+  const h2 = MDV.renderMd(src);
+  t('реальный файл: нет нативных checkbox', !/type="checkbox"/.test(h2));
+  t('реальный файл: 9 иконок задач', (h2.match(/mdv-task-wrap/g) || []).length === 9,
+    'найдено: ' + (h2.match(/mdv-task-wrap/g) || []).length);
+  t('реальный файл: первая задача done', /mdv-task mdv-task-done/.test(h2));
+}
 
 console.log('\n== реальные заметки /srv/uchoba ==');
 const ROOT = '/srv/uchoba';

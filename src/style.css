@@ -373,6 +373,21 @@ body.side-hidden .sidebar-resizer { display: none; }
 .content li { margin-block: .22em 0; }
 .content li::marker { color: var(--comment); }
 
+/* Task-list («- [x]» / «1. [ ]»).
+   marked отдаёт нативный <input type=checkbox>, и на Windows он рисуется
+   системным стилем мимо CSS — серые плашки, выбиваются из темы. md.js
+   (replaceCheckboxes) заменяет их на SVG Lucide: square-check-big для
+   отмеченного, square для неотмеченного. */
+.content li:has(> .mdv-task-wrap) {
+    list-style: none;          /* убираем «•»/«1.» — задача обозначена галочкой */
+    margin-left: -1.35em;      /* выравниваем галочку по левому краю колонки */
+    padding-left: 0;
+}
+.mdv-task-wrap { display: inline-flex; vertical-align: -2px; margin-right: .45em; }
+.mdv-task { width: 1.02em; height: 1.02em; }
+.mdv-task-done { color: var(--green); }
+.mdv-task:not(.mdv-task-done) { color: var(--comment); }
+
 .content blockquote {
     margin-block: 1em 0; padding: .55em 1.1em;
     border-left: 3px solid var(--purple);
