@@ -187,7 +187,11 @@ const SILENCE_CONFIRM = `(() => {
     ed.value = '# ИЗМЕНЕНО\\n';
     ed.dispatchEvent(new Event('input'));
     const t = window.__mdvTest.active();
-    const res = { dirty: t.dirty, saveHighlighted: document.getElementById('btnSave').classList.contains('btn-save-dirty') };
+    const res = { dirty: t.dirty,
+      // У круглой кнопки «есть несохранённое» это отдельный класс .rnd-dirty:
+      // просто .dirty не годится — он попал бы на что угодно с таким же
+      // словом в разметке.
+      saveHighlighted: document.getElementById('btnSave').classList.contains('rnd-dirty') };
 
     // Подменяем askConfirm: тест не должен зависнуть на диалоге
     window.__asked = [];
@@ -1252,10 +1256,13 @@ const SILENCE_CONFIRM = `(() => {
         return Math.abs(mid - (b.left + b.width / 2)) < b.width * 0.12;
       })(),
       dockInMain: dock.parentElement.classList.contains('main'),
-      // Меряем относительно самой заметки: .main начинается после боковой
-      // панели, поэтому в координатах окна «левый край» — это ~300px.
-      dockLeft: Math.round(dock.getBoundingClientRect().left
-        - document.querySelector('.main').getBoundingClientRect().left),
+      // Док по центру заметки: меряем относительно .main, потому что он
+      // начинается после боковой панели и в координатах окна «центр» — это
+      // примерно 960px, а не середина окна.
+      dockCenterOffset: Math.round(
+        (dock.getBoundingClientRect().left + dock.getBoundingClientRect().width / 2)
+        - (document.querySelector('.main').getBoundingClientRect().left
+          + document.querySelector('.main').getBoundingClientRect().width / 2)),
       dockBottom: Math.round(document.querySelector('.main').getBoundingClientRect().bottom
         - dock.getBoundingClientRect().bottom),
       statusKids: kids,
@@ -1275,8 +1282,12 @@ const SILENCE_CONFIRM = `(() => {
   t('масштаб по центру тулбара', r.zoomCentered === true && r.zoomNearCenter === true,
     JSON.stringify(r.zoomKids));
   t('док режима внутри заметки', r.dockInMain === true);
-  t('док режима в левом нижнем углу', r.dockLeft > 0 && r.dockLeft < 60 && r.dockBottom < 60,
-    'left=' + r.dockLeft + ' bottom=' + r.dockBottom);
+  // Док по центру заметки. Смещение от центра .main — в пределах пары
+  // пикселей: раньше док стоял слева (left=18px) и проверялось именно это.
+  t('док режима по центру заметки', Math.abs(r.dockCenterOffset) <= 6,
+    'смещение ' + r.dockCenterOffset + 'px');
+  t('док режима прижат к низу', r.dockBottom > 0 && r.dockBottom <= 40,
+    'снизу ' + r.dockBottom + 'px');
   t('путь к файлу — внизу слева', r.pathFirst === true, JSON.stringify(r.statusKids));
   t('сообщение — внизу справа', r.statusLast === true, JSON.stringify(r.statusKids));
   t('иконка экспорта — svg-иконка', r.dlIcon === 'svg');

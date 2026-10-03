@@ -161,23 +161,35 @@
         <article class="content" id="content"></article>
         <textarea class="editor" id="editor" spellcheck="false" hidden></textarea>
 
-        <!-- Режим правки: кнопки живут в левом нижнем углу заметки, а не
-             в тулбаре. «Правка» там же. -->
+        <!-- Режим правки — по центру низа заметки, круглыми кнопками без
+             подписей.
+
+             Раньше они стояли в левом нижнем углу прямоугольными плашками с
+             текстом. Текст здесь лишний: у кнопок есть подсказки, а «Сохранить»
+             и «Отменить» занимали ширину, которой у правой кромки заметки и так
+             не хватало.
+
+             Логика та же, что и была: в чтении одна кнопка «Правка», в правке
+             вместо неё — явная пара действий. Одиночный переключатель раньше
+             молча уходил из правки и оставлял изменения в памяти: их можно было
+             потерять, ничего не спрашивая.
+
+             Порядок в DOM — «Правка», потом стопка «Отменить» над «Сохранить»,
+             и обе выровнены по низу (align-items:flex-end). Поэтому карандаш и
+             «Сохранить» стоят на одном месте, ничего не прыгает при входе в
+             правку, а «Отменить» появляется НАД «Сохранить». -->
         <div class="mode-dock" id="modeDock">
-          <button class="btn btn-mode" id="btnMode" title="Режим правки (Ctrl+E)">
-            <span class="ico" data-i="pencil"></span><span class="lbl">Правка</span>
+          <button class="rnd rnd-edit" id="btnMode" title="Режим правки (Ctrl+E)" aria-label="Режим правки">
+            <span class="ico" data-i="pencil"></span>
           </button>
-          <!-- В режиме правки вместо одной кнопки «Правка» — явная пара
-               действий: зелёная «Сохранить» и красная «Отменить». Раньше был
-               единственный переключатель, который молча уходил из правки и
-               оставлял изменения в памяти — их можно было потерять, ничего
-               не спрашивая. -->
-          <button class="btn btn-save" id="btnSave" title="Сохранить на диск (Ctrl+S)" hidden>
-            <span class="ico" data-i="save"></span><span class="lbl">Сохранить</span>
-          </button>
-          <button class="btn btn-cancel" id="btnCancelEdit" title="Отменить правки и вернуться к чтению (Esc)" hidden>
-            <span class="ico" data-i="x"></span><span class="lbl">Отменить</span>
-          </button>
+          <div class="dock-stack">
+            <button class="rnd rnd-cancel" id="btnCancelEdit" title="Отменить правки и вернуться к чтению (Esc)" aria-label="Отменить правки" hidden>
+              <span class="ico" data-i="x"></span>
+            </button>
+            <button class="rnd rnd-save" id="btnSave" title="Сохранить на диск (Ctrl+S)" aria-label="Сохранить" hidden>
+              <span class="ico" data-i="save"></span>
+            </button>
+          </div>
         </div>
       </main>
 

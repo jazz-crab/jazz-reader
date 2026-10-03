@@ -876,18 +876,70 @@ kbd {
    заметки, а не в тулбаре: режим правки — состояние заметки, а не панели.
    Плюс это снимает прямое столкновение второй «Сохранить» с зелёной
    «Сохранить» в правке. */
+/* ================= Режим правки: круглые кнопки по центру =================
+   Только эти три кнопки круглые. Остальные остаются прямоугольными: круг
+   здесь — часть смысла (карандаш превращается в «Сохранить»), а не общего
+   стиля, и растягивать его на весь тулбар незачем.
+
+   Порядок в DOM: карандаш, потом стопка «Отменить» над «Сохранить».
+   align-items:flex-end держит их на одной нижней линии, поэтому «Сохранить»
+   встаёт ровно туда же, где был карандаш, и при входе в правку ничего не
+   едет. Порядок выравнивания важен: при center верхняя кнопка съезжала бы
+   на полкруга выше нижней. */
 .mode-dock {
-    position: absolute; left: 18px; bottom: 14px; z-index: 40;
-    display: flex; align-items: center; gap: 8px;
+    position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: flex-end; gap: 12px;
+    z-index: 5; pointer-events: none;
 }
-.mode-dock .btn {
-    background: var(--bg-popup);
-    border: 1px solid var(--border);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+.mode-dock > * { pointer-events: auto; }
+.dock-stack { display: flex; flex-direction: column; align-items: center; gap: 9px; }
+
+.rnd {
+    width: 38px; height: 38px; flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border-radius: 50%;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    color: var(--fg); cursor: pointer;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, .38);
+    transition: background .12s, border-color .12s, transform .1s;
 }
-.mode-dock .btn:hover { background: var(--bg-soft); }
-/* Кнопки правки не должны перехватывать клики по тексту под собой */
-.mode-dock .btn { -webkit-app-region: no-drag; }
+.rnd .ico-svg { width: 17px; height: 17px; }
+.rnd:hover:not(:disabled) { background: var(--bg-select); border-color: var(--comment); }
+.rnd:active:not(:disabled) { transform: translateY(1px); }
+.rnd:disabled { opacity: .4; cursor: default; }
+.rnd:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+
+/* Карандаш — спокойный: он ничего не меняет, а лишь переключает режим. */
+.rnd-edit .ico-svg { stroke: var(--fg-dark); }
+.rnd-edit:hover .ico-svg { stroke: var(--fg); }
+
+/* Сохранить — зелёная, самое главное действие в правке. */
+.rnd-save { border-color: rgba(158, 206, 106, .55); color: var(--green); }
+.rnd-save .ico-svg { stroke: var(--green); }
+.rnd-save:hover:not(:disabled) { background: rgba(158, 206, 106, .18); }
+/* Есть несохранённое — кнопка просит внимания: сплошная заливка. */
+.rnd-save.rnd-dirty {
+    background: rgba(158, 206, 106, .22);
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(158, 206, 106, .16), 0 3px 12px rgba(0, 0, 0, .38);
+}
+
+/* Отмена — красная, и она ВЫШЕ «Сохранить». Порядок в стопке задаёт flex. */
+.rnd-cancel { border-color: rgba(247, 118, 142, .5); color: var(--red); }
+.rnd-cancel .ico-svg { stroke: var(--red); }
+.rnd-cancel:hover:not(:disabled) { background: rgba(247, 118, 142, .18); }
+
+/* Появление «Отменить» над «Сохранить»: она выезжает, а не возникает.
+   Без этого кнопка просто появлялась и сдвигала нижнюю на пиксель. */
+.rnd-cancel { animation: pop-up .14s ease-out; }
+@keyframes pop-up {
+    from { opacity: 0; transform: translateY(7px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .rnd-cancel { animation: none; }
+    .rnd { transition: none; }
+}
 
 /* ================= Тулбар: масштаб по центру =================
    Сетка 1fr auto 1fr, а не flex с двумя растягивающимися группами: во flex

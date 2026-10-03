@@ -1258,7 +1258,7 @@ function renderActive() {
   el.btnMode.hidden = editing;
   el.btnSave.hidden = !editing;
   el.btnCancelEdit.hidden = !editing;
-  el.btnSave.classList.toggle('btn-save-dirty', editing && t.dirty);
+  el.btnSave.classList.toggle('rnd-dirty', editing && t.dirty);
 
   if (editing) {
     el.editor.value = t.raw;
@@ -2463,7 +2463,7 @@ el.editor.addEventListener('input', () => {
   if (!t) return;
   t.dirty = el.editor.value !== t._diskRaw;
   renderTabs();
-  el.btnSave.classList.toggle('btn-save-dirty', t.dirty);
+  el.btnSave.classList.toggle('rnd-dirty', t.dirty);
 });
 
 el.btnZoomIn.onclick = () => setZoom(zoom + 0.1);
