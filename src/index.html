@@ -143,11 +143,10 @@
          Обе панели скрываются независимо: иконка приложения -> Вид.
          Вкладки не скрываются никогда. -->
     <div class="workspace" id="workspace" hidden>
+      <!-- Шапки панелей убраны: «ОГЛАВЛЕНИЕ» и «ПРОВОДНИК» занимали 33px
+           каждая и ничего не говорили — по содержимому и так видно, где что.
+           Прятать панели теперь только через меню (Вид) и хоткеи. -->
       <aside class="sidebar side-left" id="tocSide">
-        <div class="side-head">
-          <span class="side-title">Оглавление</span>
-          <button class="side-collapse" id="btnHideToc" title="Скрыть оглавление"><span class="ico" data-i="x"></span></button>
-        </div>
         <div class="side-pane" id="paneToc"></div>
       </aside>
       <div class="sidebar-resizer" id="tocResizer" title="Потяни, чтобы изменить ширину"></div>
@@ -207,10 +206,6 @@
       <div class="sidebar-resizer" id="filesResizer" title="Потяни, чтобы изменить ширину"></div>
 
       <aside class="sidebar side-right" id="filesSide">
-        <div class="side-head">
-          <span class="side-title">Проводник</span>
-          <button class="side-collapse" id="btnHideFiles" title="Скрыть проводник"><span class="ico" data-i="x"></span></button>
-        </div>
         <div class="side-search">
           <span class="s-ico" data-i="search"></span>
           <input type="text" id="treeFilter" placeholder="Фильтр по имени&#8230;" spellcheck="false">

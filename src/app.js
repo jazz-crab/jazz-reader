@@ -1438,6 +1438,86 @@ function slugify(txt) {
 
 let spyHeads = [], spyLinks = [];
 
+/*
+ * Оглавление — дерево, а не плоский список с отступами.
+ *
+ * Заголовки идут подряд, уровень известен по тегу (h1..h4), поэтому дерево
+ * строится стеком: идём по заголовкам, отбрасываем с верху стека всё с
+ * уровнем не меньше текущего, и текущий становится под последним оставшимся.
+ *
+ * Сворачивание нужно для длинных оглавлений: в заметке на 2000 строк их
+ * десятки, и до нужного раздела невозможно добраться, не прокрутив полстолба.
+ * Стрелка есть только у разделов с потомками — у листьев её рисовать нечем.
+ * Состояние живёт во вкладке (t.tocClosed), поэтому переключение вкладок
+ * не сбрасывает то, что человек свернул.
+ *
+ * Если заголовков очень много (> TOC_AUTO_COLLAPSE), на первый раз все
+ * разделы свёрнуты: список в 200 строк всё равно не читают, его открывают по
+ * одной ветке. Помечаем это состояние как автоматическое, чтобы при первом
+ * же клике человек получил развернутое дерево, а не пустое.
+ */
+const TOC_AUTO_COLLAPSE = 60;
+
+function tocNode(h, id) {
+  const lvl = +h.tagName[1];
+  const row = document.createElement('div');
+  row.className = 'toc-row';
+  row.dataset.l = String(lvl);
+
+  // Стрелка. Пока потомков нет, она не рисуется вовсе — иначе в списке из
+  // двух пунктов половина строк была бы в бесполезных значках.
+  const twist = document.createElement('button');
+  twist.className = 'toc-twist';
+  twist.type = 'button';
+  twist.innerHTML = ICONS.icon('chevron-right');
+  twist.title = 'Свернуть / развернуть раздел';
+  twist.setAttribute('aria-expanded', 'true');
+  row.append(twist);
+
+  const a = document.createElement('a');
+  a.className = 'toc-link';
+  a.href = '#' + id;
+  a.textContent = h.textContent;
+  a.onclick = (e) => {
+    e.preventDefault();
+    pushHist(active(), active() ? active().path : null, id);
+    scrollToAnchor(id);
+    updateNavButtons();
+  };
+  row.append(a);
+
+  const kidsBox = document.createElement('div');
+  kidsBox.className = 'toc-kids';
+
+  // kids — массив дочерних УЗЛОВ (не DOM-элементов), kidsBox — их контейнер
+  // в разметке. Раньше оба назывались kids, и дерево падало на
+  // parent.kids.push(...) — parent.kids оказывался div'ом.
+  const node = { lvl, row, kids: [], twist, a, kidsBox, hasKids: false, closed: false };
+  twist.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setTocNodeClosed(node, !node.closed, true);
+    // Свернули ветку — её внутренние разделы тоже должны лежать, иначе при
+    // обратном раскрытии они вылезут развёрнутыми.
+    if (node.closed) hideSubtree(node.kids);
+  };
+  return node;
+}
+
+function setTocNodeClosed(node, closed, byUser) {
+  node.closed = closed;
+  node.kidsBox.hidden = closed;
+  node.row.classList.toggle('closed', closed);
+  node.twist.setAttribute('aria-expanded', closed ? 'false' : 'true');
+  const t = active();
+  if (!t) return;
+  if (!t.tocClosed) t.tocClosed = new Set();
+  const key = node.a.getAttribute('href').slice(1);
+  if (closed) t.tocClosed.add(key); else t.tocClosed.delete(key);
+  // Автосворачивание живёт один раз: дальше решает человек.
+  if (byUser) t.tocTouched = true;
+}
+
 function buildToc() {
   const t = active();
   el.paneToc.innerHTML = '';
@@ -1461,21 +1541,67 @@ function buildToc() {
       h.id = id;
     }
     used.add(id);
+  }
 
-    const a = document.createElement('a');
-    a.className = 'toc-item';
-    a.dataset.l = h.tagName[1];
-    a.textContent = h.textContent;
-    a.href = '#' + id;
-    a.onclick = (e) => {
-      e.preventDefault();
-      // Переход по разделам — полноценный шаг истории, чтобы Alt+← его откатывал.
-      pushHist(t, t.path, id);
-      scrollToAnchor(id);
-      updateNavButtons();
-    };
-    el.paneToc.append(a);
-    spyHeads.push(h); spyLinks.push(a);
+  // Дерево стеком: верхушка стека — последний открытый предок.
+  const top = [];
+  const stack = [];
+  for (const h of heads) {
+    const node = tocNode(h, h.id);
+    const lvl = node.lvl;
+    while (stack.length && stack[stack.length - 1].lvl >= lvl) stack.pop();
+    const parent = stack[stack.length - 1];
+    if (parent) parent.kids.push(node); else top.push(node);
+    stack.push(node);
+    spyHeads.push(h);
+    // Именно строка, а не узел дерева: updateSpy вешает на этот элемент
+    // класс active. С узлом было бы .active не у того элемента, а ни у
+    // какого — и оглавление оставалось бы пустым с первого же кадра.
+    spyLinks.push(node.row);
+  }
+  // Разворачиваем дерево в DOM. Контейнер потомков — СОСЕД строки, а не её
+  // потомок внутри: .toc-row это flex-линия, и вложенный div встал бы в неё
+  // рядом со ссылкой. Соседним он и скрывается целиком по hidden.
+  const draw = (nodes, host) => {
+    for (const n of nodes) {
+      host.append(n.row);
+      if (n.kids.length) {
+        n.hasKids = true;
+        host.append(n.kidsBox);
+        draw(n.kids, n.kidsBox);
+      } else {
+        n.twist.hidden = true;   // у листа стрелки нет вовсе
+      }
+    }
+  };
+  draw(top, el.paneToc);
+
+  // Свёрнутое состояние живёт во вкладке. Если заголовков очень много и
+  // человек ещё не трогал оглавление, все разделы сворачиваются: список в
+  // 200 строк всё равно не читают, его открывают по одной ветке. Пометка
+  // tocTouched ставится только кликом — дальше решает человек.
+  const t0 = active();
+  const autoClose = heads.length > TOC_AUTO_COLLAPSE && !t0.tocTouched;
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      if (!n.hasKids) continue;
+      const key = n.a.getAttribute('href').slice(1);
+      const was = !!(t0.tocClosed && t0.tocClosed.has(key));
+      setTocNodeClosed(n, was || autoClose, false);
+      if (!n.closed) walk(n.kids);
+    }
+  };
+  walk(top);
+}
+
+/** Свернуть ветку целиком. */
+function hideSubtree(nodes) {
+  for (const n of nodes) {
+    n.closed = true;
+    n.kidsBox.hidden = true;
+    n.row.classList.add('closed');
+    n.twist.setAttribute('aria-expanded', 'false');
+    hideSubtree(n.kids);
   }
 }
 
@@ -2532,8 +2658,6 @@ async function toggleView(key, force) {
 }
 
 function toggleToc(force) { return toggleView('toc', force); }
-$('btnHideToc').onclick = () => toggleView('toc', false);
-$('btnHideFiles').onclick = () => toggleView('files', false);
 
 el.treeFilter.addEventListener('input', renderTree);
 

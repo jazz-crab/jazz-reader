@@ -319,22 +319,14 @@ kbd {
 #filesResizer { border-left: 1px solid var(--border); }
 
 /* Заголовок панели: название + крестик. Каждая панель своя. */
-.side-head {
-    display: flex; align-items: center; gap: 6px;
-    padding: 0 6px 0 11px; height: 33px; flex: 0 0 auto;
-    border-bottom: 1px solid var(--border);
-}
+/* Шапки панелей убраны («ОГЛАВЛЕНИЕ», «ПРОВОДНИК»): 33px на каждую, и
+   по содержимому и так видно, где что. Заголовок остался только у правой
+   панели разделения — там без него не понять, какая заметка открыта. */
 .side-title {
     flex: 1 1 auto; color: var(--comment);
     font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.side-collapse {
-    border: 0; background: transparent; color: var(--comment);
-    cursor: pointer; padding: 4px; border-radius: 5px; display: inline-flex;
-}
-.side-collapse:hover { color: var(--fg); background: var(--bg-soft); }
-.side-collapse .ico-svg { width: 13px; height: 13px; }
 
 .side-search { padding: 7px; flex: 0 0 auto; position: relative; }
 /* Иконка поиска внутри поля: absolute внутри .side-search, поле получило
@@ -430,18 +422,61 @@ kbd {
 .tree-remove .ico-svg { width: 13px; height: 13px; }
 .tree-remove:hover { color: var(--red); }
 
-/* --- оглавление --- */
-.toc-item {
-    display: block; padding: 5px 12px; cursor: pointer;
-    color: var(--fg-dark); font-size: 12.5px;
+/* --- оглавление ---
+   Строки — <div class="toc-row">, а не <a>: внутри нужна кнопка-стрелка,
+   а кнопка внутри ссылки — не то. Подчёркивания у ссылок убраны: раньше
+   каждый пункт был подчёркнут, и панель читалась как список ссылок на
+   веб-странице, а не как оглавление заметки.
+   Цвет текста одинаков для всех уровней: серые третий и четвёртый уровни
+   на тёмном фоне читались хуже верхних, а уровень и так показан отступом.
+   Различается только активный пункт — он жирный и с кромкой. */
+.toc-row {
+    display: flex; align-items: center; gap: 2px;
     border-left: 2px solid transparent;
+    min-height: 24px;
+}
+.toc-row:hover { background: var(--bg-soft); }
+.toc-row.active { background: var(--bg-soft); border-left-color: var(--cyan); }
+.toc-row.active .toc-link { color: var(--fg); font-weight: 700; }
+.toc-link {
+    flex: 1 1 auto; min-width: 0;
+    display: block; padding: 4px 8px 4px 2px;
+    color: var(--fg); font-size: 12.5px; text-decoration: none;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.toc-item:hover { background: var(--bg-soft); color: var(--fg); }
-.toc-item.active { color: var(--cyan); border-left-color: var(--cyan); background: var(--bg-soft); }
-.toc-item[data-l="2"] { padding-left: 24px; }
-.toc-item[data-l="3"] { padding-left: 36px; font-size: 12px; color: var(--comment); }
-.toc-item[data-l="4"] { padding-left: 48px; font-size: 12px; color: var(--comment); }
+.toc-link:hover { color: var(--cyan); }
+
+/* Стрелка есть только у разделов с потомками: у листьев её не рисуем
+   вовсе (twist.hidden), иначе в списке из двух пунктов половина строк была бы
+   занята бесполезными значками. */
+.toc-twist {
+    flex: 0 0 auto; width: 18px; height: 22px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 0; cursor: pointer; color: var(--comment);
+}
+.toc-twist:hover { color: var(--fg); }
+.toc-twist .ico-svg {
+    width: 12px; height: 12px;
+    /* Поворот: вправо — свёрнуто, вниз — раскрыто. С transition переключение
+       читается как поворот, без него — как прыжок. */
+    transition: transform .13s ease;
+}
+.toc-row.closed .toc-twist .ico-svg { transform: rotate(0deg); }
+.toc-row:not(.closed) .toc-twist .ico-svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .toc-twist .ico-svg { transition: none; } }
+
+.toc-kids { display: block; }
+.toc-kids[hidden] { display: none; }
+
+.toc-row[data-l="1"] .toc-link { padding-left: 6px; }
+.toc-row[data-l="2"] .toc-link { padding-left: 16px; }
+.toc-row[data-l="3"] .toc-link { padding-left: 28px; }
+.toc-row[data-l="4"] .toc-link { padding-left: 40px; }
+.toc-row[data-l="3"] .toc-link,
+.toc-row[data-l="4"] .toc-link { font-size: 12px; }
+
+/* Единственное серое в панели: это не пункт оглавления, а сообщение, что
+   список пуст. */
 .toc-hint { padding: 16px 12px; color: var(--comment); font-size: 12px; text-align: center; }
 
 /* ================= Контент ================= */
@@ -469,6 +504,8 @@ kbd {
     background: var(--bg);
 }
 .main-second[hidden] { display: none; }
+/* Заголовок правой панели: имя заметки и крестик. У боковых панелей
+   заголовков нет вовсе (см. .side-title). */
 .second-head {
     display: flex; align-items: center; gap: 6px;
     padding: 0 6px 0 11px; height: 33px; flex: 0 0 auto;

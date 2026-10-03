@@ -304,29 +304,91 @@ const SILENCE_CONFIRM = `(() => {
   fs.writeFileSync(tocFile,
     '# Один\n\nтекст\n\n## Два\n\nтекст\n\n### Три\n\nтекст\n\n## Четыре\n', 'utf8');
 
-  // Оглавление теперь постоянная панель слева, а не выезжающий слой.
+  // Оглавление: постоянная панель слева, дерево со сворачиванием.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const tocSide = document.getElementById('tocSide');
     await M.openPath(${JSON.stringify(tocFile)}, { newTab: true });
     await new Promise(r2 => setTimeout(r2, 400));
+    const rows = [...document.querySelectorAll('#paneToc .toc-row')];
+    const links = [...document.querySelectorAll('#paneToc .toc-link')];
+    const twists = [...document.querySelectorAll('#paneToc .toc-twist')];
     const res = {};
     res.tocShownByDefault = !tocSide.hidden;
     res.tocOnLeft = Math.round(tocSide.getBoundingClientRect().left) === 0;
-    res.tocEntries = document.querySelectorAll('#paneToc a').length;
-    // переключателя панелей быть не должно
+    res.tocEntries = links.length;
+    res.rows = rows.length;
     res.oldSwitchGone = document.querySelectorAll('.side-btn').length === 0;
     res.noOverlay = !document.getElementById('tocOverlay');
     res.filesOnRight = Math.round(
       innerWidth - document.getElementById('filesSide').getBoundingClientRect().right) === 0;
-    // крестик в шапке панели её прячет
-    document.getElementById('btnHideToc').click();
-    await new Promise(r2 => setTimeout(r2, 400));
-    res.tocHiddenAfterX = tocSide.hidden;
-    res.resizerHidden = document.getElementById('tocResizer').hidden;
-    await window.__mdvTest.toggleView('toc', true);
-    await new Promise(r2 => setTimeout(r2, 400));
-    res.tocBack = !tocSide.hidden;
+
+    // Шапок панелей больше нет
+    res.noTocHead = !tocSide.querySelector('.side-head');
+    res.noFilesHead = !document.getElementById('filesSide').querySelector('.side-head');
+    // Панель начинается сразу под рабочей областью. Раньше сверху была
+    // шапка «Оглавление» на 33px — её и проверяем отсутствием зазора.
+    res.tocTop = Math.round(tocSide.getBoundingClientRect().top
+      - document.getElementById('workspace').getBoundingClientRect().top);
+    res.filesTop = Math.round(document.getElementById('filesSide').getBoundingClientRect().top
+      - document.getElementById('workspace').getBoundingClientRect().top);
+
+    // Ссылки без подчёркивания, текст одного цвета на всех уровнях
+    const dec = links.map(a => getComputedStyle(a).textDecorationLine);
+    res.noUnderline = dec.every((d) => !/underline/.test(d));
+    const colors = [...new Set(links.map(a => getComputedStyle(a).color))];
+    res.oneColor = colors.length === 1;
+    res.color = colors[0];
+
+    // Уровни вложены отступом
+    res.indented = (() => {
+      const l3 = document.querySelector('#paneToc .toc-row[data-l="2"] .toc-link');
+      const l1 = document.querySelector('#paneToc .toc-row[data-l="1"] .toc-link');
+      if (!l1 || !l3) return true;
+      return parseFloat(getComputedStyle(l3).paddingLeft) > parseFloat(getComputedStyle(l1).paddingLeft);
+    })();
+
+    // Стрелка только у разделов с потомками
+    res.twistCount = twists.length;
+    res.visibleTwists = twists.filter((b) => !b.hidden && b.offsetParent !== null).length;
+    // Контейнер потомков — сосед строки (не потомок внутри: .toc-row это
+    // flex-линия), поэтому ищем через nextElementSibling.
+    const kidsOf = (row) => {
+      const nx = row.nextElementSibling;
+      return nx && nx.classList.contains('toc-kids') ? nx : null;
+    };
+    res.leafHasNoTwist = twists.every((b) => {
+      const row = b.closest('.toc-row');
+      const kids = kidsOf(row);
+      return kids && kids.children.length ? !b.hidden : b.hidden;
+    });
+
+    // Клик по стрелке сворачивает ветку
+    const withKids = rows.find((x) => {
+      const k = kidsOf(x);
+      return k && k.children.length;
+    });
+    res.hasBranch = !!withKids;
+    if (withKids) {
+      const kidsBox = kidsOf(withKids);
+      const kidsCount = kidsBox.children.length;
+      const twist = withKids.querySelector('.toc-twist');
+      res.ariaBefore = twist.getAttribute('aria-expanded');
+      res.ariaOpenBefore = twist.getAttribute('aria-expanded');
+      twist.click();
+      await new Promise(r2 => setTimeout(r2, 200));
+      res.ariaAfter = twist.getAttribute('aria-expanded');
+      twist.click();
+      await new Promise(r2 => setTimeout(r2, 200));
+      res.ariaBack = twist.getAttribute('aria-expanded');
+      const beforeHidden = kidsBox.hidden;
+      twist.click();
+      await new Promise(r2 => setTimeout(r2, 200));
+      const afterHidden = kidsBox.hidden;
+      twist.click();
+      await new Promise(r2 => setTimeout(r2, 200));
+      res.collapse = { kidsCount, beforeHidden, afterHidden, backHidden: kidsBox.hidden };
+    }
     return JSON.stringify(res);
   })()`));
 
@@ -336,9 +398,26 @@ const SILENCE_CONFIRM = `(() => {
   t('выезжающего слоя больше нет', r.noOverlay === true);
   t('в оглавлении есть пункты', r.tocEntries >= 3, 'пунктов: ' + r.tocEntries);
   t('старый переключатель «Файлы/Оглавление» убран', r.oldSwitchGone === true);
-  t('крестик в панели прячет оглавление', r.tocHiddenAfterX === true);
-  t('ресайзер панели тоже спрятан', r.resizerHidden === true);
-  t('оглавление возвращается через меню', r.tocBack === true);
+  t('у оглавления нет шапки', r.noTocHead === true);
+  t('у проводника нет шапки', r.noFilesHead === true);
+  t('оглавление начинается сразу под тулбаром', r.tocTop >= 0 && r.tocTop <= 2,
+    r.tocTop + 'px');
+  t('проводник начинается сразу под тулбаром', r.filesTop >= 0 && r.filesTop <= 2,
+    r.filesTop + 'px');
+  t('пункты оглавления без подчёркивания', r.noUnderline === true);
+  t('все заголовки одного цвета', r.oneColor === true, r.color);
+  t('вложенные уровни сдвинуты отступом', r.indented === true);
+  t('дерево оглавления построено', r.rows === r.tocEntries, r.rows + '/' + r.tocEntries);
+  t('стрелка есть только у разделов с потомками', r.leafHasNoTwist === true);
+  t('есть ветки со стрелками', r.hasBranch === true);
+  const col = r.collapse || {};
+  t('клик по стрелке сворачивает ветку',
+    col.beforeHidden === false && col.afterHidden === true && col.kidsCount > 0,
+    JSON.stringify(col));
+  t('повторный клик раскрывает обратно', col.backHidden === false);
+  t('aria-expanded=true на раскрытом разделе', r.ariaOpenBefore === 'true', r.ariaOpenBefore);
+  t('aria-expanded=false на свёрнутом', r.ariaAfter === 'false', r.ariaAfter);
+  t('после раскрытия снова true', r.ariaBack === 'true', r.ariaBack);
 
   // Shift+F10 / ContextMenu: в тесте контекстное меню открывалось только по
   // contextmenu с координатами, а с клавиатуры (Shift+F10) — нет.
