@@ -1731,16 +1731,20 @@ const SILENCE_CONFIRM = `(() => {
     const res = {
       menus: menus.length,
       labels: [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.replace('✓', '')),
-    seps: sub.querySelectorAll('.ctxmenu-sep').length,
+      seps: sub.querySelectorAll('.ctxmenu-sep').length,
       checks: [...sub.querySelectorAll('.ctxmenu-check')].map(x => x.textContent),
-      parentKept: !!menus[0]._keep,
+      // Раньше здесь проверялся флажок _keep на родительском меню: он
+      // ставился подменю навсегда, и закрыть цепочку можно было только кликом
+      // мимо. Теперь никаких флажков нет — родитель просто остаётся в DOM.
+      parentInDom: menus[0].isConnected,
+      parentStillFirst: document.querySelectorAll('.ctxmenu')[0] === menus[0],
     };
     document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
     return JSON.stringify(res);
   })()`));
 
   t('подменю «Вид» открылось', r.menus >= 2, 'меню: ' + r.menus);
-  t('родительское меню осталось', r.parentKept === true);
+  t('родительское меню осталось', r.parentInDom === true && r.parentStillFirst === true);
   t('в «Вид» четыре переключателя панелей',
     ['Проводник', 'Оглавление', 'Верхняя панель', 'Нижняя панель']
       .every((x) => (r.labels || []).includes(x)), JSON.stringify(r.labels));
@@ -2384,6 +2388,107 @@ const SILENCE_CONFIRM = `(() => {
 
   t('пробел не улетает в обработчик окна', r.bubbled === 0, String(r.bubbled));
   t('пробел внутри числа не мешает', r.val === '70%', r.val);
+  // ------------------------------------------- подменю: наведение и уход
+  console.log('\n== подменю: наведение и уход ==');
+
+  // Регресс, о котором сообщил пользователь:
+  //   Файл -> наведение на Вид -> Вид раскрылся -> возврат на Файл не
+  //   раскрывает его, а «Вид» так и висит -> мышь уходит, меню остаётся.
+  // Причина была в флажке _keep: он ставился подменю навсегда, и закрыть
+  // цепочку можно было только кликом мимо.
+  r = JSON.parse(await js(`(async () => {
+    const tick = () => new Promise(r2 => setTimeout(r2, 260));
+    const menus = () => [...document.querySelectorAll('.ctxmenu')];
+    const itemIn = (menu, re) => [...menu.querySelectorAll('.ctxmenu-item')]
+      .find(b => re.test(b.textContent));
+    const open = async () => {
+      document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+      document.getElementById('appBrand').click();
+      await tick();
+      return menus()[0];
+    };
+    const out = {};
+
+    // 1. Файл раскрыт
+    let top = await open();
+    itemIn(top, /Файл/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    out.afterFile = menus().length;
+
+    // 2. Уводим на Вид: подменю Файла должно закрыться, Вид — раскрыться
+    itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    out.afterView = menus().length;
+    out.viewSub = [...menus().pop().querySelectorAll('.ctxmenu-label')]
+      .map(x => x.textContent.replace('✓', ''));
+    // Подменю Файла где-то осталось?
+    const subs = menus().slice(1);
+    out.fileStillOpen = subs.some((m) => /Открыть .md/.test(m.textContent));
+    out.viewOpen = subs.some((m) => /Проводник/.test(m.textContent));
+
+    // 3. Возврат на Файл: он снова раскрывается, Вид закрывается
+    itemIn(top, /Файл/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    out.backToFile = menus().length;
+    out.fileReopened = menus().slice(1).some((m) => /Открыть .md/.test(m.textContent));
+    out.viewClosedAfterBack = !menus().slice(1).some((m) => /Проводник/.test(m.textContent));
+
+    // 4. Подменю не пересоздаётся при простом движении туда-сюда
+    const subBefore = menus()[1];
+    itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    itemIn(top, /Файл/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    out.reusedSameNode = menus()[1] === subBefore || menus().length === 2;
+
+    // 5. Уход курсора из меню закрывает всё
+    const far = document.getElementById('content');
+    far.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    await tick();
+    out.afterLeave = menus().length;
+
+    // 6. Клик мимо по-прежнему закрывает
+    top = await open();
+    itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    document.getElementById('content')
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await tick();
+    out.afterClickOutside = menus().length;
+
+    // 7. Esc закрывает
+    top = await open();
+    itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    out.afterEsc = menus().length;
+
+    // 8. Два независимых открытия не накапливаются
+    await open();
+    await open();
+    out.twoRoots = menus().length;
+
+    return JSON.stringify(out);
+  })()`));
+
+  t('Файл раскрылся', r.afterFile === 2, String(r.afterFile));
+  t('переход на Вид: раскрыт ровно один подменю',
+    r.afterView === 2 && r.viewOpen === true && r.fileStillOpen === false,
+    r.afterView + ' виды: ' + r.fileStillOpen);
+  t('подменю «Вид» содержит свои пункты',
+    (r.viewSub || []).includes('Проводник'), JSON.stringify(r.viewSub));
+  t('возврат на Файл раскрывает его', r.backToFile === 2 && r.fileReopened === true,
+    r.backToFile + ' ' + r.fileReopened);
+  t('при возврате «Вид» закрывается', r.viewClosedAfterBack === true);
+  t('подменю не пересоздаётся на каждый проход', r.reusedSameNode === true);
+  t('уход курсора закрывает меню', r.afterLeave === 0, String(r.afterLeave));
+  t('клик мимо закрывает меню', r.afterClickOutside === 0, String(r.afterClickOutside));
+  t('Esc закрывает меню', r.afterEsc === 0, String(r.afterEsc));
+  t('повторное открытие не копит меню', r.twoRoots === 1, String(r.twoRoots));
+
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
   // через IPC. Отмену тоже проверяем — файл должен остаться на месте.

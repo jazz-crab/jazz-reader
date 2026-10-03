@@ -491,13 +491,53 @@ async function closeAll() {
  * Общее контекстное меню: {label, hint, act, off} и {sep:true}.
  * Один код и для вкладки, и для файла в дереве — иначе две копии разъедутся.
  */
+/*
+ * Контекстное меню с подменю.
+ *
+ * Открытые меню лежат в menuChain по порядку: корень, его подменю, подменю
+ * подменю. Раньше вместо этого у каждого меню был флажок _keep, и от него
+ * была беда: подменю «Вид», однажды открывшись, уже не закрывалось никогда —
+ * ��. потому что флажок стоял навсегда.
+ *
+ * Теперь правило простое:
+ *   • курсор ушёл из всех открытых меню — закрываем всё;
+ *   • курсор перешёл на другой пункт-подменю — закрываем подменю этого пункта,
+ *     если оно было открыто, и открываем его;
+ *   • клик по пункту без подменю — закрываем всё и выполняем действие.
+ *
+ * Пункт-подменю хранит своё подменю в _sub и не пересоздаёт его, пока
+ * цепочка жива: иначе при простом движении мыши туда-сюда подменю мигало бы.
+ *
+ * Элемент меню:
+ *   check: true|false — галочка, пункт-переключатель в подменю «Вид»
+ *   items: [...]      — подменю, раскрывается вправо по наведению
+ *   off               — пункт неактивен
+ */
+let menuChain = [];
+
+function closeAllMenus() {
+  for (const link of menuChain) link.menu.remove();
+  menuChain = [];
+  document.removeEventListener('mousedown', onMenuDown, true);
+  document.removeEventListener('keydown', onMenuKey, true);
+  document.removeEventListener('mouseover', onMenuHover, true);
+  window.removeEventListener('blur', onMenuBlur);
+}
+
+/** Снять подменю, открытое у пункта, — не трогая остальную цепочку. */
+function dropSubmenu(parentMenu, item) {
+  const link = menuChain.find((l) => l.parent === parentMenu && l.item === item);
+  if (!link) return;
+  link.menu.remove();
+  menuChain = menuChain.filter((l) => l !== link);
+}
+
 function showContextMenu(x, y, items, opts) {
   const o = opts || {};
-  // Подменю не выкидывает родителя: галочки «Вид» должны остаться на месте,
-  // пока курсор над цепочкой. Флаг ставим ДО чистки — иначе подменю успевает
-  // снести меню, из которого его открыли, и вместо двух меню остаётся одно.
-  if (o.parent && o.keepParent) o.parent._keep = true;
-  for (const c of document.querySelectorAll('.ctxmenu')) if (!c._keep) c.remove();
+  // Новый корень меню закрывает всё, что было открыто. Подменю — нет: оно
+  // само владеет уже открытой цепочкой и просто дописывается в конец.
+  if (!o.parent) closeAllMenus();
+
   const w = o.width || 232;
   const h = o.height || (items.length * 30 + 14);
 
@@ -506,24 +546,11 @@ function showContextMenu(x, y, items, opts) {
   m.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 6)) + 'px';
   m.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 6)) + 'px';
 
-  /*
-   * Элемент меню:
-   *   check: true|false — галочка, пункт-переключатель в подменю «Вид»
-   *   items: [...]      — подменю, раскрывается вправо по наведению
-   *   off               — пункт неактивен
-   */
-  const closeAll = () => {
-    for (const c of document.querySelectorAll('.ctxmenu')) c.remove();
-    document.removeEventListener('mousedown', kill, true);
-    window.removeEventListener('blur', onBlur);
-    document.removeEventListener('keydown', onEsc);
-  };
-
   for (const it of items) {
     if (it.sep) {
-      const s = document.createElement('div');
-      s.className = 'ctxmenu-sep';
-      m.append(s);
+      const sep = document.createElement('div');
+      sep.className = 'ctxmenu-sep';
+      m.append(sep);
       continue;
     }
     const b = document.createElement('button');
@@ -545,44 +572,71 @@ function showContextMenu(x, y, items, opts) {
     b.append(l, hn);
 
     if (it.items) {
-      // Подменю держим открытым, пока курсор над цепочкой.
       b.classList.add('ctxmenu-parent');
-      let sub = null;
       b.onmouseenter = () => {
-        if (sub) return;
+        // Переход на соседний пункт-подменю: старое подменю убираем.
+        for (const other of menuChain) {
+          if (other.parent === m && other.item !== b) dropSubmenu(m, other.item);
+        }
+        if (b._sub && b._sub.isConnected) return;   // уже открыто, не мигаем
         const r = b.getBoundingClientRect();
-        sub = showContextMenu(r.right - 4, r.top - 5, it.items, {
-          width: o.subWidth || 232, parent: m, keepParent: true,
+        b._sub = showContextMenu(r.right - 4, r.top - 5, it.items, {
+          width: o.subWidth || 232, parent: m, parentItem: b,
         });
       };
+      // Клик по пункту-подменю ничего не выполняет: это не действие.
       b.onclick = (e) => e.stopPropagation();
     } else {
-      b.onclick = () => { closeAll(); it.act(); };
+      b.onclick = () => { closeAllMenus(); it.act(); };
     }
     m.append(b);
   }
 
   document.body.append(m);
-  if (o.parent && o.keepParent) o.parent._keep = true;
-  // Клик мимо закрывает всю цепочку. Клик внутри подменю не закрывает:
-  // подменю — отдельный .ctxmenu, и e.target.closest('.ctxmenu') его найдёт.
-  const kill = (e) => {
-    if (!e.target.closest || !e.target.closest('.ctxmenu')) closeAll();
-  };
-  // По Esc меню закрывается — иначе после ПКМ его нечем убрать с клавиатуры.
-  const onEsc = (e) => {
-    if (e.key !== 'Escape') return;
-    closeAll();
-  };
-  const onBlur = () => closeAll();
-  setTimeout(() => {
-    document.addEventListener('mousedown', kill, true);
-    document.addEventListener('keydown', onEsc);
-    window.addEventListener('blur', onBlur);
-  }, 0);
+  menuChain.push({ menu: m, parent: o.parent || null, item: o.parentItem || null });
+
+  // Слушатели вешаем на весь корень, а не на каждый вызов: иначе на
+  // подменю висели бы копии, и закрытие одного закрывало бы не своё.
+  if (!o.parent) {
+    setTimeout(() => {
+      if (!menuChain.length) return;
+      document.addEventListener('mousedown', onMenuDown, true);
+      document.addEventListener('keydown', onMenuKey, true);
+      document.addEventListener('mouseover', onMenuHover, true);
+      window.addEventListener('blur', onMenuBlur);
+    }, 0);
+  }
   m.addEventListener('contextmenu', (e) => e.preventDefault());
   return m;
 }
+
+function onMenuDown(e) {
+  // Клик внутри подменю не закрывает меню: подменю — отдельный .ctxmenu, и
+  // e.target.closest('.ctxmenu') его найдёт.
+  if (!e.target.closest || !e.target.closest('.ctxmenu')) closeAllMenus();
+}
+
+function onMenuKey(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); closeAllMenus(); }
+}
+
+/**
+ * Курсор ушёл из всех открытых меню — закрываем цепочку.
+ *
+ * Раньше закрытия по уходу курсора не было вовсе: меню с подменю оставалось
+ * висеть после того, как мышь ушла из него (в меню иконки это выглядело так,
+ * будто оно залипло). Слушатель на mouseover, а не на mousemove: событий
+ * меньше, а нужны именно уходы курсора.
+ */
+function onMenuHover(e) {
+  if (!menuChain.length) return;
+  for (const link of menuChain) {
+    if (link.menu.contains(e.target)) return;
+  }
+  closeAllMenus();
+}
+
+function onMenuBlur() { closeAllMenus(); }
 
 function tabContextMenu(id, x, y) {
   const ids = [...tabs.keys()];
