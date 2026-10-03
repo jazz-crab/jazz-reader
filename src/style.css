@@ -68,15 +68,28 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     -webkit-app-region: drag;               /* тянем окно за пустое место */
 }
 .tabbar-spacer { flex: 1 1 auto; -webkit-app-region: drag; }
+/* Иконка приложения слева от вкладок */
+.tabbar-brand {
+    -webkit-app-region: no-drag;
+    align-self: center; display: flex; align-items: center;
+    padding: 0 7px 0 2px; opacity: .9;
+}
+.tabbar-brand svg { display: block; border-radius: 5px; }
+.tabbar-brand:hover { opacity: 1; }
 .tab-new {
     -webkit-app-region: no-drag;
     align-self: center; margin: 0 2px;
     width: 26px; height: 26px; border-radius: 6px;
     background: transparent; border: 1px solid transparent;
-    color: var(--fg-dark); font-size: 18px; line-height: 1; cursor: pointer;
-    font-family: var(--mono);
+    color: var(--fg-dark); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
 }
+.tab-new .ico-svg { width: 15px; height: 15px; }
 .tab-new:hover { background: var(--bg-soft); color: var(--fg); border-color: var(--border); }
+/* Меню «+» выезжает влево, чтобы не уезжать за край окна справа */
+.tabnew-menu { position: relative; -webkit-app-region: no-drag; align-self: center; }
+.tabnew-menu .dropdown-menu { right: 0; left: auto; min-width: 214px; }
+.tabnew-menu:not(.open) .dropdown-menu { display: none; }
 
 .tabs { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { height: 0; }
@@ -90,6 +103,12 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     white-space: nowrap; overflow: hidden;
 }
 .tab:hover { background: var(--bg-soft); }
+
+/* Перетаскивание вкладок */
+.tab.dragging { opacity: .38; }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--blue); }
+.tab.drop-after { box-shadow: inset -2px 0 0 var(--blue); }
+.tabs.dragging-active .tab { cursor: grabbing; }
 .tab.active {
     background: var(--bg); color: var(--fg);
     border-color: var(--border); border-bottom-color: var(--bg);
@@ -305,6 +324,13 @@ body.side-hidden .sidebar-resizer { display: none; }
 }
 .ctxmenu-item:hover:not(:disabled) { background: var(--bg-select); }
 .ctxmenu-item:disabled { color: var(--comment); cursor: default; opacity: .6; }
+/* Опасные пункты (удаление) — красным, чтобы не промахнуться */
+.ctxmenu-item.ctxmenu-danger { color: var(--red); }
+.ctxmenu-item.ctxmenu-danger:hover:not(:disabled) {
+    background: rgba(247, 118, 142, .16);
+}
+.ctxmenu-item .ico-svg { width: 14px; height: 14px; }
+.ctxmenu-item:has(.ico-svg) { padding-left: 7px; }
 .ctxmenu-hint { margin-left: auto; color: var(--comment); font-size: 11px; }
 .ctxmenu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .tree-item .fi { display: inline-flex; align-items: center; color: var(--blue); flex: 0 0 auto; }

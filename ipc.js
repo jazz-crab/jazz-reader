@@ -217,6 +217,24 @@ function register() {
   });
 
   ipcMain.handle('mdv:reveal', (_e, p) => { shell.showItemInFolder(p); });
+
+  /**
+   * Удаление заметки. Кладём в КОРЗИНУ, а не unlink: удаление из ПКМ по
+   * дереву — необратимая операция одним кликом, и shell.trashItem даёт
+   * «не отправилось в корзину» как страховку. Возвращает {ok} или {ok:false,
+   * error} — renderer покажет текст.
+   */
+  ipcMain.handle('mdv:trash', async (_e, p) => {
+    try {
+      const st = await fsp.stat(p);
+      if (!st.isFile()) return { ok: false, error: 'Это не файл' };
+      await shell.trashItem(path.resolve(p));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
   ipcMain.handle('mdv:print', () => {
     const w = targetWindow();
     if (w) w.webContents.print({ silent: false, printBackground: true });

@@ -253,26 +253,20 @@ async function closeAll() {
   if (!tabs.size) newTab();
 }
 
-function tabContextMenu(id, x, y) {
+/**
+ * Общее контекстное меню: {label, hint, act, off} и {sep:true}.
+ * Один код и для вкладки, и для файла в дереве — иначе две копии разъедутся.
+ */
+function showContextMenu(x, y, items, opts) {
   document.querySelector('.ctxmenu')?.remove();
-  const ids = [...tabs.keys()];
-  const i = ids.indexOf(id);
-  const count = ids.length;
-  const other = count - 1;
+  const o = opts || {};
+  const w = o.width || 232;
+  const h = o.height || (items.length * 30 + 14);
 
   const m = document.createElement('div');
   m.className = 'ctxmenu';
-  m.style.left = Math.min(x, window.innerWidth - 232) + 'px';
-  m.style.top = Math.min(y, window.innerHeight - 232) + 'px';
-
-  const items = [
-    { label: 'Закрыть вкладку', hint: 'Ctrl+W', act: () => closeTab(id) },
-    { label: 'Закрыть все кроме этой', hint: other ? other + ' шт.' : '', act: () => closeOthers(id), off: other < 1 },
-    { label: 'Закрыть все справа', hint: count - i - 1 ? count - i - 1 + ' шт.' : '', act: () => closeToRight(id), off: i >= count - 1 },
-    { label: 'Закрыть все слева', hint: i ? i + ' шт.' : '', act: () => closeToLeft(id), off: i < 1 },
-    { sep: true },
-    { label: 'Закрыть все вкладки', hint: count ? count + ' шт.' : '', act: () => closeAll(), off: count < 1 },
-  ];
+  m.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 6)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 6)) + 'px';
 
   for (const it of items) {
     if (it.sep) {
@@ -282,25 +276,243 @@ function tabContextMenu(id, x, y) {
       continue;
     }
     const b = document.createElement('button');
-    b.className = 'ctxmenu-item';
+    b.className = 'ctxmenu-item' + (it.danger ? ' ctxmenu-danger' : '');
     b.disabled = !!it.off;
     const l = document.createElement('span');
     l.textContent = it.label;
-    const h = document.createElement('span');
-    h.className = 'ctxmenu-hint';
-    h.textContent = it.hint || '';
-    b.append(l, h);
+    const hn = document.createElement('span');
+    hn.className = 'ctxmenu-hint';
+    hn.textContent = it.hint || '';
+    b.append(l, hn);
     b.onclick = () => { m.remove(); it.act(); };
     m.append(b);
   }
 
   document.body.append(m);
   const kill = (e) => {
-    if (!m.contains(e.target)) { m.remove(); document.removeEventListener('mousedown', kill, true); }
+    if (!m.contains(e.target)) {
+      m.remove();
+      document.removeEventListener('mousedown', kill, true);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('keydown', onEsc);
+    }
   };
-  setTimeout(() => document.addEventListener('mousedown', kill, true), 0);
-  // Alt+F4 и контекстное меню не должны закрывать вкладку по умолчанию
+  // По Esc меню закрывается — иначе после ПКМ его нечем убрать с клавиатуры.
+  const onEsc = (e) => {
+    if (e.key !== 'Escape') return;
+    m.remove();
+    document.removeEventListener('mousedown', kill, true);
+    window.removeEventListener('blur', onBlur);
+    document.removeEventListener('keydown', onEsc);
+  };
+  const onBlur = () => {
+    m.remove();
+    document.removeEventListener('mousedown', kill, true);
+    document.removeEventListener('keydown', onEsc);
+  };
+  setTimeout(() => {
+    document.addEventListener('mousedown', kill, true);
+    document.addEventListener('keydown', onEsc);
+    window.addEventListener('blur', onBlur);
+  }, 0);
   m.addEventListener('contextmenu', (e) => e.preventDefault());
+  return m;
+}
+
+function tabContextMenu(id, x, y) {
+  const ids = [...tabs.keys()];
+  const i = ids.indexOf(id);
+  const count = ids.length;
+  const other = count - 1;
+
+  return showContextMenu(x, y, [
+    { label: 'Дублировать', act: () => duplicateTab(id) },
+    { sep: true },
+    { label: 'Закрыть вкладку', hint: 'Ctrl+W', act: () => closeTab(id) },
+    { label: 'Закрыть все кроме этой', hint: other ? other + ' шт.' : '', act: () => closeOthers(id), off: other < 1 },
+    { label: 'Закрыть все справа', hint: count - i - 1 ? count - i - 1 + ' шт.' : '', act: () => closeToRight(id), off: i >= count - 1 },
+    { label: 'Закрыть все слева', hint: i ? i + ' шт.' : '', act: () => closeToLeft(id), off: i < 1 },
+    { sep: true },
+    { label: 'Закрыть все вкладки', hint: count ? count + ' шт.' : '', act: () => closeAll(), off: count < 1 },
+  ]);
+}
+
+/**
+ * Контекстное меню файла в дереве.
+ *   Просмотр           — открыть в текущей вкладке
+ *   Отложенный просмотр — открыть в новой вкладке, фокус остаётся здесь
+ *   Редактировать      — открыть и сразу войти в режим правки
+ *   Удалить            — в корзину Windows, с подтверждением
+ */
+function fileContextMenu(full, x, y) {
+  const open = findTabByPath(full);
+  const label = basname(full);
+  const dirtyTab = open && open.dirty;
+
+  return showContextMenu(x, y, [
+    {
+      label: 'Просмотр',
+      hint: open ? 'уже открыта' : 'Ctrl+O',
+      act: () => openPath(full, { newTab: false }),
+    },
+    {
+      label: 'Отложенный просмотр',
+      hint: open ? 'уже открыта' : 'в фоне',
+      act: () => openPath(full, { newTab: true, background: true }),
+    },
+    {
+      label: 'Редактировать',
+      off: !!dirtyTab,
+      hint: dirtyTab ? 'есть правки' : 'Ctrl+E',
+      act: async () => {
+        const t = await openPath(full, { newTab: true });
+        if (!t) return;
+        if (t.mode !== 'edit') { t.mode = 'edit'; renderActive(); el.editor.focus(); }
+      },
+    },
+    { sep: true },
+    {
+      label: 'Показать в проводнике',
+      act: () => api.reveal(full),
+    },
+    {
+      label: 'Удалить',
+      danger: true,
+      off: !!dirtyTab,
+      hint: dirtyTab ? 'есть несохранённые правки' : 'в корзину',
+      act: () => trashFile(full, label),
+    },
+  ], { width: 250, height: 250 });
+}
+
+/** Удаление в корзину: спрашиваем и имя файла, и сам факт. */
+async function trashFile(full, label) {
+  const open = findTabByPath(full);
+  if (open && open.dirty) {
+    status('В «' + open.name + '» есть несохранённые правки — удаление отменено', 'err');
+    return;
+  }
+  const ok = await askConfirm(
+    'Удалить «' + label + '»?\n\nФайл уйдёт в корзину, его можно будет вернуть.',
+    'В корзину'
+  );
+  if (!ok) return;
+  const res = await api.trash(full);
+  if (!res || !res.ok) {
+    status('Не удалось удалить: ' + ((res && res.error) || 'неизвестно'), 'err');
+    return;
+  }
+  // Закрываем вкладку с удалённым файлом, чтобы не повисла со старым текстом.
+  if (open) await closeTab(open.id);
+  // Пересобираем дерево: файл мог лежать в корне или во вложенной папке.
+  for (const r of roots) {
+    const fresh = await api.listMd(r.path);
+    if (fresh) { r.tree = fresh.tree; r.total = fresh.total; }
+  }
+  renderTree();
+  refreshTreeSelection();
+  status('Удалено в корзину: ' + label, 'ok');
+}
+
+/** Дублирование вкладки: та же заметка, новая вкладка сразу справа. */
+async function duplicateTab(id) {
+  const src = tabs.get(id);
+  if (!src) return;
+  if (!src.path) { status('Пустую вкладку дублировать нечего'); return; }
+  // findTabByPath вернёт уже открытую вкладку, поэтому читаем файл в обход
+  // openPath и создаём вкладку напрямую.
+  const data = await api.read(src.path).catch(() => null);
+  if (!data) { status('Не удалось прочитать ' + src.name, 'err'); return; }
+  const t = blankTab();
+  applyData(t, data);
+  t.hist = [{ path: data.path, anchor: null }];
+  t.hi = 0;
+  selectTab(t.id);
+  // Ставим копию сразу за исходной (moveTab перерисовывает сам).
+  moveTab(t.id, id);
+  renderActive();
+  status('Дублировано: ' + t.name, 'ok');
+}
+
+/** Переставить вкладку id сразу после after (порядок задаёт Map). */
+function moveTab(id, after) {
+  const entries = [...tabs.entries()];
+  const idx = entries.findIndex(([k]) => k === id);
+  if (idx === -1) return;
+  const [entry] = entries.splice(idx, 1);
+  let to = after === undefined ? entries.length : entries.findIndex(([k]) => k === after);
+  if (to === -1) to = entries.length;
+  entries.splice(to + 1, 0, entry);
+  tabs.clear();
+  for (const [k, v] of entries) tabs.set(k, v);
+  // Порядок в DOM обязан совпадать с порядком в Map, иначе вкладки после
+  // перестановки выглядят старыми, а Ctrl+Tab идёт по новому.
+  renderTabs();
+  refreshTreeSelection();
+}
+
+/** Перетаскивание вкладок мышью: сортировка по середине элементов. */
+function initTabDrag() {
+  let dragId = null;
+
+  el.tabs.addEventListener('dragstart', (e) => {
+    const d = e.target.closest('.tab');
+    if (!d) return;
+    const t = tabs.get(+d.dataset.id);
+    if (!t || !t.path) { e.preventDefault(); return; }  // пустые не таскаем
+    dragId = +d.dataset.id;
+    d.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox требует данные, иначе drag не стартует
+    e.dataTransfer.setData('text/plain', t.name);
+  });
+
+  el.tabs.addEventListener('dragend', () => {
+    dragId = null;
+    for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('dragging', 'drop-before', 'drop-after');
+  });
+
+  el.tabs.addEventListener('dragover', (e) => {
+    if (dragId === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const over = e.target.closest('.tab');
+    for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('drop-before', 'drop-after');
+    if (!over || +over.dataset.id === dragId) return;
+    const r = over.getBoundingClientRect();
+    over.classList.add(e.clientX < r.left + r.width / 2 ? 'drop-before' : 'drop-after');
+  });
+
+  el.tabs.addEventListener('drop', (e) => {
+    if (dragId === null) return;
+    e.preventDefault();
+    const over = e.target.closest('.tab');
+    for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('drop-before', 'drop-after');
+    if (over && +over.dataset.id !== dragId) {
+      const r = over.getBoundingClientRect();
+      const before = e.clientX < r.left + r.width / 2;
+      // Ставим перед или после целевой вкладки.
+      const ids = [...tabs.keys()];
+      const target = +over.dataset.id;
+      const ti = ids.indexOf(target);
+      const ref = before ? (ti > 0 ? ids[ti - 1] : null) : target;
+      // moveTab сам перерисовывает DOM; после «перед самой первой» (ref === null)
+      // он уводит вкладку в конец, поэтому докручиваем руками.
+      moveTab(dragId, ref === null ? undefined : ref);
+      if (before && ti === 0) {
+        const tmp = [...tabs.entries()];
+        const e2 = tmp.splice(tmp.findIndex(([k]) => k === dragId), 1)[0];
+        tabs.clear();
+        tabs.set(e2[0], e2[1]);
+        for (const [k, v] of tmp) tabs.set(k, v);
+        renderTabs();
+        refreshTreeSelection();
+      }
+      renderActive();
+      refreshTreeSelection();
+    }
+    dragId = null;
+  });
 }
 
 function renderTabs() {
@@ -308,6 +520,8 @@ function renderTabs() {
   for (const t of tabs.values()) {
     const d = document.createElement('div');
     d.className = 'tab' + (t.id === activeId ? ' active' : '');
+    d.dataset.id = String(t.id);
+    d.draggable = !!t.path;
     d.title = t.path || t.name;
     if (t.id === activeId) d.focus();   // чтобы Shift+F10 и клавиатура работали на активной вкладке
     const nm = document.createElement('span');
@@ -399,7 +613,12 @@ function pushHist(t, p, anchor) {
 async function openPath(p, opts) {
   opts = opts || {};
   const existing = findTabByPath(p);
-  if (existing) { selectTab(existing.id); return existing; }
+  if (existing) {
+    // Отложенный просмотр уже открытой вкладки не должен перехватывать фокус
+    if (!opts.background) selectTab(existing.id);
+    return existing;
+  }
+  const prevActive = activeId;
   try {
     status('Открываю ' + basname(p) + '…');
     const data = await api.read(p);
@@ -407,7 +626,26 @@ async function openPath(p, opts) {
     applyData(t, data);
     t.hist = [{ path: data.path, anchor: null }];
     t.hi = 0;
-    selectTab(t.id);
+
+    if (opts.background) {
+      // Вкладка появляется и рендерится, но фокус остаётся на прежней.
+      // html готовим сразу, иначе переключение на неё потом подтормаживало бы
+      // (renderActive рендерит лениво, при первом показе).
+      t.html = null;
+      try {
+        t.html = MDV.renderMd(t.raw, t.baseUrl);
+      } catch (e) {
+        t.html = '<pre style="color:var(--red)">Ошибка рендера: '
+          + MDV.escapeHtml(String(e.message || e)) + '</pre>';
+      }
+      activeId = prevActive;
+      if (!tabs.has(prevActive)) activeId = t.id;
+      renderTabs();
+      renderActive();
+      refreshTreeSelection();
+    } else {
+      selectTab(t.id);
+    }
     status(data.encoding.toUpperCase() + ' · ' + fmtSize(t.size) + ' · ' + t.name, 'ok');
     return t;
   } catch (e) {
@@ -773,6 +1011,7 @@ function renderTree() {
           row.dataset.path = it.full;
           if (openInSome && !isCur) row.title = it.full + ' — открыт в другой вкладке';
           row.onclick = () => openPath(it.full, { newTab: true });
+          row.oncontextmenu = (e) => { e.preventDefault(); fileContextMenu(it.full, e.clientX, e.clientY); };
           box.append(row);
         }
         if (box.childNodes.length) el.paneFiles.append(box);
@@ -983,7 +1222,24 @@ el.content.addEventListener('click', (e) => {
 });
 
 // --- кнопки
-el.btnNewTab.onclick = () => newTab();
+// «+» открывает меню, а не сразу системный диалог: файлы, папка, пустая
+// вкладка. Раньше это была мгновенная пустая вкладка, а файлы открывались
+// отдельными кнопками тулбара — в шапке вкладок не хватало «что вообще можно».
+const newTabWrap = $('newTabWrap');
+const newTabMenu = $('newTabMenu');
+el.btnNewTab.onclick = (e) => {
+  e.stopPropagation();
+  newTabWrap.classList.toggle('open');
+};
+document.addEventListener('click', () => newTabWrap.classList.remove('open'));
+newTabMenu.onclick = async (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  newTabWrap.classList.remove('open');
+  if (b.dataset.act === 'file') { newTab(); await openFileDialog(); }
+  else if (b.dataset.act === 'folder') { newTab(); await openFolderDialog(); }
+  else newTab();
+};
 el.btnOpenFile.onclick = openFileDialog;
 el.wOpenFile.onclick = openFileDialog;
 el.btnOpenFolder.onclick = openFolderDialog;
@@ -1079,6 +1335,9 @@ $('btnCloseToc').onclick = () => toggleToc(false);
 el.tocOverlay.addEventListener('click', (e) => { if (e.target === el.tocOverlay) toggleToc(false); });
 
 el.treeFilter.addEventListener('input', renderTree);
+
+// Перетаскивание вкладок
+initTabDrag();
 
 // --- ресайз сайдбара
 (() => {
@@ -1234,6 +1493,7 @@ window.__mdvTest = {
   addFolder, renderTree, renderActive, refreshTreeSelection,
   roots, tabs, closeTab,
   newTab, openPath, active, stepTab, selectTab, samePath,
+  duplicateTab, moveTab, fileContextMenu, tabContextMenu, trashFile, basname,
   setConfirm: (fn) => { __confirmHook = fn; },
 };
 

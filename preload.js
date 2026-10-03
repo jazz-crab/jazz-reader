@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('mdv', {
   dialogFile: () => ipcRenderer.invoke('mdv:dialogFile'),
   dialogFolder: () => ipcRenderer.invoke('mdv:dialogFolder'),
   reveal: (p) => ipcRenderer.invoke('mdv:reveal', p),
+  /** Удаление в корзину Windows (не безвозвратно). {ok, error} */
+  trash: (p) => ipcRenderer.invoke('mdv:trash', p),
   print: () => ipcRenderer.invoke('mdv:print'),
   exportHtml: (payload) => ipcRenderer.invoke('mdv:exportHtml', payload),
 

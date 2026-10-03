@@ -229,7 +229,9 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('ПКМ по вкладке открывает меню', r.shown === true);
-  t('в меню 5 пунктов', r.labels && r.labels.length === 5,
+  t('в меню 6 пунктов', r.labels && r.labels.length === 6,
+    r.labels ? JSON.stringify(r.labels) : '');
+  t('есть «Дублировать»', (r.labels || []).some((l) => /Дублировать/.test(l)),
     r.labels ? JSON.stringify(r.labels) : '');
   t('есть «Закрыть вкладку»', (r.labels || []).some((l) => /Закрыть вкладку/.test(l)));
   t('есть «Закрыть все кроме этой»', (r.labels || []).some((l) => /кроме этой/.test(l)));
@@ -389,6 +391,205 @@ const SILENCE_CONFIRM = `(() => {
   t('заголовок окна без имени файла', r.title === 'MDView', r.title);
   t('вкладка без файла при открытой папке показывает дерево', r.folderWelcome === true);
   t('дерево видно в этом состоянии', r.treeVisible === true);
+
+  // ------------------------------------- ПКМ по файлу, дублирование, плюсик
+  console.log('\n== меню файла, дублирование, перетаскивание ==');
+
+  // Контекстное меню файла в дереве
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = 'keysample/';
+    await M.addFolder('keysample/');
+    await new Promise(r2 => setTimeout(r2, 300));
+    document.querySelector('.ctxmenu')?.remove();
+    const row = [...document.querySelectorAll('#paneFiles .tree-item')]
+      .find(x => x.querySelector('.fn').textContent === 'DDD.md');
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    const m = document.querySelector('.ctxmenu');
+    return JSON.stringify(m ? {
+      shown: true,
+      labels: [...m.querySelectorAll('.ctxmenu-item')].map(b => b.querySelector('span').textContent),
+      danger: [...m.querySelectorAll('.ctxmenu-item')].map(b => b.classList.contains('ctxmenu-danger')),
+      openTabBefore: M.active().name,
+    } : { shown: false });
+  })()`));
+
+  t('ПКМ по файлу открывает меню', r.shown === true);
+  t('есть «Просмотр»', (r.labels || []).some((l) => l === 'Просмотр'), JSON.stringify(r.labels));
+  t('есть «Отложенный просмотр»', (r.labels || []).some((l) => /Отложенный/.test(l)));
+  t('есть «Редактировать»', (r.labels || []).some((l) => l === 'Редактировать'));
+  t('есть «Удалить»', (r.labels || []).some((l) => l === 'Удалить'));
+  t('«Удалить» помечен как опасный',
+    r.danger && r.danger[r.danger.length - 1] === true, JSON.stringify(r.danger));
+
+  // Отложенный просмотр: вкладка появляется, фокус остаётся
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = 'keysample/';
+    document.querySelector('.ctxmenu')?.remove();
+    await M.openPath(D + 'AAA.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 250));
+    const before = M.active().name;
+    await M.openPath(D + 'DDD.md', { newTab: true, background: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    const names = [...M.tabs.values()].map(t => t.name);
+    const ddd = [...M.tabs.values()].find(t => t.name === 'DDD.md');
+    return JSON.stringify({
+      before, activeAfter: M.active().name, names,
+      tabCount: names.length,
+      // фоновая вкладка должна быть уже отрендерена, а не ждать первого показа
+      preRendered: !!(ddd && ddd.html && ddd.html.length > 50),
+    });
+  })()`));
+
+  t('отложенный просмотр не перехватывает фокус', r.activeAfter === r.before,
+    'было ' + r.before + ', стало ' + r.activeAfter);
+  t('фоновая вкладка появилась', r.names.includes('DDD.md'), JSON.stringify(r.names));
+  t('фоновая вкладка отрендерена заранее', r.preRendered === true);
+
+  // Дублирование
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.duplicateTab([...M.tabs.keys()][0]);
+    await new Promise(r2 => setTimeout(r2, 350));
+    return JSON.stringify({
+      names: [...M.tabs.values()].map(t => t.name),
+      count: M.tabs.size,
+      activeIsCopy: M.active().name,
+    });
+  })()`));
+
+  t('дублирование создало вторую вкладку', r.count >= 3, JSON.stringify(r.names));
+  t('в списке есть два одинаковых имени', (function () {
+    const n = r.names || [];
+    return n.some((x, i) => n.indexOf(x) !== i);
+  })(), JSON.stringify(r.names));
+  t('дубликат активен', r.activeIsCopy != null);
+
+  // Перестановка вкладок
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const before = [...M.tabs.keys()];
+    const last = before[before.length - 1];
+    M.moveTab(last, before[0]);           // последнюю сразу за первой
+    await new Promise(r2 => setTimeout(r2, 200));
+    const after = [...M.tabs.keys()];
+    const domOrder = [...document.querySelectorAll('.tab')].map(x => +x.dataset.id);
+    return JSON.stringify({
+      before, after,
+      matchesDom: JSON.stringify(after) === JSON.stringify(domOrder),
+      movedToSecond: after[1] === last,
+      draggable: [...document.querySelectorAll('.tab')].filter(x => x.draggable).length,
+    });
+  })()`));
+
+  t('вкладка переставлена', r.movedToSecond === true,
+    'было ' + JSON.stringify(r.before) + ' стало ' + JSON.stringify(r.after));
+  t('порядок DOM совпадает с порядком вкладок', r.matchesDom === true,
+    'tabs=' + JSON.stringify(r.after) + ' dom=' + JSON.stringify(r.domOrder || []));
+
+  // Таббар: иконка слева, плюс справа
+  r = JSON.parse(await js(`(async () => {
+    const bar = document.getElementById('tabbar');
+    const kids = [...bar.children].map(k => k.id || k.className);
+    const brand = document.getElementById('appBrand');
+    const plus = document.getElementById('btnNewTab');
+    const wrap = document.getElementById('newTabWrap');
+    const iTabs = [...bar.children].indexOf(bar.querySelector('.tabs'));
+    const iWrap = [...bar.children].indexOf(wrap);
+    const iSpacer = [...bar.children].indexOf(bar.querySelector('.tabbar-spacer'));
+    const res = { kids, brandLeft: bar.children[0] === brand, iTabs, iWrap, iSpacer,
+      plusInWrap: plus.parentElement === wrap,
+      // порядок именно такой: иконка | вкладки | плюс | распорка
+      plusAfterTabs: iTabs < iWrap && !!(plus.parentElement === wrap),
+      plusBeforeSpacer: iWrap < iSpacer };
+    // плюс открывает меню
+    document.querySelector('.ctxmenu')?.remove();
+    plus.click();
+    await new Promise(r2 => setTimeout(r2, 150));
+    res.menuOpen = document.getElementById('newTabWrap').classList.contains('open');
+    res.menuItems = [...document.querySelectorAll('#newTabMenu button')].map(b => b.textContent.trim());
+    res.plusIsIcon = !!plus.querySelector('svg');
+    res.brandIsSvg = !!brand.querySelector('svg');
+    return JSON.stringify(res);
+  })()`));
+
+  t('иконка приложения первая слева', r.brandLeft === true, JSON.stringify(r.kids));
+  t('плюс после вкладок и перед распоркой', r.plusAfterTabs === true && r.plusBeforeSpacer === true,
+    JSON.stringify(r.kids));
+  t('плюс — иконка, не символ +', r.plusIsIcon === true);
+  t('иконка приложения — svg', r.brandIsSvg === true);
+  t('плюс открывает меню', r.menuOpen === true);
+  t('в меню плюса 3 пункта', (r.menuItems || []).length === 3, JSON.stringify(r.menuItems));
+  t('в меню плюса есть пустая вкладка', (r.menuItems || []).some((l) => /пустая/.test(l)));
+
+  // ------------------------------------------------- удаление в корзину
+  // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
+  // через IPC. Отмену тоже проверяем — файл должен остаться на месте.
+  console.log('\n== удаление в корзину ==');
+  const doomed = path.join(notesDir, 'doomed.md');
+  fs.writeFileSync(doomed, '# удалить меня\n', 'utf8');
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const p = ${JSON.stringify(doomed)};
+    let asked = null;
+    M.setConfirm((title) => { asked = title; return false; });
+    await M.trashFile(p, 'doomed.md');
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ asked, stillThere: M.existsSync ? M.existsSync(p) : null });
+  })()`));
+
+  t('удаление спрашивает подтверждение', !!r.asked, String(r.asked));
+  t('в вопросе есть имя файла', /doomed\.md/.test(String(r.asked)), String(r.asked));
+  t('после отказа файл на месте', fs.existsSync(doomed) === true);
+
+  // теперь соглашаемся
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setConfirm(() => true);
+    await M.trashFile(${JSON.stringify(doomed)}, 'doomed.md');
+    return 1;
+  })()`);
+  await sleep(700);
+
+  t('после согласия файл исчез с диска', !fs.existsSync(doomed));
+
+  // Несохранённая вкладка блокирует удаление
+  const guard = path.join(notesDir, 'guard.md');
+  fs.writeFileSync(guard, '# страж\n', 'utf8');
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.openPath(${JSON.stringify(guard)}, { newTab: true });
+    const t = M.active();
+    t.mode = 'edit'; t.raw = '# мусор'; t.dirty = true;
+    M.renderActive();
+    return 1;
+  })()`);
+  await sleep(300);
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    let asked = null;
+    M.setConfirm((t) => { asked = t; return true; });
+    await M.trashFile(${JSON.stringify(guard)}, 'guard.md');
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ asked });
+  })()`));
+  t('несохранённая вкладка блокирует удаление',
+    r.asked === null && fs.existsSync(guard) === true, JSON.stringify(r));
+  t('при блокировке показан статус с отказом',
+    /удаление отменено/.test(await js("document.getElementById('statusText').textContent")),
+    await js("document.getElementById('statusText').textContent"));
+
+  // приводим дерево в порядок к следующим секциям
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setConfirm(null);
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    document.querySelector('.ctxmenu')?.remove();
+    return 1;
+  })()`);
 
   console.log('\nитого: ' + pass + ' ok, ' + fail + ' FAIL\n');
   c.close();
