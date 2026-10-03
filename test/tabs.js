@@ -170,7 +170,7 @@ const SILENCE_CONFIRM = `(() => {
 
     // Подменяем askConfirm: тест не должен зависнуть на диалоге
     window.__asked = [];
-    window.__mdvTest.setConfirm((title) => { window.__asked.push(title); return false; });
+    window.__mdvTest.setConfirm((title) => { window.__asked.push(title); return null; });
 
     document.getElementById('btnCancelEdit').click();
     await new Promise(r2 => setTimeout(r2, 250));
@@ -750,7 +750,7 @@ const SILENCE_CONFIRM = `(() => {
     M.setSettings({ autosave: false });
     const t = M.active();
     let asked = 0;
-    M.setConfirm(() => { asked++; return false; });
+    M.setConfirm(() => { asked++; return null; });
     // exitEdit не экспортирован — дёргаем кнопку «Отменить»
     document.getElementById('btnCancelEdit').click();
     await new Promise(r2 => setTimeout(r2, 350));
@@ -764,7 +764,7 @@ const SILENCE_CONFIRM = `(() => {
     const M = window.__mdvTest;
     M.setSettings({ autosave: true });
     let asked = 0;
-    M.setConfirm(() => { asked++; return false; });
+    M.setConfirm(() => { asked++; return null; });
     document.getElementById('btnCancelEdit').click();
     await new Promise(r2 => setTimeout(r2, 600));
     return JSON.stringify({
@@ -1231,7 +1231,7 @@ const SILENCE_CONFIRM = `(() => {
     t.dirty = true;
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 150));
-    M.setConfirm(() => false);
+    M.setConfirm(() => null);
     document.getElementById('btnCancelEdit').click();
     await new Promise(r2 => setTimeout(r2, 400));
     return JSON.stringify({
@@ -1245,12 +1245,13 @@ const SILENCE_CONFIRM = `(() => {
   t('отказ от отмены сохраняет правки', r.dirty === true);
   t('отказ от отмены не пишет «Правки отменены»', !/Правки отменены/.test(r.text || ''), r.text);
 
-  // Теперь подтверждаем отмену — вот тут жёлтый статус.
+  // Теперь выбираем «Отменить» (выбросить правки) — вот тут жёлтый статус.
+  // null = закрыть без ответа, false = «Отменить» (выбросить), true = «Сохранить».
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const sb = document.getElementById('statusbar');
     const t = M.active();
-    M.setConfirm(() => true);
+    M.setConfirm(() => false);
     document.getElementById('btnCancelEdit').click();
     await new Promise(r2 => setTimeout(r2, 500));
     const res = {
@@ -1316,6 +1317,154 @@ const SILENCE_CONFIRM = `(() => {
 
   t('без файла в нижней панели пусто', r.name === '' && r.dash === false, JSON.stringify(r.name));
   t('без файла док режима скрыт', r.dockHidden === true);
+
+  // ---------------------------------------------- диалог «Сохранить правки?»
+  console.log('\n== диалог несохранённых правок ==');
+
+  // Готовим вкладку с правками и снимаем настоящий диалог (хук снимаем,
+  // иначе его подменит).
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const T = ${JSON.stringify(TABS_DIR)};
+    M.setConfirm(null);
+    await M.openPath(T + '/Открываемый.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    document.getElementById('btnMode').click();
+    await new Promise(r2 => setTimeout(r2, 200));
+    const t = M.active();
+    t.raw = t._diskRaw + '\\n\\nнесохранённый черновик\\n';
+    t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 200));
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const back = document.querySelector('.modal-back');
+    const box = back && back.querySelector('.modal-box');
+    return JSON.stringify({
+      shown: !!back,
+      msg: back ? (back.querySelector('.dlg-msg') || {}).textContent : '',
+      note: back ? (back.querySelector('.dlg-note') || {}).textContent : '',
+      buttons: back ? [...back.querySelectorAll('.dlgbtn')].map(b => ({
+        text: b.textContent, cls: b.className,
+      })) : [],
+      hasX: !!(back && back.querySelector('.dlg-x')),
+      xIsIcon: !!(back && back.querySelector('.dlg-x svg')),
+      // Оформление как у остальных окон: общий .modal-box, и inline остались
+      // только на размеры коробки. Оформление (фон, рамка, шрифт) — классами.
+      sharedBox: !!(box && box.classList.contains('modal-box')),
+      // Оформление (фон, цвет, рамка, шрифт) не должно быть инлайном —
+      // именно из-за него диалог выглядел не как остальные окна. Размеры
+      // коробки инлайном задавать можно.
+      inlineLook: back ? [...back.querySelectorAll('*')].filter(e =>
+        /background|color|border|font-family/.test(e.style.cssText)).length : 0,
+      fontFamily: box ? getComputedStyle(box).fontFamily : '',
+      mode: M.active().mode,
+    });
+  })()`));
+
+  t('диалог показан', r.shown === true);
+  t('вопрос «Сохранить правки?»', r.msg === 'Сохранить правки?', r.msg);
+  t('пояснение упоминает файл', /Открываемый\.md/.test(r.note || ''), r.note);
+  t('кнопка «Сохранить» есть', (r.buttons || []).some((b) => b.text === 'Сохранить'),
+    JSON.stringify(r.buttons));
+  t('кнопка «Отменить» есть', (r.buttons || []).some((b) => b.text === 'Отменить'),
+    JSON.stringify(r.buttons));
+  t('кнопок ровно две', (r.buttons || []).length === 2, JSON.stringify(r.buttons));
+  t('крестик есть и это иконка', r.hasX === true && r.xIsIcon === true);
+  t('использован общий .modal-box', r.sharedBox === true);
+  t('оформление не инлайном, inline только на размеры', r.inlineLook === 0,
+    'элементов с inline-оформлением: ' + r.inlineLook);
+  t('шрифт — как у приложения', /JetBrains/i.test(r.fontFamily || ''), r.fontFamily);
+
+  // Крестик закрывает вопрос БЕЗ потери правок
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const t = M.active();
+    document.querySelector('.modal-back .dlg-x').click();
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify({
+      closed: !document.querySelector('.modal-back'),
+      mode: t.mode,
+      dirty: t.dirty,
+      rawKept: /черновик/.test(t.raw),
+    });
+  })()`));
+
+  t('крестик закрывает диалог', r.closed === true);
+  t('крестик НЕ выбрасывает правки', r.dirty === true && r.rawKept === true);
+  t('крестик оставляет в правке', r.mode === 'edit', r.mode);
+
+  // Esc — то же, что крестик
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    const wasOpen = !!document.querySelector('.modal-back');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify({
+      wasOpen,
+      closed: !document.querySelector('.modal-back'),
+      mode: M.active().mode,
+      dirty: M.active().dirty,
+    });
+  })()`));
+
+  t('Esc закрывает диалог', r.wasOpen === true && r.closed === true);
+  t('Esc не выбрасывает правки', r.dirty === true);
+  t('Esc оставляет в правке', r.mode === 'edit', r.mode);
+
+  // «Сохранить» в диалоге — пишет файл и выходит в просмотр
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    [...document.querySelectorAll('.dlgbtn')].find(b => b.textContent === 'Сохранить').click();
+    await new Promise(r2 => setTimeout(r2, 700));
+    const t = M.active();
+    return JSON.stringify({
+      closed: !document.querySelector('.modal-back'),
+      mode: t.mode,
+      dirty: t.dirty,
+      onDisk: /черновик/.test(t._diskRaw || ''),
+      status: document.getElementById('statusText').textContent,
+    });
+  })()`));
+
+  t('«Сохранить» в диалоге закрывает его', r.closed === true);
+  t('«Сохранить» пишет файл', r.onDisk === true);
+  t('после «Сохранить» вышли в просмотр', r.mode === 'read', r.mode);
+  t('правок не осталось', r.dirty === false);
+  t('статус зелёный «Сохранено»', /Сохранено/.test(r.status || ''), r.status);
+
+  // «Отменить» — выбрасывает правки
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const t = M.active();
+    document.getElementById('btnMode').click();
+    await new Promise(r2 => setTimeout(r2, 200));
+    t.raw = t._diskRaw + '\\n\\nвторой черновик\\n';
+    t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 200));
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    [...document.querySelectorAll('.dlgbtn')].find(b => b.textContent === 'Отменить').click();
+    await new Promise(r2 => setTimeout(r2, 500));
+    return JSON.stringify({
+      closed: !document.querySelector('.modal-back'),
+      mode: t.mode,
+      dirty: t.dirty,
+      keptSecond: /второй черновик/.test(t.raw),
+      onDisk: /второй черновик/.test(t._diskRaw || ''),
+      status: document.getElementById('statusText').textContent,
+    });
+  })()`));
+
+  t('«Отменить» закрывает диалог', r.closed === true);
+  t('«Отменить» выбрасывает правки', r.keptSecond === false && r.dirty === false);
+  t('на диске изменений нет', r.onDisk === false);
+  t('статус жёлтый «Правки отменены»', /Правки отменены/.test(r.status || ''), r.status);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

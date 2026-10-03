@@ -855,3 +855,24 @@ body.side-hidden .sidebar-resizer { display: none; }
 @media (max-width: 620px) {
     .topbar-center { display: none; }
 }
+
+/* ================= Диалог подтверждения =================
+   Раньше он собирался на inline-стилях и выглядел не как остальные окна:
+   другой шрифт, другие отступы, без крестика. Теперь на общих классах. */
+.dlg-head { position: relative; padding-right: 26px; }
+.dlg-msg { font-size: 14px; line-height: 1.55; color: var(--fg); }
+.dlg-note { font-size: 12px; line-height: 1.55; color: var(--comment); margin-top: 7px; }
+.dlg-x {
+    position: absolute; top: -4px; right: -4px;
+    width: 24px; height: 24px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 6px; cursor: pointer;
+    background: transparent; color: var(--comment);
+}
+.dlg-x:hover { background: var(--bg-soft); color: var(--fg); }
+.dlg-x .ico-svg { width: 14px; height: 14px; }
+.dlg-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.dlgbtn-primary { background: #2a3f6b; border-color: #3f5590; color: #dbe4ff; }
+.dlgbtn-primary:hover:not(:disabled) { background: #33497f; }
+.dlgbtn-danger { background: #4a2733; border-color: #7a3b4c; color: #ffc4cf; }
+.dlgbtn-danger:hover:not(:disabled) { background: #5c2f3e; }

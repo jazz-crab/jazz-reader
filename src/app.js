@@ -127,41 +127,93 @@ function dirOf(p) {
   return i > 0 ? s.slice(0, i) : '';
 }
 
-/** Небольшой confirm без window.confirm (его в Electron нет). */
-function askConfirm(title, okText) {
+/**
+ * Диалог подтверждения без window.confirm (его в Electron нет).
+ *
+ * Собран на общих modalShell/modalBox, а не на inline-стилях, как раньше:
+ * иначе он выглядел не как остальные окна приложения — другой шрифт, другие
+ * отступы, без крестика.
+ *
+ * opts:
+ *   note        — пояснение под заголовком (что именно будет потеряно)
+ *   okClass     — 'primary' | 'danger' | '' (обычная кнопка)
+ *   cancelText  — текст второй кнопки
+ *   closeIsNo  — крестик и Esc означают «Нет» (по умолчанию).
+ *                 Для «Сохранить правки?» это НЕ так: крестик должен просто
+ *                 закрыть вопрос и вернуть в правку, иначе он уничтожал бы
+ *                 несохранённое одним нажатием.
+ *   xButton     — показывать ли крестик
+ */
+function askConfirm(title, okText, opts) {
   // Тесты подменяют ответ, чтобы не открывать диалог.
-  if (__confirmHook) return Promise.resolve(!!__confirmHook(title, okText));
-  return new Promise((resolve) => {
-    const back = document.createElement('div');
-    back.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center';
-    const box = document.createElement('div');
-    box.style.cssText = 'background:#1f2335;border:1px solid #2f3b54;border-radius:11px;padding:20px 22px;max-width:400px;font-family:"Segoe UI",sans-serif;color:#c0caf5';
-    box.innerHTML = '<div style="font-size:14px;line-height:1.6;margin-bottom:16px"></div>';
-    box.firstChild.textContent = title;
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
-    const mk = (label, color) => {
-      const b = document.createElement('button');
-      b.textContent = label;
-      b.style.cssText = 'padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;border:1px solid #2f3b54;background:' + color;
-      return b;
-    };
-    const no = mk('Отмена', '#24283b');
-    const yes = mk(okText || 'ОК', '#283457');
-    const done = (v) => { back.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); done(false); }
-      if (e.key === 'Enter') { e.stopPropagation(); done(true); }
-    };
-    no.onclick = () => done(false);
-    yes.onclick = () => done(true);
-    row.append(no, yes);
-    box.append(row);
-    back.append(box);
-    document.body.append(back);
-    document.addEventListener('keydown', onKey, true);
-    yes.focus();
-  });
+  // null из хука — «закрыли без ответа» (крестик или Esc при closeIsNo:false),
+  // поэтому !! здесь нельзя: он превратил бы null в false, то есть в
+  // «выбросить правки».
+  if (__confirmHook) return Promise.resolve(__confirmHook(title, okText));
+  const o = opts || {};
+  const back = modalShell();
+  const box = modalBox(null, 430, 0);
+  // Коробку нужно прикрепить к подложке: modalShell() создаёт только её саму.
+  back.append(box);
+  let resolve;
+
+  const head = document.createElement('div');
+  head.className = 'dlg-head';
+  if (o.xButton !== false) {
+    const x = document.createElement('button');
+    x.className = 'dlg-x';
+    x.title = 'Закрыть';
+    x.innerHTML = ICONS.icon('x');
+    x.onclick = () => done(o.closeIsNo ? false : null);
+    head.append(x);
+  }
+  const msg = document.createElement('div');
+  msg.className = 'dlg-msg';
+  msg.textContent = title;
+  head.append(msg);
+  box.append(head);
+
+  if (o.note) {
+    const note = document.createElement('div');
+    note.className = 'dlg-note';
+    note.textContent = o.note;
+    box.append(note);
+  }
+
+  const row = document.createElement('div');
+  row.className = 'dlg-row';
+  const mk = (label, cls) => {
+    const b = document.createElement('button');
+    b.className = 'dlgbtn' + (cls ? ' dlgbtn-' + cls : '');
+    b.textContent = label;
+    return b;
+  };
+  const no = mk(o.cancelText || 'Отмена', '');
+  const yes = mk(okText || 'ОК', o.okClass || '');
+  no.onclick = () => done(false);
+  yes.onclick = () => done(true);
+  row.append(no, yes);
+  box.append(row);
+
+  document.body.append(back);
+
+  let closed = false;
+  function done(v) {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKey, true);
+    back.remove();
+    // null — «закрыли, не ответив»: вызывающий обязан трактовать это как
+    // «ничего не делать», а не как «нет».
+    resolve(v);
+  }
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); done(o.closeIsNo ? false : null); }
+    else if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); done(true); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  wireModal(back, yes);
+  return new Promise((r) => { resolve = r; });
 }
 
 /**
@@ -283,8 +335,31 @@ async function closeTab(id, opts) {
   // такие вкладки просто не закрываем и сообщаем, сколько осталось.
   if (t.dirty) {
     if (opts && opts.silent) return false;
-    const ok = await askConfirm('В «' + t.name + '» есть несохранённые изменения. Закрыть вкладку?', 'Закрыть');
-    if (!ok) return false;
+    const answer = await askConfirm(
+      'Сохранить правки?',
+      'Сохранить',
+      {
+        note: 'В «' + t.name + '» есть несохранённые изменения.',
+        okClass: 'primary',
+        cancelText: 'Закрыть без сохранения',
+        closeIsNo: false,
+      }
+    );
+    // null — крестик: вопрос закрыт, вкладка остаётся на месте.
+    if (answer === null) return false;
+    if (answer === true) {
+      await saveTab(t);
+      tabs.delete(id);
+      if (activeId === id) {
+        const rest = [...tabs.keys()];
+        activeId = rest.length ? rest[rest.length - 1] : null;
+        if (activeId === null) newTab();
+        else selectTab(activeId);
+      }
+      renderTabs();
+      renderActive();
+      return true;
+    }
   }
   tabs.delete(id);
   if (activeId === id) {
@@ -352,11 +427,18 @@ async function closeAll() {
   for (const k of ids) {
     const t = tabs.get(k);
     if (t && t.dirty) {
-      const ok = await askConfirm(
-        'В «' + t.name + '» есть несохранённые изменения. Закрыть все вкладки?',
-        'Закрыть все'
+      const answer = await askConfirm(
+        'Сохранить правки?',
+        'Сохранить',
+        {
+          note: 'В «' + t.name + '» есть несохранённые изменения.',
+          okClass: 'primary',
+          cancelText: 'Закрыть без сохранения',
+          closeIsNo: false,
+        }
       );
-      if (!ok) return;
+      if (answer === null) return;
+      if (answer === true) await saveTab(t);
     }
   }
   for (const k of ids) await closeTab(k, { silent: true });
@@ -502,11 +584,16 @@ async function trashFile(full, label) {
     status('В «' + open.name + '» есть несохранённые правки — удаление отменено', 'err');
     return;
   }
-  const ok = await askConfirm(
-    'Удалить «' + label + '»?\n\nФайл уйдёт в корзину, его можно будет вернуть.',
-    'В корзину'
+  const answer = await askConfirm(
+    'Удалить «' + label + '»?',
+    'В корзину',
+    {
+      note: 'Файл уйдёт в корзину Windows, его можно будет вернуть.',
+      okClass: 'danger',
+      cancelText: 'Оставить',
+    }
   );
-  if (!ok) return;
+  if (answer !== true) return;
   const res = await api.trash(full);
   if (!res || !res.ok) {
     status('Не удалось удалить: ' + ((res && res.error) || 'неизвестно'), 'err');
@@ -1297,29 +1384,45 @@ function setZoom(z) {
 
 // ------------------------------------------------------------ сохранение и т.п.
 
-async function save() {
-  const t = active();
-  if (!t || !t.path) return;
-  if (!t.dirty) { toast('Изменений нет'); return; }
+/**
+ * Сохранить конкретную вкладку.
+ *
+ * Отдельная функция нужна для диалогов: при закрытии вкладки с правками
+ * спрашивать можно про ЛЮБУЮ вкладку, а save() работала только с активной и
+ * брала текст из редактора. Текст берём из редактора только когда вкладка
+ * активна и в правке; у остальных t.raw уже актуален — он обновляется на
+ * каждом нажатии клавиши.
+ */
+async function saveTab(t) {
+  if (!t || !t.path) return false;
+  if (!t.dirty) return false;
+  const text = (t === active() && t.mode === 'edit') ? el.editor.value : t.raw;
   try {
-    await api.save(t.path, el.editor.value);
-    t.raw = el.editor.value;
-    t._diskRaw = el.editor.value;
+    await api.save(t.path, text);
+    t.raw = text;
+    t._diskRaw = text;
     t.dirty = false;
-    // После сохранения выходим из правки в просмотр. Раньше save() намеренно
-    // оставлял правку включённой (мысль была «Ctrl+S не должен выбрасывать в
-    // чтение»), но это означало, что после сохранения остаёшься в редакторе
-    // уже чистого файла — зелёная «Сохранить» продолжала висеть в углу.
     t.mode = 'read';
     t.html = null;
     renderTabs();
     renderActive();
-    // Статус последним: renderActive() перерисовывает панель, и сообщение
-    // должно остаться последним, что сменило её вид.
     toast('Сохранено: ' + t.name, 'ok');
+    return true;
   } catch (e) {
     status('Не удалось сохранить: ' + (e.message || e), 'err');
+    return false;
   }
+}
+
+async function save() {
+  const t = active();
+  if (!t || !t.path) return;
+  if (!t.dirty) { toast('Изменений нет'); return; }
+  // После сохранения выходим из правки в просмотр. Раньше save() намеренно
+  // оставлял правку включённой (мысль была «Ctrl+S не должен выбрасывать в
+  // чтение»), но это означало, что после сохранения остаёшься в редакторе уже
+  // чистого файла — зелёная «Сохранить» продолжала висеть в углу.
+  await saveTab(t);
 }
 
 function download(name, text, mime) {
@@ -1860,12 +1963,32 @@ async function exitEdit(saveIt) {
   }
 
   if (!saveIt && t.dirty) {
-    // Отмена необратима — спрашиваем. Раньше выход из правки был без вопроса.
-    const ok = await askConfirm(
-      'Отменить правки в «' + t.name + '»?\n\nНесохранённые изменения будут потеряны.',
-      'Отменить правки'
+    /*
+     * Вопрос задаётся как «Сохранить правки?», а не «Отменить правки?».
+     * Второй вариант ставил вопрос о том действии, которое уже вызвали, и
+     * кнопки «Отмена» / «Отменить правки» отличались от названия вопроса.
+     * Здесь выбор исчерпывающий: сохранить или выбросить, а закрытие окна
+     * возвращает в правку ничего не теряя.
+     *
+     * null — крестик или Esc: вопрос закрыт, ответ не дан, остаёмся в правке.
+     */
+    const answer = await askConfirm(
+      'Сохранить правки?',
+      'Сохранить',
+      {
+        note: 'В «' + t.name + '» есть несохранённые изменения. '
+            + 'Без сохранения они будут потеряны.',
+        okClass: 'primary',
+        cancelText: 'Отменить',
+        closeIsNo: false,
+      }
     );
-    if (!ok) return;
+    // null — закрыли без ответа: ничего не делаем, остаёмся в правке.
+    if (answer === null) return;
+    if (answer === true) {
+      await save();
+      return;
+    }
   }
 
   if (saveIt) {
