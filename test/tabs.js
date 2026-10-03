@@ -1133,6 +1133,190 @@ const SILENCE_CONFIRM = `(() => {
   t('место вставки помечается', r.marker === true);
   t('порядок DOM совпадает с порядком вкладок', r.domMatches === true);
 
+  // ------------------------------- тулбар, нижняя панель, док режима
+  console.log('\n== тулбар, нижняя панель, режим правки ==');
+
+  // Сначала открываем файл: без него #workspace скрыт, у .main нет размера,
+  // и координаты дока режима измерять бессмысленно.
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.openPath(${JSON.stringify(TABS_DIR)} + '/Открываемый.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    return 1;
+  })()`);
+
+  r = JSON.parse(await js(`(() => {
+    const bar = document.querySelector('.topbar');
+    const ids = [...bar.querySelectorAll('[id]')].map(x => x.id);
+    const zoom = document.querySelector('.topbar-center');
+    const zoomKids = [...zoom.querySelectorAll('[id]')].map(x => x.id);
+    const dock = document.getElementById('modeDock');
+    const sb = document.getElementById('statusbar');
+    const kids = [...sb.children].map(x => x.className || x.id);
+    return JSON.stringify({
+      ids,
+      noOpenFile: !document.getElementById('btnOpenFile'),
+      noOpenFolder: !document.getElementById('btnOpenFolder'),
+      zoomCentered: zoom.parentElement === bar,
+      zoomKids,
+      zoomHasBoth: zoomKids.includes('btnZoomOut') && zoomKids.includes('btnZoomIn')
+        && zoomKids.includes('zoomVal'),
+      // масштаб реально по центру, а не прижат к левому краю
+      zoomNearCenter: (() => {
+        const b = bar.getBoundingClientRect();
+        const z = zoom.getBoundingClientRect();
+        const mid = z.left + z.width / 2;
+        return Math.abs(mid - (b.left + b.width / 2)) < b.width * 0.12;
+      })(),
+      dockInMain: dock.parentElement.classList.contains('main'),
+      // Меряем относительно самой заметки: .main начинается после боковой
+      // панели, поэтому в координатах окна «левый край» — это ~300px.
+      dockLeft: Math.round(dock.getBoundingClientRect().left
+        - document.querySelector('.main').getBoundingClientRect().left),
+      dockBottom: Math.round(document.querySelector('.main').getBoundingClientRect().bottom
+        - dock.getBoundingClientRect().bottom),
+      statusKids: kids,
+      pathFirst: sb.firstElementChild === document.getElementById('fileName'),
+      statusLast: sb.lastElementChild === document.getElementById('statusText'),
+      dlIcon: document.querySelector('#dlBtn .ico-svg') ? 'svg' : 'none',
+    });
+  })()`));
+
+  t('в тулбаре нет кнопки «Файл»', r.noOpenFile === true);
+  t('в тулбаре нет кнопки «Папка»', r.noOpenFolder === true);
+  t('масштаб в тулбаре есть', r.zoomHasBoth === true, JSON.stringify(r.zoomKids));
+  t('масштаб по центру тулбара', r.zoomCentered === true && r.zoomNearCenter === true,
+    JSON.stringify(r.zoomKids));
+  t('док режима внутри заметки', r.dockInMain === true);
+  t('док режима в левом нижнем углу', r.dockLeft > 0 && r.dockLeft < 60 && r.dockBottom < 60,
+    'left=' + r.dockLeft + ' bottom=' + r.dockBottom);
+  t('путь к файлу — внизу слева', r.pathFirst === true, JSON.stringify(r.statusKids));
+  t('сообщение — внизу справа', r.statusLast === true, JSON.stringify(r.statusKids));
+  t('иконка экспорта — svg-иконка', r.dlIcon === 'svg');
+
+  // «Сохранить» в правке и «Экспорт» в тулбаре не путаются
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const T = ${JSON.stringify(TABS_DIR)};
+    await M.openPath(T + '/Заметка-с-длинным-именем-01.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    document.getElementById('btnMode').click();
+    await new Promise(r2 => setTimeout(r2, 300));
+    const dock = document.getElementById('modeDock');
+    return JSON.stringify({
+      editing: M.active().mode,
+      saveInDock: dock.contains(document.getElementById('btnSave')),
+      cancelInDock: dock.contains(document.getElementById('btnCancelEdit')),
+      modeInDock: dock.contains(document.getElementById('btnMode')),
+      modeHiddenInEdit: document.getElementById('btnMode').hidden,
+      saveVisible: !document.getElementById('btnSave').hidden,
+      topbarHasSave: !!document.querySelector('.topbar #btnSave'),
+      topbarHasCancel: !!document.querySelector('.topbar #btnCancelEdit'),
+    });
+  })()`));
+
+  t('«Правка» внутри дока', r.modeInDock === true);
+  t('в правке «Правка» скрыта', r.modeHiddenInEdit === true);
+  t('«Сохранить» и «Отменить» в доке', r.saveInDock === true && r.cancelInDock === true);
+  t('зелёная «Сохранить» видна в правке', r.saveVisible === true);
+  t('в тулбаре нет второй «Сохранить»', r.topbarHasSave === false && r.topbarHasCancel === false);
+
+  // Цвета статуса: сохранено — зелёный, отмена правок — жёлтый.
+  // Сначала ОТКАЗ от отмены: вкладка должна остаться в правке, и статус
+  // «Правки отменены» показываться не должен — отмены не было.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const t = M.active();
+    t.raw = t._diskRaw + '\\n\\nчерновик\\n';
+    t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 150));
+    M.setConfirm(() => false);
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({
+      text: document.getElementById('statusText').textContent,
+      mode: t.mode,
+      dirty: t.dirty,
+    });
+  })()`));
+
+  t('отказ от отмены оставляет в правке', r.mode === 'edit', r.mode);
+  t('отказ от отмены сохраняет правки', r.dirty === true);
+  t('отказ от отмены не пишет «Правки отменены»', !/Правки отменены/.test(r.text || ''), r.text);
+
+  // Теперь подтверждаем отмену — вот тут жёлтый статус.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const sb = document.getElementById('statusbar');
+    const t = M.active();
+    M.setConfirm(() => true);
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 500));
+    const res = {
+      text: document.getElementById('statusText').textContent,
+      cls: sb.className,
+      color: getComputedStyle(document.getElementById('statusText')).color,
+      mode: t.mode,
+      dirty: t.dirty,
+    };
+    M.setConfirm(null);
+    return JSON.stringify(res);
+  })()`));
+
+  t('после отмены текст «Правки отменены»', /Правки отменены/.test(r.text || ''), r.text);
+  t('отмена правок — жёлтым (warn)', /warn/.test(r.cls), r.cls);
+  t('жёлтый реально жёлтый', /224,\s*175,\s*104/.test(r.color || ''), r.color);
+  t('после отмены вышли из правки', r.mode === 'read', r.mode);
+  t('после отмены правок нет', r.dirty === false);
+
+  // Цвет сохранения. Открываем другой файл и входим в правку заново:
+  // предыдущий шаг вышел из режима правки.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const sb = document.getElementById('statusbar');
+    const T = ${JSON.stringify(TABS_DIR)};
+    await M.openPath(T + '/Открываемый.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    document.getElementById('btnMode').click();
+    await new Promise(r2 => setTimeout(r2, 200));
+    const t = M.active();
+    t.raw = t._diskRaw + '\\n\\nпишу в файл\\n';
+    t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 150));
+    document.getElementById('btnSave').click();
+    await new Promise(r2 => setTimeout(r2, 800));
+    return JSON.stringify({
+      text: document.getElementById('statusText').textContent,
+      cls: sb.className,
+      color: getComputedStyle(document.getElementById('statusText')).color,
+      dirty: t.dirty,
+      mode: t.mode,
+    });
+  })()`));
+
+  t('после сохранения текст «Сохранено»', /Сохранено/.test(r.text || ''), r.text);
+  t('сохранение — зелёным (ok)', /ok/.test(r.cls), r.cls);
+  t('зелёный реально зелёный', /158,\s*206,\s*106/.test(r.color || ''), r.color);
+  t('после сохранения правок сняты', r.dirty === false);
+  t('после сохранения вышли из правки в просмотр', r.mode === 'read', r.mode);
+
+  // Нижняя панель прячет путь, когда файла нет
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify({
+      name: document.getElementById('fileName').textContent,
+      dash: document.getElementById('fileName').textContent === '\\u2014',
+      dockHidden: document.getElementById('modeDock').hidden,
+    });
+  })()`));
+
+  t('без файла в нижней панели пусто', r.name === '' && r.dash === false, JSON.stringify(r.name));
+  t('без файла док режима скрыт', r.dockHidden === true);
+
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
   // через IPC. Отмену тоже проверяем — файл должен остаться на месте.

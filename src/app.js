@@ -24,6 +24,7 @@ const el = {
   paneFiles: $('paneFiles'), paneToc: $('paneToc'), treeFilter: $('treeFilter'),
   content: $('content'), editor: $('editor'), toTop: $('toTop'),
   statusbar: $('statusbar'), statusText: $('statusText'), fileName: $('fileName'),
+  modeDock: $('modeDock'),
   dropOverlay: $('dropOverlay'),
 };
 
@@ -92,11 +93,19 @@ function stepTab(dir) {
 
 // ------------------------------------------------------------------ утилиты
 
+/**
+ * Сообщение в правом углу нижней панели.
+ * kind: 'ok' — зелёный (сохранено), 'warn' — жёлтый (правки отменены, файл
+ * не тронут), 'err' — красный. Раньше отмена правок не имела своего цвета и
+ * выглядела как обычное нейтральное сообщение, хотя это потеря работы.
+ */
 function status(msg, kind) {
   clearTimeout(statusTimer);
   el.statusText.textContent = msg;
   el.statusbar.className = 'statusbar' + (kind ? ' ' + kind : '');
   if (kind === 'err') {
+    statusTimer = setTimeout(() => { el.statusbar.className = 'statusbar'; }, 6000);
+  } else if (kind === 'warn') {
     statusTimer = setTimeout(() => { el.statusbar.className = 'statusbar'; }, 6000);
   }
 }
@@ -207,7 +216,13 @@ function wireModal(back, focusTarget) {
   return close;
 }
 
-function toast(msg) { status(msg); }
+/**
+ * Короткий алиас status(). Второй аргумент ОБЯЗАТЕЛЬНО пробрасываем:
+ * раньше toast(msg) принимал только текст, и все вызовы вида
+ * toast('Сохранено: ...', 'ok') молча теряли цвет — сообщение выводилось
+ * серым вместо зелёного.
+ */
+function toast(msg, kind) { status(msg, kind); }
 
 // ------------------------------------------------------- индикатор загрузки
 
@@ -983,15 +998,15 @@ function renderActive() {
     el.editor.hidden = true;
     el.toTop.hidden = true;
     el.statusbar.hidden = true;
-    el.btnMode.hidden = true;
-    el.btnSave.hidden = true;
-    el.btnCancelEdit.hidden = true;
+    // Док режима целиком прячем: файла нет — правки негде и нечего.
+    el.modeDock.hidden = true;
     el.btnToc.hidden = true;
     document.title = 'MDView';
     updateNavButtons();
     return;
   }
   el.statusbar.hidden = false;
+  el.modeDock.hidden = false;
 
   document.title = t.name + ' — MDView';
   el.fileName.textContent = t.path;
@@ -1291,8 +1306,16 @@ async function save() {
     t.raw = el.editor.value;
     t._diskRaw = el.editor.value;
     t.dirty = false;
+    // После сохранения выходим из правки в просмотр. Раньше save() намеренно
+    // оставлял правку включённой (мысль была «Ctrl+S не должен выбрасывать в
+    // чтение»), но это означало, что после сохранения остаёшься в редакторе
+    // уже чистого файла — зелёная «Сохранить» продолжала висеть в углу.
+    t.mode = 'read';
+    t.html = null;
     renderTabs();
     renderActive();
+    // Статус последним: renderActive() перерисовывает панель, и сообщение
+    // должно остаться последним, что сменило её вид.
     toast('Сохранено: ' + t.name, 'ok');
   } catch (e) {
     status('Не удалось сохранить: ' + (e.message || e), 'err');
@@ -1857,7 +1880,7 @@ async function exitEdit(saveIt) {
   t.html = null;
   renderTabs();
   renderActive();
-  status('Правки отменены', 'ok');
+  status('Правки отменены', 'warn');
 }
 
 el.btnMode.onclick = async () => {

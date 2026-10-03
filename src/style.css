@@ -575,15 +575,28 @@ body.side-hidden .sidebar-resizer { display: none; }
 .to-top .ico-svg { width: 17px; height: 17px; }
 .to-top:hover { color: var(--cyan); border-color: var(--blue); }
 
-/* ================= Статусбар ================= */
+/* ================= Нижняя панель =================
+   Слева путь к файлу, справа последнее сообщение. Раньше путь висел по
+   центру тулбара, а сообщение занимало всю строку — длинный путь вытеснял
+   сообщение, и оба наезжали друг на друга на узком окне. */
 .statusbar {
     flex: 0 0 auto; height: 24px;
-    display: flex; align-items: center; padding: 0 12px;
+    display: flex; align-items: center; gap: 12px; padding: 0 12px;
     background: var(--bg-alt); border-top: 1px solid var(--border);
     font-family: var(--mono); font-size: 11px; color: var(--comment);
 }
-.statusbar.err { color: var(--red); }
-.statusbar.ok { color: var(--green); }
+.status-grow { flex: 1 1 auto; min-width: 8px; }
+.status-path {
+    flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; direction: rtl; text-align: left;
+    color: var(--fg-dark);
+}
+#statusText { flex: 0 0 auto; white-space: nowrap; }
+/* Правки отменены — жёлтым: действие было, но файла оно не коснулось.
+   Ошибка — красным, сохранение — зелёным. */
+.statusbar.err  { color: var(--red); }
+.statusbar.ok   { color: var(--green); }
+.statusbar.warn { color: var(--yellow); }
 
 /* ================= Дропзона ================= */
 .drop-overlay {
@@ -794,4 +807,51 @@ body.side-hidden .sidebar-resizer { display: none; }
         page-break-after: avoid;
         break-after: avoid;
     }
+}
+
+/* ================= Режим правки =================
+   Кнопки «Правка» / «Сохранить» / «Отменить» стоят в левом нижнем углу
+   заметки, а не в тулбаре: режим правки — состояние заметки, а не панели.
+   Плюс это снимает прямое столкновение второй «Сохранить» с зелёной
+   «Сохранить» в правке. */
+.mode-dock {
+    position: absolute; left: 18px; bottom: 14px; z-index: 40;
+    display: flex; align-items: center; gap: 8px;
+}
+.mode-dock .btn {
+    background: var(--bg-popup);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+}
+.mode-dock .btn:hover { background: var(--bg-soft); }
+/* Кнопки правки не должны перехватывать клики по тексту под собой */
+.mode-dock .btn { -webkit-app-region: no-drag; }
+
+/* ================= Тулбар: масштаб по центру =================
+   Сетка 1fr auto 1fr, а не flex с двумя растягивающимися группами: во flex
+   группа получает ровно половину свободного места, и масштаб уезжал от
+   середины на половину ширины левой группы. Здесь средняя колонка по центру
+   по построению, независимо от того, сколько места занято слева и справа. */
+.topbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+}
+.topbar-left {
+    grid-column: 1; justify-self: start;
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.topbar-right {
+    grid-column: 3; justify-self: end;
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.topbar-center {
+    grid-column: 2;
+    display: flex; align-items: center; justify-content: center;
+    gap: 2px; min-width: 0;
+}
+.topbar-center .zoomval { min-width: 44px; }
+/* Узкое окно: масштаб начинает спорить с кнопками — прячем его */
+@media (max-width: 620px) {
+    .topbar-center { display: none; }
 }

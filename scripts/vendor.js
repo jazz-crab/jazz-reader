@@ -1,4 +1,4 @@
-// Готовит всё, чем приложение пользуется офлайн. Запускается в postinstall.
+﻿// Готовит всё, чем приложение пользуется офлайн. Запускается в postinstall.
 //
 //  1. KaTeX  -> src/vendor/katex/   (формулы)
 //  2. Lucide -> src/icons.js        (SVG-иконки, генерируется из пакета)
@@ -50,7 +50,7 @@ function rel(p) { return path.relative(process.cwd(), p); }
 // ~1600 файлов; в сборку берём только эти, инлайня в один маленький модуль.
 const USED_ICONS = [
   'file-text', 'folder-open', 'folder', 'file', 'arrow-left', 'arrow-right',
-  'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'download',
+  'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'folder-output',
   'panel-left', 'x', 'copy', 'eye-off', 'printer', 'folder-search',
   'search', 'file-down', 'file-code', 'check', 'list-tree', 'plus', 'chevron-left', 'chevron-right',
   // Чекбоксы task-list (- [x] / 1. [ ]): marked рендерит их нативными
