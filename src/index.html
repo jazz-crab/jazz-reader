@@ -44,17 +44,12 @@
       <div class="tabbar-spacer"></div>
     </div>
 
-    <!-- ============ Панель инструментов ============ -->
+    <!-- ============ Панель инструментов ============
+         Кнопок «Файл» и «Папка» здесь больше нет: то же самое делают
+         Ctrl+O / Ctrl+Shift+O, пункт «Файл» в меню иконки и ПКМ по «+».
+         Держать одно и то же в четырёх местах — значит править в четырёх
+         местах. -->
     <div class="topbar">
-      <button class="btn" id="btnOpenFile" title="Открыть .md (Ctrl+O)">
-        <span class="ico" data-i="file-text"></span><span class="lbl">Файл</span>
-      </button>
-      <button class="btn" id="btnOpenFolder" title="Открыть папку (Ctrl+Shift+O)">
-        <span class="ico" data-i="folder-open"></span><span class="lbl">Папка</span>
-      </button>
-
-      <span class="sep"></span>
-
       <button class="btn ico-only" id="btnBack" title="Назад (Alt+&#8592;)" disabled><span class="ico" data-i="arrow-left"></span></button>
       <button class="btn ico-only" id="btnForward" title="Вперёд (Alt+&#8594;)" disabled><span class="ico" data-i="arrow-right"></span></button>
 
@@ -77,7 +72,9 @@
 
       <div class="grow"></div>
 
-      <span class="filename" id="fileName">—</span>
+      <!-- Без файла здесь пусто: чёрточка-разделитель читалась как
+           «имя файла, но я не знаю какое». -->
+      <span class="filename" id="fileName"></span>
       <span class="sep"></span>
 
       <button class="btn ico-only" id="btnZoomOut" title="Уменьшить"><span class="ico" data-i="zoom-out"></span></button>
@@ -85,10 +82,10 @@
       <button class="btn ico-only" id="btnZoomIn" title="Увеличить"><span class="ico" data-i="zoom-in"></span></button>
 
       <div class="dropdown">
-        <button class="btn ico-only" id="dlBtn" title="Скачать / печать"><span class="ico" data-i="download"></span></button>
+        <button class="btn ico-only" id="dlBtn" title="Сохранить копией / печать"><span class="ico" data-i="download"></span></button>
         <div class="dropdown-menu" id="dlMenu">
-          <button data-act="download-md"><span class="ico" data-i="file-down"></span>Скачать MD</button>
-          <button data-act="download-html"><span class="ico" data-i="file-code"></span>Скачать HTML</button>
+          <button data-act="download-md"><span class="ico" data-i="file-down"></span>Сохранить MD</button>
+          <button data-act="download-html"><span class="ico" data-i="file-code"></span>Сохранить HTML</button>
           <button data-act="print"><span class="ico" data-i="printer"></span>Печать / PDF&#8230;</button>
           <button data-act="reveal"><span class="ico" data-i="folder-search"></span>Показать в проводнике</button>
           <button data-act="copy-path"><span class="ico" data-i="copy"></span>Скопировать путь</button>
@@ -114,7 +111,7 @@
     <!-- ============ Пустое состояние / дропзона ============ -->
     <div class="welcome" id="welcome">
       <h1>MDView</h1>
-      <p class="sub">Читалка Markdown с поддержкой LaTeX</p>
+      <p class="sub">Читалка Markdown</p>
       <div class="drop-hint" id="dropHint">
         <p>Перетащи сюда файл <code>.md</code> или папку с заметками</p>
         <div class="welcome-btns">
@@ -125,7 +122,7 @@
       <div class="keys">
         <div><kbd>Ctrl</kbd>+<kbd>O</kbd> файл &nbsp;·&nbsp; <kbd>Ctrl</kbd>+<kbd>&#8679;</kbd>+<kbd>O</kbd> папка</div>
         <div><kbd>Alt</kbd>+<kbd>&#8592;</kbd>/<kbd>&#8594;</kbd> назад / вперёд &nbsp;·&nbsp; <kbd>Ctrl</kbd>+<kbd>T</kbd> новая вкладка</div>
-        <div><kbd>Ctrl</kbd>+<kbd>E</kbd> правка &nbsp;·&nbsp; <kbd>Ctrl</kbd>+<kbd>S</kbd> сохранить / скачать</div>
+        <div><kbd>Ctrl</kbd>+<kbd>E</kbd> правка &nbsp;·&nbsp; <kbd>Ctrl</kbd>+<kbd>S</kbd> сохранить</div>
       </div>
     </div>
 

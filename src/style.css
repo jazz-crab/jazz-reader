@@ -151,7 +151,7 @@ code, pre, kbd, .icode { font-family: var(--mono); }
 .tab {
     -webkit-app-region: no-drag;
     display: flex; align-items: center; gap: 8px;
-    padding: 0 8px 0 12px; max-width: 240px; min-width: 104px;
+    padding: 0 8px 0 12px; max-width: 300px; min-width: 104px;
     /* flex: 1 1 180px — basis ФИКСИРОВАННЫЙ, и это принципиально.
        С basis:auto размер вкладки зависел от текста имени, а текст меняет
        elideMiddle() — и замыкалась петля: длинное имя -> широкая вкладка ->

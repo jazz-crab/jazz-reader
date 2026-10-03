@@ -948,29 +948,38 @@ const SILENCE_CONFIRM = `(() => {
     (r.full || []).every((x) => x && x.length > 20), JSON.stringify(r.full));
   t('длинные имена обрезаны', (r.names || []).every((x) => x.includes('…')),
     JSON.stringify(r.names));
-  t('обрезка не в самом конце: расширение сохранено',
-    (r.names || []).every((x) => x.endsWith('.md')), JSON.stringify(r.names));
+  // Обрезка идёт с конца, поэтому расширение и номер в хвосте теряются, а
+  // начало имени сохраняется. Обрезка по середине была моей идеей и выглядела
+  // хуже: «Заметка-с-дли…енем-24.md».
+  t('обрезка с конца: начало имени сохранено',
+    (r.names || []).every((x) => !x.includes('…') || x.startsWith('Заметка-')),
+    JSON.stringify(r.names));
   t('имя не вылезает за свою вкладку',
     (r.fits || []).every((x) => x === true), JSON.stringify(r.fits));
-  // Различающийся хвост имени помещается не всегда: при 70px под имя остаётся
-  // ~8 символов, и номера в хвосте просто некуда деть. Проверяем это там, где
-  // места хватает, — при семи вкладках.
+  // Обрезанное имя всегда заканчивается многоточием, а не «куском слова»
+  t('обрезанное имя помечено многоточием',
+    (r.names || []).every((x) => !x.includes('…') || x.endsWith('…')),
+    JSON.stringify(r.names));
+  // Полное имя остаётся доступно: в подсказке на вкладке и в data-full
   r2 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
-    for (const n of ['07', '12', '05', '18', '09', '14', '03']) {
-      await M.openPath(T + '/Заметка-с-длинным-именем-' + n + '.md', { newTab: true });
-    }
-    await new Promise(r3 => setTimeout(r3, 600));
+    await M.openPath(T + '/Заметка-с-длинным-именем-07.md', { newTab: true });
+    await new Promise(r3 => setTimeout(r3, 400));
+    const d = document.querySelector('.tab');
     return JSON.stringify({
-      names: [...document.querySelectorAll('.tname')].map(x => x.textContent),
-      tabW: Math.round(document.querySelector('.tab').getBoundingClientRect().width),
+      shown: d.querySelector('.tname').textContent,
+      full: d.querySelector('.tname').dataset.full,
+      title: d.title,
     });
   })()`));
-  t('при семи вкладках хвосты имён различимы',
-    new Set((r2.names || []).map((x) => x.slice(-6))).size === (r2.names || []).length,
-    'ширина вкладки ' + r2.tabW + 'px: ' + JSON.stringify(r2.names));
+  t('полное имя доступно в подсказке вкладки',
+    /Заметка-с-длинным-именем-07\.md/.test(r2.title || ''), r2.title);
+  t('полное имя лежит в data-full',
+    /Заметка-с-длинным-именем-07\.md/.test(r2.full || ''), r2.full);
+  t('при одной вкладке имя показывается целиком',
+    r2.shown === 'Заметка-с-длинным-именем-07.md', r2.shown);
 
   // ------------------------------------------------- индикатор загрузки
   console.log('\n== индикатор загрузки ==');

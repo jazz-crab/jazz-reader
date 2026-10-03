@@ -14,7 +14,6 @@ const el = {
   appBrand: $('appBrand'), tabsWrap: $('tabsWrap'),
   tabsLeft: $('tabsLeft'), tabsRight: $('tabsRight'),
   loading: $('loading'), loadingText: $('loadingText'), loadingSub: $('loadingSub'),
-  btnOpenFile: $('btnOpenFile'), btnOpenFolder: $('btnOpenFolder'),
   btnBack: $('btnBack'), btnForward: $('btnForward'),
   btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
   btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), zoomVal: $('zoomVal'),
@@ -661,31 +660,28 @@ function updateTabsNav() {
 }
 
 /**
- * Обрезать длинное имя в середине: «Заметка-с-длинным…-24.md» вместо
- * «Заме…». У заметок различается обычно хвост (дата, номер, версия), а
- * при обрезке слева все вкладки выглядят одинаково.
- * Ширину меряем в два прохода: сначала вписываем полное имя, потом ищем
- * самый длинный вариант с многоточием двоичным поиском.
+ * Обрезать длинное имя в конце, многоточием: «Заметка-с-дли…».
+ *
+ * Обрезка по середине была моей идеей («различается хвост — покажем хвост»),
+ * но на деле выглядит хуже: получается «Заметка-с-дли…енем-24.md», обрезка
+ * ровно посередине слова плюс рваный остаток. Просили просто обрезать с конца.
+ *
+ * Двоичный поиск по числу символов, а не цикл по одному: длина ленты
+ * линейная по числу вкладок, а тут на каждый шаг нужен замер ширины.
  */
-function elideMiddle(el, full) {
+function elideTail(el, full) {
   if (!full) return;
   const cur = el.textContent;
   if (cur !== full) {
-    // Уже обрезано. Возвращаем полное имя ТОЛЬКО если оно теперь помещается:
+    // Уже обрезано. Полное имя возвращаем только если оно теперь помещается:
     // вкладка могла разъехаться (сменилось число вкладок, ресайз, резерв под
-    // системные кнопки). Если помещается — оставляем полное, если нет —
-    // идём обрезать заново.
+    // системные кнопки).
     el.textContent = full;
     if (el.scrollWidth <= el.clientWidth + 1) return;
   } else if (el.scrollWidth <= el.clientWidth + 1) {
     return;
   }
-  const build = (n) => {
-    // 55% головы + многоточие + 45% хвоста, без наложения
-    const head = Math.ceil(n * 0.55);
-    const tail = n - head;
-    return full.slice(0, head) + '…' + (tail > 0 ? full.slice(full.length - tail) : '');
-  };
+  const build = (n) => (n >= full.length ? full : full.slice(0, n) + '…');
   let lo = 1;
   let hi = full.length - 1;
   while (lo < hi) {
@@ -710,7 +706,7 @@ function elideMiddle(el, full) {
 let tabResizeObs = null;
 
 function elideAllTabNames() {
-  for (const nm of el.tabs.querySelectorAll('.tname')) elideMiddle(nm, nm.dataset.full);
+  for (const nm of el.tabs.querySelectorAll('.tname')) elideTail(nm, nm.dataset.full);
 }
 
 function observeTabWidths() {
@@ -979,7 +975,10 @@ function renderActive() {
   closeFind();
   if (isBlank) {
     if (!el.tocOverlay.hidden) el.tocOverlay.hidden = true;
-    el.fileName.textContent = '—';
+    // Файла нет — не пишем ничего. Чёрточка-разделитель читалась как
+    // «имя файла, но я не знаю какое».
+    el.fileName.textContent = '';
+    el.fileName.title = '';
     el.content.innerHTML = '';
     el.editor.hidden = true;
     el.toTop.hidden = true;
@@ -1808,9 +1807,9 @@ function noteRecent(p) {
   if (!p) return;
   Promise.resolve(api.recentAdd(p)).catch(() => {});
 }
-el.btnOpenFile.onclick = openFileDialog;
+// Открытие файла/папки живёт на экране-подсказке, в меню иконки и в ПКМ по «+».
+// Отдельных кнопок в тулбаре больше нет, обращаться к ним не к чему.
 el.wOpenFile.onclick = openFileDialog;
-el.btnOpenFolder.onclick = openFolderDialog;
 el.wOpenFolder.onclick = openFolderDialog;
 el.btnBack.onclick = () => go(-1);
 el.btnForward.onclick = () => go(1);
