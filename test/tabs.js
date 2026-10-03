@@ -91,6 +91,8 @@ const SILENCE_CONFIRM = `(() => {
   const port = await freePort();
   const child = spawn(electron, [
     ROOT, '--remote-debugging-port=' + port, '--no-sandbox', '--disable-gpu',
+    // Окно не показываем: тесты не должны выскакивать поверх работы.
+    '--mdview-hidden',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', (b) => { stderr += b.toString(); });
@@ -489,40 +491,280 @@ const SILENCE_CONFIRM = `(() => {
   t('порядок DOM совпадает с порядком вкладок', r.matchesDom === true,
     'tabs=' + JSON.stringify(r.after) + ' dom=' + JSON.stringify(r.domOrder || []));
 
-  // Таббар: иконка слева, плюс справа
+  // ------------------------------------------- таббар и меню приложения
+  console.log('\n== иконка приложения, плюс, меню ==');
+
   r = JSON.parse(await js(`(async () => {
     const bar = document.getElementById('tabbar');
-    const kids = [...bar.children].map(k => k.id || k.className);
     const brand = document.getElementById('appBrand');
     const plus = document.getElementById('btnNewTab');
-    const wrap = document.getElementById('newTabWrap');
+    const kids = [...bar.children].map(k => k.id || k.className);
     const iTabs = [...bar.children].indexOf(bar.querySelector('.tabs'));
-    const iWrap = [...bar.children].indexOf(wrap);
+    const iPlus = [...bar.children].indexOf(plus);
     const iSpacer = [...bar.children].indexOf(bar.querySelector('.tabbar-spacer'));
-    const res = { kids, brandLeft: bar.children[0] === brand, iTabs, iWrap, iSpacer,
-      plusInWrap: plus.parentElement === wrap,
-      // порядок именно такой: иконка | вкладки | плюс | распорка
-      plusAfterTabs: iTabs < iWrap && !!(plus.parentElement === wrap),
-      plusBeforeSpacer: iWrap < iSpacer };
-    // плюс открывает меню
-    document.querySelector('.ctxmenu')?.remove();
-    plus.click();
-    await new Promise(r2 => setTimeout(r2, 150));
-    res.menuOpen = document.getElementById('newTabWrap').classList.contains('open');
-    res.menuItems = [...document.querySelectorAll('#newTabMenu button')].map(b => b.textContent.trim());
-    res.plusIsIcon = !!plus.querySelector('svg');
-    res.brandIsSvg = !!brand.querySelector('svg');
-    return JSON.stringify(res);
+    const svg = brand.querySelector('svg');
+    return JSON.stringify({
+      kids, iTabs, iPlus, iSpacer,
+      brandLeft: bar.children[0] === brand,
+      brandIsButton: brand.tagName === 'BUTTON',
+      plusAfterTabs: iTabs >= 0 && iTabs < iPlus,
+      plusBeforeSpacer: iPlus >= 0 && iPlus < iSpacer,
+      brandPx: svg ? Math.round(svg.getBoundingClientRect().width) : 0,
+      plusIsIcon: !!plus.querySelector('svg'),
+      noMiniMenu: !document.getElementById('newTabWrap')
+        && !document.getElementById('newTabMenu'),
+      // стиль кнопки-иконки: без нативной рамки/фона
+      brandBorder: getComputedStyle(brand).borderTopWidth,
+      brandBg: getComputedStyle(brand).backgroundColor,
+    });
   })()`));
 
   t('иконка приложения первая слева', r.brandLeft === true, JSON.stringify(r.kids));
-  t('плюс после вкладок и перед распоркой', r.plusAfterTabs === true && r.plusBeforeSpacer === true,
-    JSON.stringify(r.kids));
-  t('плюс — иконка, не символ +', r.plusIsIcon === true);
-  t('иконка приложения — svg', r.brandIsSvg === true);
-  t('плюс открывает меню', r.menuOpen === true);
-  t('в меню плюса 3 пункта', (r.menuItems || []).length === 3, JSON.stringify(r.menuItems));
-  t('в меню плюса есть пустая вкладка', (r.menuItems || []).some((l) => /пустая/.test(l)));
+  t('иконка приложения — <button>', r.brandIsButton === true);
+  t('плюс после вкладок и перед распоркой',
+    r.plusAfterTabs === true && r.plusBeforeSpacer === true, JSON.stringify(r.kids));
+  t('плюс крупный', r.plusIsIcon === true);
+  t('иконка увеличена (>=26px)', r.brandPx >= 26, r.brandPx + 'px');
+  t('у иконки нет нативной рамки', r.brandBorder === '0px', r.brandBorder);
+  t('у иконки прозрачный фон', /rgba\(0, 0, 0, 0\)|transparent/.test(r.brandBg), r.brandBg);
+  t('мини-меню у плюсика удалено', r.noMiniMenu === true);
+
+  // Плюс сразу открывает вкладку, без меню
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await new Promise(r2 => setTimeout(r2, 200));
+    const before = M.tabs.size;
+    document.getElementById('btnNewTab').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    return JSON.stringify({
+      before, after: M.tabs.size,
+      menuOpen: !!document.querySelector('.ctxmenu'),
+      tabsInDom: document.querySelectorAll('.tab').length,
+    });
+  })()`));
+
+  t('плюс сразу создаёт вкладку', r.after === r.before + 1,
+    'было ' + r.before + ', стало ' + r.after);
+  t('плюс не открывает меню', r.menuOpen === false);
+  t('вкладка появилась в таббаре', r.tabsInDom === r.after, JSON.stringify(r));
+
+  // Меню приложения по клику на иконку
+  r = JSON.parse(await js(`(async () => {
+    document.querySelector('.ctxmenu')?.remove();
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    const m = document.querySelector('.ctxmenu');
+    return JSON.stringify(m ? {
+      shown: true,
+      labels: [...m.querySelectorAll('.ctxmenu-item')].map(b => b.querySelector('span').textContent),
+    } : { shown: false });
+  })()`));
+
+  t('клик по иконке открывает меню', r.shown === true);
+  t('в меню есть «Новый файл»', (r.labels || []).some((l) => /Новый файл/.test(l)),
+    JSON.stringify(r.labels));
+  t('в меню есть «Новый проект»', (r.labels || []).some((l) => /Новый проект/.test(l)));
+  t('в меню есть «Недавние»', (r.labels || []).some((l) => /Недавние/.test(l)));
+  t('в меню есть «Настройки»', (r.labels || []).some((l) => /Настройки/.test(l)));
+
+  // «Недавние» открывают МОДАЛЬНОЕ окно со списком, а не выпадающее
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.clearRecents();
+    document.querySelector('.ctxmenu')?.remove();
+    const D = 'keysample/';
+    await M.openPath(D + 'AAA.md', { newTab: true });
+    await M.openPath(D + 'BBB.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    await M.recentDialog();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const back = document.querySelector('.modal-back');
+    return JSON.stringify({
+      modal: !!back,
+      title: back ? back.querySelector('.modal-title').textContent : '',
+      items: back ? [...back.querySelectorAll('.recent-item')].map(b => b.querySelector('.recent-name').textContent) : [],
+      itemIcons: back ? back.querySelectorAll('.recent-item svg').length : 0,
+      isCtx: !!document.querySelector('.ctxmenu'),
+    });
+  })()`));
+
+  t('«Недавние» открывают модальное окно', r.modal === true);
+  t('это не выпадающее меню', r.isCtx === false);
+  t('в окне есть заголовок', /Недавние/.test(r.title || ''), r.title);
+  t('в недавних есть AAA.md', (r.items || []).includes('AAA.md'), JSON.stringify(r.items));
+  t('в недавних есть BBB.md', (r.items || []).includes('BBB.md'), JSON.stringify(r.items));
+  // Иконка ставится динамически, а ICONS.hydrate на старте уже отработал —
+  // без повторного hydrate остался бы пустой <span> без глифа.
+  t('иконка файла в недавних отрисована',
+    r.itemIcons > 0 && r.itemIcons === (r.items || []).length,
+    'svg=' + r.itemIcons + ' пунктов=' + (r.items || []).length);
+
+  // выбор из недавних открывает файл
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const item = [...document.querySelectorAll('.recent-item')]
+      .find(b => b.querySelector('.recent-name').textContent === 'AAA.md');
+    item.click();
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({
+      closed: !document.querySelector('.modal-back'),
+      active: M.active().name,
+    });
+  })()`));
+
+  t('выбор из недавних закрывает окно', r.closed === true);
+  t('выбор из недавних открывает файл', r.active === 'AAA.md', String(r.active));
+
+  // «Настройки»: три реальных поля, применяются сразу, Esc откатывает
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.querySelector('.ctxmenu')?.remove();
+    M.settingsDialog();
+    await new Promise(r2 => setTimeout(r2, 300));
+    const back = document.querySelector('.modal-back');
+    const ranges = back.querySelectorAll('input[type=range]');
+    const check = back.querySelector('input[type=checkbox]');
+    const before = M.settings();
+    ranges[0].value = '22'; ranges[0].dispatchEvent(new Event('input'));
+    ranges[1].value = '1200'; ranges[1].dispatchEvent(new Event('input'));
+    check.checked = true; check.dispatchEvent(new Event('change'));
+    await new Promise(r2 => setTimeout(r2, 200));
+    const mid = M.settings();
+    const cssDuring = getComputedStyle(document.getElementById('content')).fontSize;
+    const widthDuring = getComputedStyle(document.documentElement).getPropertyValue('--content-max-width').trim();
+    const zoomLabel = document.getElementById('zoomVal').textContent;
+    return JSON.stringify({
+      shown: true,
+      rows: back.querySelectorAll('.set-row').length,
+      labels: [...back.querySelectorAll('.set-label')].map(x => x.textContent),
+      rangeCount: ranges.length, hasCheckbox: !!check,
+      before, mid, cssDuring, widthDuring, zoomLabel,
+      buttons: [...back.querySelectorAll('.dlgbtn')].map(b => b.textContent),
+    });
+  })()`));
+
+  t('«Настройки» открывают модальное окно', r.shown === true);
+  t('в настройках 3 поля', r.rows === 3, JSON.stringify(r.labels));
+  t('есть «Размер текста»', (r.labels || []).some((l) => /Размер текста/.test(l)), JSON.stringify(r.labels));
+  t('есть «Ширина колонки»', (r.labels || []).some((l) => /Ширина колонки/.test(l)));
+  t('есть «Автосохранение»', (r.labels || []).some((l) => /Автосохранение/.test(l)));
+  t('два ползунка и один чекбокс', r.rangeCount === 2 && r.hasCheckbox === true);
+  t('размер текста применён сразу', parseFloat(r.cssDuring) > parseFloat('15.00px'),
+    r.cssDuring + ' (было ' + (r.before && r.before.zoom) + ')');
+  t('ползунок текста двигает и тулбарный зум', /^\d+%$/.test(r.zoomLabel || ''), r.zoomLabel);
+  t('ширина колонки применена сразу', r.widthDuring === '1200px', r.widthDuring);
+  t('есть кнопка «Готово»', (r.buttons || []).some((b) => /Готово/.test(b)), JSON.stringify(r.buttons));
+
+  // Esc откатывает предпросмотр
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const zoomNow = M.settings().zoom;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify({
+      zoomBefore: zoomNow,
+      zoomAfter: M.settings().zoom,
+      closed: !document.querySelector('.modal-back'),
+      css: getComputedStyle(document.getElementById('content')).fontSize,
+    });
+  })()`));
+
+  t('Esc закрывает настройки', r.closed === true);
+  t('Esc откатывает размер текста', r.zoomAfter === 1,
+    'стало ' + r.zoomAfter + ', css ' + r.css);
+
+  // Готово сохраняет настройки и закрывает
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.settingsDialog();
+    await new Promise(r2 => setTimeout(r2, 300));
+    const back = document.querySelector('.modal-back');
+    const ranges = back.querySelectorAll('input[type=range]');
+    ranges[0].value = '18'; ranges[0].dispatchEvent(new Event('input'));
+    ranges[1].value = '1000'; ranges[1].dispatchEvent(new Event('input'));
+    [...back.querySelectorAll('.dlgbtn')].find(b => /Готово/.test(b.textContent)).click();
+    await new Promise(r2 => setTimeout(r2, 500));
+    const saved = await window.mdv.settingsGet();
+    return JSON.stringify({
+      closed: !document.querySelector('.modal-back'),
+      saved,
+      zoomLabel: document.getElementById('zoomVal').textContent,
+      css: getComputedStyle(document.getElementById('content')).fontSize,
+      width: getComputedStyle(document.documentElement).getPropertyValue('--content-max-width').trim(),
+    });
+  })()`));
+
+  t('«Готово» закрывает окно', r.closed === true);
+  t('настройки сохранены на диск', Math.abs((r.saved && r.saved.zoom || 0) - 18 / 15) < 0.01,
+    JSON.stringify(r.saved));
+  t('сохранённая ширина колонки применена', r.width === '1000px', r.width);
+  t('сохранённый размер применён', Math.abs(parseFloat(r.css) - 18) < 0.3, r.css);
+
+  // Автосохранение: выход из правки пишет файл сам
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = 'keysample/';
+    await M.openPath(D + 'AAA.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    const t = M.active();
+    t.mode = 'edit'; t.raw = t._diskRaw + '\\n\\nПРАВКА АВТОСОХРАНЕНИЯ\\n';
+    t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 150));
+    return JSON.stringify({ dirty: t.dirty, mode: t.mode });
+  })()`));
+  t('вкладка в режиме правки с несохранёнными правками', r.dirty === true);
+
+  // выключенное автосохранение — спрашивает
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setSettings({ autosave: false });
+    const t = M.active();
+    let asked = 0;
+    M.setConfirm(() => { asked++; return false; });
+    // exitEdit не экспортирован — дёргаем кнопку «Отменить»
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    return JSON.stringify({ asked, mode: M.active().mode, dirty: M.active().dirty });
+  })()`));
+  t('без автосохранения спрашивает про отмену', r.asked === 1, JSON.stringify(r));
+  t('отказ оставляет вкладку в правке', r.mode === 'edit' && r.dirty === true, JSON.stringify(r));
+
+  // включённое автосохранение — пишет молча
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setSettings({ autosave: true });
+    let asked = 0;
+    M.setConfirm(() => { asked++; return false; });
+    document.getElementById('btnCancelEdit').click();
+    await new Promise(r2 => setTimeout(r2, 600));
+    return JSON.stringify({
+      asked, mode: M.active().mode, dirty: M.active().dirty,
+      status: document.getElementById('statusText').textContent,
+    });
+  })()`));
+  t('с автосохранением вопроса нет', r.asked === 0, JSON.stringify(r));
+  t('автосохранение вышло из правки', r.mode === 'read', JSON.stringify(r));
+  t('автосохранение сняло флаг правок', r.dirty === false);
+  t('в статусе написано «Автосохранено»', /Автосохранено/.test(r.status || ''), r.status);
+
+  // автосохранение реально записало в keysample/AAA.md — откатываем файл,
+  // иначе следующие прогоны видели бы растущий файл
+  fs.writeFileSync(path.join(notesDir, 'AAA.md'), '# AAA\n\nПервый.\n', 'utf8');
+
+  // возвращаем дефолты и убираем мусор из ключевых файлов
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setConfirm(null);
+    M.setSettings({ zoom: 1, columnWidth: 900, autosave: false });
+    await window.mdv.settingsSet({ zoom: 1, columnWidth: 900, autosave: false });
+    await M.clearRecents();
+    document.querySelector('.modal-back')?.remove();
+    document.querySelector('.ctxmenu')?.remove();
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    return 1;
+  })()`);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

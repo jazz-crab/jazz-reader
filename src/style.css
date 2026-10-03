@@ -7,6 +7,10 @@
 
 /* ===== TokyoNight ===== */
 :root {
+    /* Ширина колонки чтения (см. applySettings). Размер текста НЕ здесь:
+       им управляет setZoom/updateZoom, единственный механизм, иначе ползунок
+       «Размер текста» в настройках и тулбарный зум дрались бы друг с другом. */
+    --content-max-width: 900px;
     --bg:        #1a1b26;
     --bg-alt:    #16161e;
     --bg-popup:  #1f2335;
@@ -68,12 +72,17 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     -webkit-app-region: drag;               /* тянем окно за пустое место */
 }
 .tabbar-spacer { flex: 1 1 auto; -webkit-app-region: drag; }
-/* Иконка приложения слева от вкладок */
+/* Иконка приложения слева от вкладок. Это <button>, поэтому сбрасываем
+   нативные рамку/фон — иначе плашка вокруг логотипа и системный фокус. */
 .tabbar-brand {
     -webkit-app-region: no-drag;
     align-self: center; display: flex; align-items: center;
-    padding: 0 7px 0 2px; opacity: .9;
+    padding: 0 6px 0 2px; opacity: .92;
+    background: transparent; border: 0; border-radius: 8px;
+    cursor: pointer; line-height: 0;
 }
+.tabbar-brand:hover { opacity: 1; background: var(--bg-soft); }
+.tabbar-brand:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .tabbar-brand svg { display: block; border-radius: 5px; }
 .tabbar-brand:hover { opacity: 1; }
 .tab-new {
@@ -86,11 +95,6 @@ code, pre, kbd, .icode { font-family: var(--mono); }
 }
 .tab-new .ico-svg { width: 15px; height: 15px; }
 .tab-new:hover { background: var(--bg-soft); color: var(--fg); border-color: var(--border); }
-/* Меню «+» выезжает влево, чтобы не уезжать за край окна справа */
-.tabnew-menu { position: relative; -webkit-app-region: no-drag; align-self: center; }
-.tabnew-menu .dropdown-menu { right: 0; left: auto; min-width: 214px; }
-.tabnew-menu:not(.open) .dropdown-menu { display: none; }
-
 .tabs { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { height: 0; }
 .tab {
@@ -373,7 +377,7 @@ body.side-hidden .sidebar-resizer { display: none; }
    такой шорткат `margin: X 0` обнулял центровку — и на широком окне
    абзацы уезжали в центр колонки, а заголовки и списки оставались у
    левого края (разъезд ~290px). Именно это и было видно в заметке. */
-.content > * { max-width: 900px; margin-inline: auto; }
+.content > * { max-width: var(--content-max-width); margin-inline: auto; }
 
 .content h1, .content h2, .content h3,
 .content h4, .content h5, .content h6 {
@@ -525,3 +529,77 @@ body.side-hidden .sidebar-resizer { display: none; }
 ::-webkit-scrollbar-track { background: var(--bg-alt); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg-alt); }
 ::-webkit-scrollbar-thumb:hover { background: var(--comment); }
+
+/* ================= Модальные окна ================= */
+.modal-back {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0, 0, 0, .55);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--ui);
+}
+.modal-box {
+    background: #1f2335; border: 1px solid #2f3b54; border-radius: 11px;
+    padding: 18px 20px; color: var(--fg);
+    display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+    max-width: 92vw;
+}
+.modal-title { font-size: 15px; font-weight: 600; color: var(--fg); }
+.modal-empty { color: var(--fg-dark); font-size: 13px; padding: 18px 4px; line-height: 1.6; }
+.modal-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
+
+/* Кнопки диалогов. Именно dlgbtn, а не btn: в тулбаре уже есть семейство
+   .btn, и правило .btn в конце файла перебивало .btn-save/.btn-cancel —
+   «Сохранить» и «Отменить» теряли зелёный и красный цвет. */
+.dlgbtn {
+    padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: 13px;
+    font-family: var(--ui);
+    border: 1px solid #2f3b54; background: #24283b; color: var(--fg);
+}
+.dlgbtn:hover:not(:disabled) { background: #2b3150; border-color: #3b4261; }
+.dlgbtn:disabled { opacity: .45; cursor: default; }
+.dlgbtn-primary { background: #2a3f6b; border-color: #3f5590; color: #dbe4ff; }
+.dlgbtn-primary:hover:not(:disabled) { background: #33497f; }
+
+/* ---- Недавние ---- */
+.recent-list {
+    display: flex; flex-direction: column; gap: 2px;
+    overflow-y: auto; min-height: 0; padding-right: 3px;
+}
+.recent-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 9px; border-radius: 7px; cursor: pointer; text-align: left;
+    background: transparent; border: 1px solid transparent; color: var(--fg);
+    font-family: var(--ui);
+}
+.recent-item:hover { background: var(--bg-soft); border-color: var(--border); }
+.recent-item .ico-svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--fg-dark); }
+.recent-col { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.recent-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-dir {
+    font-size: 11px; color: var(--comment); font-family: var(--mono);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl;
+    text-align: left;
+}
+
+/* ---- Настройки ---- */
+.set-row {
+    display: grid; grid-template-columns: 128px 1fr; gap: 10px;
+    align-items: center; padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+}
+.set-row:last-of-type { border-bottom: none; }
+.set-label { font-size: 13px; color: var(--fg); }
+.set-control { display: flex; justify-content: flex-start; min-width: 0; }
+.set-inline { display: flex; align-items: center; gap: 10px; width: 100%; }
+.set-inline input[type="range"] { flex: 1 1 auto; accent-color: #7aa2f7; min-width: 0; }
+.set-val {
+    font-family: var(--mono); font-size: 12px; color: var(--cyan);
+    min-width: 54px; text-align: right;
+}
+.set-hint {
+    grid-column: 2; font-size: 11px; color: var(--comment); line-height: 1.5;
+    margin-top: -2px;
+}
+.set-control input[type="checkbox"] { accent-color: #7aa2f7; width: 15px; height: 15px; cursor: pointer; }
+

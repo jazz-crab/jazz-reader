@@ -6,6 +6,7 @@
  */
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -233,6 +234,126 @@ function register() {
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
+  });
+
+  /**
+   * «Новый файл» — спросить имя и создать заметку с заготовкой.
+   * showSaveDialog, а не openDialog: пользователь сам задаёт имя и папку.
+   */
+  ipcMain.handle('mdv:newFile', async (_e, seedName) => {
+    const r = await dialog.showSaveDialog(targetWindow(), {
+      title: 'Новая заметка',
+      defaultPath: String(seedName || 'Новая заметка') + '.md',
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    });
+    if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+    try {
+      const p = r.filePath.endsWith('.md') ? r.filePath : r.filePath + '.md';
+      const title = path.basename(p, '.md');
+      const text = [
+        '# ' + title,
+        '',
+        'Описание тут.',
+        '',
+        '## Раздел',
+        '',
+        '- пункт',
+        '',
+      ].join('\n');
+      // Не затираем существующий файл: showOverwriteConfirmation уже спросил,
+      // но подстраховка от гонки не повредит.
+      if (!fs.existsSync(p)) await fsp.writeFile(p, text, 'utf8');
+      return { ok: true, path: p };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  /**
+   * «Новый проект» — папка с заметками: создаём её и кладём README.md,
+   * чтобы проект сразу был виден в проводнике, а не пустой.
+   */
+  ipcMain.handle('mdv:newProject', async (_e, seedName) => {
+    const r = await dialog.showOpenDialog(targetWindow(), {
+      title: 'Папка нового проекта',
+      defaultPath: String(seedName || 'Новый проект'),
+      buttonLabel: 'Создать проект',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
+    const dir = r.filePaths[0];
+    try {
+      await fsp.mkdir(dir, { recursive: true });
+      const readme = path.join(dir, 'README.md');
+      const title = path.basename(dir);
+      if (!fs.existsSync(readme)) {
+        await fsp.writeFile(readme, [
+          '# ' + title,
+          '',
+          'Заметки проекта. Файлы разложены по подпапкам.',
+          '',
+        ].join('\n'), 'utf8');
+      }
+      return { ok: true, path: dir, readme };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  /**
+   * Недавние файлы и настройки — маленькие json рядом с настройками
+   * пользователя. Пишем атомарно (через tmp + rename), иначе падение
+   * посреди записи оставляет битый файл и приложение падает на старте.
+   */
+  const storeFile = (name) => path.join(app.getPath('userData'), name);
+
+  async function readStore(name, fallback) {
+    try {
+      const raw = await fsp.readFile(storeFile(name), 'utf8');
+      const v = JSON.parse(raw);
+      return v && typeof v === 'object' ? v : fallback;
+    } catch {
+      return fallback;   // нет файла или битый — начинаем с пустого
+    }
+  }
+
+  async function writeStore(name, value) {
+    const file = storeFile(name);
+    const tmp = file + '.tmp';
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    await fsp.writeFile(tmp, JSON.stringify(value, null, 2), 'utf8');
+    await fsp.rename(tmp, file);
+    return true;
+  }
+
+  const RECENT_MAX = 24;
+
+  ipcMain.handle('mdv:recentGet', () => readStore('recent.json', { files: [] }));
+  ipcMain.handle('mdv:recentAdd', async (_e, p) => {
+    if (!p) return { files: [] };
+    const st = await readStore('recent.json', { files: [] });
+    // Только существующие .md: файл могли удалить или переименовать.
+    const files = Array.isArray(st.files) ? st.files.filter((x) => x && x.path) : [];
+    const rest = files.filter((x) => path.resolve(x.path) !== path.resolve(p));
+    const item = { path: p, name: path.basename(p), at: Date.now() };
+    const next = [item, ...rest].slice(0, RECENT_MAX);
+    await writeStore('recent.json', { files: next });
+    return { files: next };
+  });
+  ipcMain.handle('mdv:recentClear', async () => {
+    await writeStore('recent.json', { files: [] });
+    return { files: [] };
+  });
+
+  // Значения по умолчанию дублируются в renderer (applySettings): он знает,
+  // что означает каждое поле, и применяет их сам.
+  ipcMain.handle('mdv:settingsGet', () => readStore('settings.json', {}));
+  ipcMain.handle('mdv:settingsSet', async (_e, patch) => {
+    const cur = await readStore('settings.json', {});
+    const next = Object.assign({}, cur, patch || {});
+    await writeStore('settings.json', next);
+    return next;
   });
 
   ipcMain.handle('mdv:print', () => {

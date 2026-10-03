@@ -131,6 +131,8 @@ function evaluate(wsUrl, expression) {
     '--remote-debugging-port=' + port,
     '--no-sandbox',
     '--disable-gpu',
+    // Окно не показываем: тесты не должны выскакивать поверх работы.
+    '--mdview-hidden',
     sample,
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
 

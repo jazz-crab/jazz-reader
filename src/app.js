@@ -11,6 +11,7 @@ const ICONS = window.MDV_ICONS;
 const $ = (id) => document.getElementById(id);
 const el = {
   tabbar: $('tabbar'), tabs: $('tabs'), btnNewTab: $('btnNewTab'),
+  appBrand: $('appBrand'),
   btnOpenFile: $('btnOpenFile'), btnOpenFolder: $('btnOpenFolder'),
   btnBack: $('btnBack'), btnForward: $('btnForward'),
   btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
@@ -145,6 +146,58 @@ function askConfirm(title, okText) {
     document.addEventListener('keydown', onKey, true);
     yes.focus();
   });
+}
+
+/**
+ * Общие кирпичики модальных окон: подложка, коробка с заголовком, закрытие
+ * по Esc и клику мимо. askConfirm живёт отдельно — он возвращает промис и
+ * сам решает, что нажали.
+ *
+ * back._onCancel вызывается при закрытии БЕЗ сохранения (Esc, клик мимо) —
+ * настройки этим откатывают предпросмотр.
+ */
+function modalShell() {
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back._onCancel = null;
+  return back;
+}
+
+function modalBox(title, width, height) {
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+  if (width) box.style.width = width + 'px';
+  if (height) box.style.maxHeight = height + 'px';
+  if (title) {
+    const h = document.createElement('div');
+    h.className = 'modal-title';
+    h.textContent = title;
+    box.append(h);
+  }
+  return box;
+}
+
+/** Закрытие по Esc и клику мимо. Возвращает close(cancelled). */
+function wireModal(back, focusTarget) {
+  const close = (cancelled) => {
+    if (cancelled && back._onCancel) back._onCancel();
+    back.remove();
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    e.preventDefault();
+    close(true);
+  };
+  back.addEventListener('mousedown', (e) => {
+    // Только клик по самой подложке: клик внутри коробки не закрывает.
+    if (e.target === back) close(true);
+  });
+  document.addEventListener('keydown', onKey, true);
+  const f = typeof focusTarget === 'function' ? focusTarget() : focusTarget;
+  if (f && f.focus) f.focus();
+  return close;
 }
 
 function toast(msg) { status(msg); }
@@ -622,6 +675,7 @@ async function openPath(p, opts) {
   try {
     status('Открываю ' + basname(p) + '…');
     const data = await api.read(p);
+    noteRecent(data.path);
     const t = opts.newTab ? blankTab() : (active() && active().path ? active() : blankTab());
     applyData(t, data);
     t.hist = [{ path: data.path, anchor: null }];
@@ -1222,24 +1276,315 @@ el.content.addEventListener('click', (e) => {
 });
 
 // --- кнопки
-// «+» открывает меню, а не сразу системный диалог: файлы, папка, пустая
-// вкладка. Раньше это была мгновенная пустая вкладка, а файлы открывались
-// отдельными кнопками тулбара — в шапке вкладок не хватало «что вообще можно».
-const newTabWrap = $('newTabWrap');
-const newTabMenu = $('newTabMenu');
-el.btnNewTab.onclick = (e) => {
-  e.stopPropagation();
-  newTabWrap.classList.toggle('open');
+// Плюсик снова просто открывает пустую вкладку: меню ради одной кнопки было
+// лишним кликом, а открыть файл/папку и так есть чем в тулбаре.
+el.btnNewTab.onclick = () => newTab();
+
+// Иконка приложения слева — меню приложения: новый файл, новый проект,
+// недавние и настройки.
+el.appBrand.onclick = (e) => {
+  const r = el.appBrand.getBoundingClientRect();
+  showContextMenu(r.left, r.bottom + 4, [
+    { label: 'Новый файл', hint: 'Ctrl+N', act: newFileAction },
+    { label: 'Новый проект', hint: 'папка с заметками', act: newProjectAction },
+    { sep: true },
+    { label: 'Недавние', hint: 'выбор из списка', act: recentDialog },
+    { label: 'Настройки', hint: 'шрифт, колонка', act: settingsDialog },
+  ], { width: 250, height: 190, anchor: 'left' });
 };
-document.addEventListener('click', () => newTabWrap.classList.remove('open'));
-newTabMenu.onclick = async (e) => {
-  const b = e.target.closest('button[data-act]');
-  if (!b) return;
-  newTabWrap.classList.remove('open');
-  if (b.dataset.act === 'file') { newTab(); await openFileDialog(); }
-  else if (b.dataset.act === 'folder') { newTab(); await openFolderDialog(); }
-  else newTab();
+el.appBrand.oncontextmenu = (e) => {
+  e.preventDefault();
+  el.appBrand.click();
 };
+
+async function newFileAction() {
+  let res;
+  try {
+    res = await api.newFile('Новая заметка');
+  } catch (e) {
+    status('Не удалось создать файл: ' + (e.message || e), 'err');
+    return;
+  }
+  if (!res) return;
+  if (res.canceled) return;
+  if (!res.ok) { status('Не удалось создать файл: ' + (res.error || 'ошибка'), 'err'); return; }
+  noteRecent(res.path);
+  await openPath(res.path, { newTab: true });
+  status('Создан: ' + basname(res.path), 'ok');
+}
+
+async function newProjectAction() {
+  let res;
+  try {
+    res = await api.newProject('Новый проект');
+  } catch (e) {
+    status('Не удалось создать проект: ' + (e.message || e), 'err');
+    return;
+  }
+  if (!res || res.canceled) return;
+  if (!res.ok) { status('Не удалось создать проект: ' + (res.error || 'ошибка'), 'err'); return; }
+  await addFolder(res.path);
+  if (res.readme) noteRecent(res.readme);
+  status('Проект готов: ' + basname(res.path), 'ok');
+}
+
+/**
+ * «Недавние» открывают не выпадающим списком, а отдельным окном со списком:
+ * пути длинные, их надо читать целиком, а в меню места нет. Пропускаем
+ * исчезнувшие файлы — метку «не найден» в списке показывать незачем.
+ */
+async function recentDialog() {
+  let st;
+  try {
+    st = await api.recentGet();
+  } catch { st = { files: [] }; }
+  const files = (st && st.files) || [];
+
+  const exists = [];
+  for (const f of files) {
+    const info = await api.stat(f.path).catch(() => null);
+    if (info && info.exists && info.isFile) exists.push({ ...f, dir: dirOf(f.path) });
+  }
+
+  const back = modalShell();
+  const box = modalBox('Недавние файлы', 440, 420);
+
+  if (!exists.length) {
+    const empty = document.createElement('div');
+    empty.className = 'modal-empty';
+    empty.textContent = files.length
+      ? 'Все файлы из списка удалены или переименованы.'
+      : 'Пока пусто. Откройте заметку — она появится здесь.';
+    box.append(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'recent-list';
+    for (const f of exists) {
+      const b = document.createElement('button');
+      b.className = 'recent-item';
+      b.title = f.path;
+
+      const ico = document.createElement('span');
+      ico.className = 'ico';
+      ico.dataset.i = 'file-text';
+
+      const col = document.createElement('span');
+      col.className = 'recent-col';
+      const n = document.createElement('span');
+      n.className = 'recent-name';
+      n.textContent = f.name;
+      const d = document.createElement('span');
+      d.className = 'recent-dir';
+      d.textContent = f.dir;
+      col.append(n, d);
+
+      b.append(ico, col);
+      b.onclick = async () => { back.remove(); await openPath(f.path, { newTab: true }); };
+      list.append(b);
+    }
+    box.append(list);
+    // ICONS.hydrate на старте уже отработал (до появления этого окна), поэтому
+    // свежесозданные [data-i] сами не подхватятся — гидрируем список заново.
+    ICONS.hydrate(box);
+  }
+
+  const row = document.createElement('div');
+  row.className = 'modal-row';
+  const clear = document.createElement('button');
+  clear.className = 'dlgbtn';
+  clear.textContent = 'Очистить список';
+  clear.disabled = !files.length;
+  clear.onclick = async () => {
+    await api.recentClear();
+    back.remove();
+    status('Список недавних очищен', 'ok');
+  };
+  row.append(clear);
+  box.append(row);
+
+  back.append(box);
+  document.body.append(back);
+  wireModal(back, () => box.querySelector('.recent-item') || clear);
+}
+
+/**
+ * Настройки: размер шрифта колонки, её ширина и автосохранение при выходе
+ * из правки. Хранятся в userData/settings.json, применяются как CSS-переменные
+ * на :root, поэтому работают без перезапуска.
+ */
+const SETTINGS_DEFAULT = {
+  zoom: 1,
+  columnWidth: 900,
+  autosave: false,
+};
+
+// updateZoom считает размер от 15px при 100%. Настройка «Размер текста»
+// показывает пиксели и переводит их в zoom — одна шкала вместо двух.
+const BASE_TEXT_PX = 15;
+
+async function loadSettings() {
+  let saved = {};
+  try { saved = (await api.settingsGet()) || {}; } catch { saved = {}; }
+  const merged = Object.assign({}, SETTINGS_DEFAULT);
+  for (const k of Object.keys(SETTINGS_DEFAULT)) {
+    const v = saved[k];
+    if (typeof SETTINGS_DEFAULT[k] === 'number') {
+      if (typeof v === 'number' && Number.isFinite(v)) merged[k] = v;
+    } else if (typeof v === typeof SETTINGS_DEFAULT[k]) {
+      merged[k] = v;
+    }
+  }
+  applySettings(merged);
+  return merged;
+}
+
+function applySettings(s) {
+  const root = document.documentElement;
+  root.style.setProperty('--content-max-width', s.columnWidth + 'px');
+  // Размер текста идёт через setZoom, чтобы ползунок в настройках и кнопки
+  // масштаба в тулбаре всегда показывали одно и то же.
+  setZoom(s.zoom);
+}
+
+function settingsDialog() {
+  const back = modalShell();
+  const box = modalBox('Настройки', 430, 340);
+
+  const rows = [];
+  function addRow(label, control, hint) {
+    const row = document.createElement('label');
+    row.className = 'set-row';
+    const l = document.createElement('span');
+    l.className = 'set-label';
+    l.textContent = label;
+    const c = document.createElement('span');
+    c.className = 'set-control';
+    c.append(control);
+    row.append(l, c);
+    if (hint) {
+      const h = document.createElement('span');
+      h.className = 'set-hint';
+      h.textContent = hint;
+      row.append(h);
+    }
+    box.append(row);
+    rows.push(row);
+    return control;
+  }
+
+  const next = Object.assign({}, currentSettings);
+
+  // Размер текста. Ползунок в пикселях (людям понятнее), внутри — zoom.
+  const fontOut = document.createElement('span');
+  fontOut.className = 'set-val';
+  const font = document.createElement('input');
+  font.type = 'range';
+  font.min = '11';
+  font.max = '24';
+  font.step = '1';
+  const pxToZoom = (px) => px / BASE_TEXT_PX;
+  const zoomToPx = (z) => Math.round(BASE_TEXT_PX * z);
+  font.value = String(zoomToPx(next.zoom));
+  const syncFont = () => {
+    fontOut.textContent = font.value + ' px';
+    previewSettings({ zoom: pxToZoom(+font.value) });
+  };
+  font.oninput = syncFont;
+  syncFont();
+  const fontWrap = document.createElement('span');
+  fontWrap.className = 'set-inline';
+  fontWrap.append(font, fontOut);
+  addRow('Размер текста', fontWrap, 'Синхронизирован с масштабом в тулбаре.');
+
+  // Ширина колонки
+  const widthOut = document.createElement('span');
+  widthOut.className = 'set-val';
+  const width = document.createElement('input');
+  width.type = 'range';
+  width.min = '640';
+  width.max = '1400';
+  width.step = '20';
+  width.value = String(next.columnWidth);
+  const syncWidth = () => {
+    widthOut.textContent = width.value + ' px';
+    previewSettings({ columnWidth: +width.value });
+  };
+  width.oninput = syncWidth;
+  syncWidth();
+  const widthWrap = document.createElement('span');
+  widthWrap.className = 'set-inline';
+  widthWrap.append(width, widthOut);
+  addRow('Ширина колонки', widthWrap, 'Ширше — длинные строки читаются тяжелее.');
+
+  // Автосохранение
+  const auto = document.createElement('input');
+  auto.type = 'checkbox';
+  auto.checked = !!next.autosave;
+  auto.onchange = () => previewSettings({ autosave: auto.checked });
+  addRow('Автосохранение', auto, 'Выход из правки сразу пишет файл, без «Сохранить».');
+
+  // Предпросмотр должен откатываться при отмене
+  const before = Object.assign({}, currentSettings);
+  const oldOnCancel = back._onCancel;
+  back._onCancel = () => {
+    // previewSettings, а не applySettings: откатить надо и CSS, и currentSettings,
+    // иначе состояние в памяти разойдётся с тем, что на экране.
+    previewSettings(before);
+    if (oldOnCancel) oldOnCancel();
+  };
+
+  const row = document.createElement('div');
+  row.className = 'modal-row';
+  const reset = document.createElement('button');
+  reset.className = 'dlgbtn';
+  reset.textContent = 'Сбросить';
+  reset.onclick = () => {
+    const d = SETTINGS_DEFAULT;
+    font.value = String(zoomToPx(d.zoom));
+    width.value = String(d.columnWidth);
+    auto.checked = d.autosave;
+    syncFont();
+    syncWidth();
+    previewSettings(Object.assign({}, d));
+  };
+  const ok = document.createElement('button');
+  ok.className = 'dlgbtn dlgbtn-primary';
+  ok.textContent = 'Готово';
+  ok.onclick = async () => {
+    const val = {
+      zoom: pxToZoom(+font.value),
+      columnWidth: +width.value,
+      autosave: auto.checked,
+    };
+    currentSettings = val;
+    applySettings(val);
+    try {
+      await api.settingsSet(val);
+    } catch (e) {
+      status('Настройки не сохранены: ' + (e.message || e), 'err');
+    }
+    back.remove();
+  };
+  row.append(reset, ok);
+  box.append(row);
+
+  back.append(box);
+  document.body.append(back);
+  wireModal(back, () => font);
+}
+
+let currentSettings = Object.assign({}, SETTINGS_DEFAULT);
+
+function previewSettings(patch) {
+  Object.assign(currentSettings, patch);
+  applySettings(currentSettings);
+}
+
+/** Отмечаем файл в списке недавних (без await — ошибка тут не критична). */
+function noteRecent(p) {
+  if (!p) return;
+  Promise.resolve(api.recentAdd(p)).catch(() => {});
+}
 el.btnOpenFile.onclick = openFileDialog;
 el.wOpenFile.onclick = openFileDialog;
 el.btnOpenFolder.onclick = openFolderDialog;
@@ -1253,6 +1598,21 @@ el.toTop.onclick = () => el.content.scrollTo({ top: 0, behavior: 'smooth' });
 async function exitEdit(saveIt) {
   const t = active();
   if (!t || !t.path || t.mode !== 'edit') return;
+
+  // Включённое автосохранение убирает сам повод нажимать «Сохранить»:
+  // выход из правки пишет файл сам. Вопрос про отмену тогда не нужен —
+  // отменять нечего.
+  if (!saveIt && t.dirty && currentSettings.autosave) {
+    await save();
+    // save() намеренно оставляет правку включённой (Ctrl+S не должен
+    // выбрасывать в чтение), а тут мы именно выходим — доводим до конца.
+    t.mode = 'read';
+    t.html = null;
+    renderTabs();
+    renderActive();
+    status('Автосохранено: ' + t.name, 'ok');
+    return;
+  }
 
   if (!saveIt && t.dirty) {
     // Отмена необратима — спрашиваем. Раньше выход из правки был без вопроса.
@@ -1495,9 +1855,17 @@ window.__mdvTest = {
   newTab, openPath, active, stepTab, selectTab, samePath,
   duplicateTab, moveTab, fileContextMenu, tabContextMenu, trashFile, basname,
   setConfirm: (fn) => { __confirmHook = fn; },
+  // Меню иконки приложения, недавние, настройки
+  newFileAction, newProjectAction, recentDialog, settingsDialog,
+  loadSettings, applySettings, previewSettings, noteRecent,
+  settings: () => currentSettings,
+  setSettings: (v) => { currentSettings = Object.assign({}, currentSettings, v); applySettings(currentSettings); },
+  modalShell, modalBox, wireModal,
+  clearRecents: () => api.recentClear(),
 };
 
 newTab();
 renderTree();
+loadSettings();
 updateZoom();
 status('Готово. Ctrl+O — открыть .md, Ctrl+Shift+O — открыть папку');

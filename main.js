@@ -19,6 +19,17 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
 // на старте выглядела как «программа ничего не делает». Поэтому пишем лог на
 // диск и показываем диалог, а не падаем молча.
 
+// Скрытый режим: MDVIEW_HIDDEN=1 или ключ --mdview-hidden.
+// Окно создаётся и работает, но не показывается ни разу: на экране ничего
+// нет, в панели задач и Alt+Tab его нет, тыкнуть некуда. Нужен, чтобы
+// автотесты и разработка не выскакивали окном поверх работы.
+//
+// Почему не «другой рабочий стол»: виртуальные столы Windows недоступны
+// с этой сборки (COM-класс IVirtualDesktopManager не зарегистрирован),
+// горячая клавиша требует передать фокус окну, а отдельный Win32-стол
+// убивает Chromium до старта main.js.
+const HIDDEN = process.env.MDVIEW_HIDDEN === '1' || process.argv.includes('--mdview-hidden');
+
 const OVERLAY = { color: '#16161e', symbolColor: '#a9b1d6', height: 40 };
 
 let logPath = null;
@@ -96,6 +107,9 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      // Окно не видно, значит композитор не будет рисовать: в offscreen
+      // кадры идут напрямую, и снимки страницы получаются непустыми.
+      ...(HIDDEN ? { offscreen: true } : {}),
     },
   });
 
@@ -111,8 +125,12 @@ function createWindow() {
 
   // Страховка от «невидимого» окна: показываем по ready-to-show, но если событие
   // не пришло за 6 с — показываем всё равно.
-  const showTimer = setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 6000);
-  win.once('ready-to-show', () => { clearTimeout(showTimer); win.show(); });
+  if (HIDDEN) {
+    log('скрытый режим: окно создано, но не показывается (MDVIEW_HIDDEN)');
+  } else {
+    const showTimer = setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 6000);
+    win.once('ready-to-show', () => { clearTimeout(showTimer); win.show(); });
+  }
 
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     log(`did-fail-load code=${code} desc=${desc} url=${url}`);

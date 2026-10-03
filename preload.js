@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('mdv', {
   reveal: (p) => ipcRenderer.invoke('mdv:reveal', p),
   /** Удаление в корзину Windows (не безвозвратно). {ok, error} */
   trash: (p) => ipcRenderer.invoke('mdv:trash', p),
+  /** Меню иконки приложения */
+  newFile: (seedName) => ipcRenderer.invoke('mdv:newFile', seedName),
+  newProject: (seedName) => ipcRenderer.invoke('mdv:newProject', seedName),
+  recentGet: () => ipcRenderer.invoke('mdv:recentGet'),
+  recentAdd: (p) => ipcRenderer.invoke('mdv:recentAdd', p),
+  recentClear: () => ipcRenderer.invoke('mdv:recentClear'),
+  settingsGet: () => ipcRenderer.invoke('mdv:settingsGet'),
+  settingsSet: (patch) => ipcRenderer.invoke('mdv:settingsSet', patch),
   print: () => ipcRenderer.invoke('mdv:print'),
   exportHtml: (payload) => ipcRenderer.invoke('mdv:exportHtml', payload),
 

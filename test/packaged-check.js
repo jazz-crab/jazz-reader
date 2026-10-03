@@ -25,7 +25,8 @@ function getTargets() {
 
 (async () => {
   if (!BIN) { console.error('укажи путь к бинарнику'); process.exit(2); }
-  const child = spawn(BIN, ['--no-sandbox', '--disable-gpu', '--remote-debugging-port=' + PORT, SAMPLE], {
+  const child = spawn(BIN, ['--no-sandbox', '--disable-gpu', '--mdview-hidden',
+    '--remote-debugging-port=' + PORT, SAMPLE], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';

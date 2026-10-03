@@ -18,25 +18,18 @@
          а справа была пустая распорка — визуально кнопка «новая вкладка»
          прилипала к первой вкладке и читалась как часть её. -->
     <div class="tabbar" id="tabbar">
-      <div class="tabbar-brand" id="appBrand" title="MDView">
-        <svg viewBox="0 0 64 64" width="20" height="20" aria-hidden="true" focusable="false">
+      <button class="tabbar-brand" id="appBrand" title="MDView — меню приложения" aria-haspopup="menu">
+        <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true" focusable="false">
           <rect x="2" y="2" width="60" height="60" rx="12" fill="#16161e" stroke="#3b4261" stroke-width="2"></rect>
           <text x="32" y="43" text-anchor="middle" font-family="Consolas,monospace" font-size="28" font-weight="700" fill="#7aa2f7">M</text>
           <text x="47" y="43" text-anchor="middle" font-family="Consolas,monospace" font-size="28" font-weight="700" fill="#7dcfff">D</text>
         </svg>
-      </div>
+      </button>
       <div class="tabs" id="tabs"></div>
-
-      <!-- «+» и его меню в одной обёртке: кнопка должна быть последней перед
-           распоркой, а меню позиционируется относительно неё. -->
-      <div class="dropdown tabnew-menu" id="newTabWrap">
-        <button class="tab-new" id="btnNewTab" title="Новая вкладка (Ctrl+T)"><span class="ico" data-i="plus"></span></button>
-        <div class="dropdown-menu" id="newTabMenu">
-          <button data-act="file"><span class="ico" data-i="file-text"></span>Открыть файл&#8230;</button>
-          <button data-act="folder"><span class="ico" data-i="folder-open"></span>Открыть папку&#8230;</button>
-          <button data-act="blank"><span class="ico" data-i="file-plus"></span>Новая пустая вкладка</button>
-        </div>
-      </div>
+      <!-- Плюсик просто открывает новую вкладку. Мини-меню убрано: ради
+           пустой вкладки не надо в неё нырять, а файлы/папки открываются
+           кнопками тулбара. -->
+      <button class="tab-new" id="btnNewTab" title="Новая вкладка (Ctrl+T)"><span class="ico" data-i="plus"></span></button>
 
       <div class="tabbar-spacer"></div>
     </div>
