@@ -69,6 +69,10 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     height: var(--tabbar-h); flex: 0 0 auto;
     background: var(--bg-alt); border-bottom: 1px solid var(--border);
     padding-left: 6px;
+    /* Место под системные кнопки окна (свернуть/развернуть/закрыть): их
+       рисует titleBarOverlay поверх содержимого. Значение приходит из main
+       (см. applyCaptionReserve), потому что зависит от DPI. */
+    padding-right: var(--titlebar-right, 140px);
     -webkit-app-region: drag;               /* тянем окно за пустое место */
 }
 .tabbar-spacer { flex: 1 1 auto; -webkit-app-region: drag; }
@@ -137,14 +141,28 @@ code, pre, kbd, .icode { font-family: var(--mono); }
 .tabs-nav:hover { opacity: 1 !important; }
 .tabs-nav .ico-svg { width: 15px; height: 15px; }
 
-/* Много вкладок — жмём ширину, иначе полезут за край после третьей */
-.tabs.many .tab { max-width: 158px; min-width: 84px; padding: 0 5px 0 9px; gap: 5px; }
+/* Много вкладок — жмём ширину, иначе полезут за край после третьей.
+   min-width 110px, а не 84px: при 84px на имя оставалось ~60px, и оно
+   вырождалось в «ESP3….md» — от вкладки без номера и даты толку мало.
+   Лучше дольше листать скроллом, чем читать обрезки. */
+.tabs.many .tab { max-width: 158px; min-width: 110px; padding: 0 5px 0 9px; gap: 5px; }
 .tabs.many .tab .tclose { padding: 3px 3px; }
 
 .tab {
     -webkit-app-region: no-drag;
     display: flex; align-items: center; gap: 8px;
     padding: 0 8px 0 12px; max-width: 240px; min-width: 104px;
+    /* flex: 1 1 180px — basis ФИКСИРОВАННЫЙ, и это принципиально.
+       С basis:auto размер вкладки зависел от текста имени, а текст меняет
+       elideMiddle() — и замыкалась петля: длинное имя -> широкая вкладка ->
+       при сжатии (пропорциональном basis) уезжает ещё сильнее -> обрезается
+       ещё сильнее -> basis ещё меньше. В итоге одна вкладка схлопывалась в
+       min-width с именем «ESP…md», пока соседние стояли по 230px, и в полосе
+       ещё оставалось ~80px пустоты.
+       С фиксированным basis размер вкладки от текста не зависит: вкладки
+       поровну делят полосу, а переполнение наступает ровно тогда, когда
+       даже min-width не влезает. */
+    flex: 1 1 180px;
     background: transparent; border: 1px solid transparent;
     border-radius: 7px 7px 0 0; cursor: pointer;
     color: var(--fg-dark); font-size: 13px; font-family: var(--ui);

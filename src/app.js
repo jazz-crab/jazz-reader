@@ -555,7 +555,10 @@ function initTabDrag() {
     const d = e.target.closest('.tab');
     if (!d) return;
     const t = tabs.get(+d.dataset.id);
-    if (!t || !t.path) { e.preventDefault(); return; }  // пустые не таскаем
+    // Пустые вкладки тоже таскаются: иначе «новую вкладку» нельзя было
+    // переставить, а при работе с несколькими заметками это самая частая
+    // вкладка. Раньше здесь стояло `!t.path` и она оставалась на месте.
+    if (!t) { e.preventDefault(); return; }
     dragId = +d.dataset.id;
     d.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
@@ -637,7 +640,11 @@ function initTabsScroll() {
     el.tabs.scrollLeft += e.deltaY;
   }, { passive: false });
 
-  // Ширина ленты меняется при ресайзе окна и при появлении/скрытии панели
+  // Шефроны зависят от ширины ЛЕНТЫ, а обрезка имени — от ширины ВКЛАДКИ.
+  // Это разные величины: при сжатии полосы общая ширина может не измениться
+  // ни на пиксель, пока отдельные вкладки сжмутся со 180 до 110. Наблюдая
+  // только за лентой, мы пропускали этот переход, и имена оставались
+  // необрезанными при заведомо узких вкладках.
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => updateTabsNav()).observe(el.tabs);
   } else {
@@ -662,7 +669,17 @@ function updateTabsNav() {
  */
 function elideMiddle(el, full) {
   if (!full) return;
-  if (el.scrollWidth <= el.clientWidth + 1) { el.textContent = full; return; }
+  const cur = el.textContent;
+  if (cur !== full) {
+    // Уже обрезано. Возвращаем полное имя ТОЛЬКО если оно теперь помещается:
+    // вкладка могла разъехаться (сменилось число вкладок, ресайз, резерв под
+    // системные кнопки). Если помещается — оставляем полное, если нет —
+    // идём обрезать заново.
+    el.textContent = full;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+  } else if (el.scrollWidth <= el.clientWidth + 1) {
+    return;
+  }
   const build = (n) => {
     // 55% головы + многоточие + 45% хвоста, без наложения
     const head = Math.ceil(n * 0.55);
@@ -679,6 +696,45 @@ function elideMiddle(el, full) {
   el.textContent = build(lo);
 }
 
+/**
+ * Пересчёт обрезки имён под текущую ширину вкладок.
+ *
+ * Следить надо за вкладками, а не за лентой: при сжатии полосы её ширина может
+ * не измениться ни на пиксель, пока отдельные вкладки сойдутся со 180 до 110.
+ *
+ * Переподключать наблюдатель из его же колбэка нельзя — disconnect() там
+ * отменяет доставку уже поставленных в очередь уведомлений, и часть вкладок
+ * оставалась необрезанной навсегда. Поэтому переподключение живёт в
+ * observeTabWidths(), а колбэк только пересчитывает.
+ */
+let tabResizeObs = null;
+
+function elideAllTabNames() {
+  for (const nm of el.tabs.querySelectorAll('.tname')) elideMiddle(nm, nm.dataset.full);
+}
+
+function observeTabWidths() {
+  if (typeof ResizeObserver === 'undefined') return;
+  if (!tabResizeObs) {
+    tabResizeObs = new ResizeObserver(() => elideAllTabNames());
+  } else {
+    tabResizeObs.disconnect();
+  }
+  for (const t of el.tabs.querySelectorAll('.tab')) tabResizeObs.observe(t);
+}
+
+/**
+ * Пересчитать сейчас и ещё дважды отложенно. Первая раскладка flex может
+ * прийти позже нашей синхронной проверки, а таймеры закрывают этот зазор
+ * независимо от того, сработал ли ResizeObserver (в скрытом окне кадров нет,
+ * но layout всё равно происходит).
+ */
+function scheduleElide() {
+  elideAllTabNames();
+  setTimeout(elideAllTabNames, 0);
+  setTimeout(elideAllTabNames, 150);
+}
+
 function renderTabs() {
   el.tabs.innerHTML = '';
   // Много вкладок — жмём ширину, чтобы меньше уезжало за край
@@ -687,7 +743,9 @@ function renderTabs() {
     const d = document.createElement('div');
     d.className = 'tab' + (t.id === activeId ? ' active' : '');
     d.dataset.id = String(t.id);
-    d.draggable = !!t.path;
+    // Таскаются и пустые: иначе «новую вкладку» нельзя было переставить,
+    // хотя это самая обычная вкладка при работе с несколькими заметками.
+    d.draggable = true;
     d.title = t.path || t.name;
     if (t.id === activeId) d.focus();   // чтобы Shift+F10 и клавиатура работали на активной вкладке
     const nm = document.createElement('span');
@@ -725,7 +783,8 @@ function renderTabs() {
   }
   // Ширины вкладок известны только после того, как они в DOM, поэтому
   // обрезаем имена вторым проходом.
-  for (const nm of el.tabs.querySelectorAll('.tname')) elideMiddle(nm, nm.dataset.full);
+  scheduleElide();
+  observeTabWidths();
   // активную вкладку видно
   const act = el.tabs.querySelector('.tab.active');
   if (act) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -2003,6 +2062,24 @@ window.addEventListener('beforeunload', (e) => {
 // Раньше там стояли глифы Font Awesome (&#xf07b;), которые рисовались
 // только при загруженном Nerd Font.
 ICONS.hydrate(document);
+
+/*
+ * Резерв под системные кнопки окна. titleBarOverlay рисует «свернуть/развернуть/
+ * закрыть» поверх содержимого, и без резерва полоса вкладок заезжала под них:
+ * кнопка «+» пропадала, последние вкладки были не видны, а скролла не
+ * появлялось — лента формально влезала, и переполнение считать было не от чего.
+ */
+function applyCaptionReserve(px) {
+  const w = Math.max(0, Math.round(px || 0));
+  document.documentElement.style.setProperty('--titlebar-right', w + 'px');
+  updateTabsNav();
+  scheduleElide();
+}
+if (api.caption) {
+  // Запрос, а не подписка: сообщение могло бы уйти раньше, чем мы повесили
+  // слушатель, и резерв остался бы дефолтным.
+  api.caption().then(applyCaptionReserve).catch(() => {});
+}
 
 /* Хук для автотестов (test/startup.js).
    Системный диалог выбора папки из теста не открыть, а без него нельзя

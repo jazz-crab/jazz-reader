@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('mdv', {
   reveal: (p) => ipcRenderer.invoke('mdv:reveal', p),
   /** Удаление в корзину Windows (не безвозвратно). {ok, error} */
   trash: (p) => ipcRenderer.invoke('mdv:trash', p),
+  /**
+   * Ширина блока системных кнопок окна. Полоса вкладок резервирует под них
+   * место, иначе кнопка «+» уезжает под них и становится недоступной.
+   */
+  caption: () => ipcRenderer.invoke('mdv:caption'),
   /** Меню иконки приложения */
   newFile: (seedName) => ipcRenderer.invoke('mdv:newFile', seedName),
   newProject: (seedName) => ipcRenderer.invoke('mdv:newProject', seedName),

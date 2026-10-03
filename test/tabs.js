@@ -906,30 +906,71 @@ const SILENCE_CONFIRM = `(() => {
   t('имя вкладки не выделяется мышью',
     r.userSelect === 'none' && r.webkit === 'none', JSON.stringify(r));
 
-  // обрезка длинного имени в середине: хвост с номером должен остаться виден
+  // Обрезка длинного имени в середине: хвост с номером должен остаться виден.
+  // Нужно много вкладок: пока их мало, basis 180px каждой и имя помещается
+  // целиком — обрезаться просто нечему.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
-    for (const n of ['07', '24', '12']) await M.openPath(T + '/Заметка-с-длинным-именем-' + n + '.md', { newTab: true });
-    await new Promise(r2 => setTimeout(r2, 500));
+    // Номера из фикстуры (01..18), иначе openPath вернёт null и вкладок будет меньше.
+    for (const n of ['07', '12', '05', '18', '09', '14', '03', '16', '08', '11', '02', '17']) {
+      await M.openPath(T + '/Заметка-с-длинным-именем-' + n + '.md', { newTab: true });
+    }
+    await new Promise(r2 => setTimeout(r2, 600));
+    const tabs = document.getElementById('tabs');
+    const widths = [...document.querySelectorAll('.tab')].map(d => Math.round(d.getBoundingClientRect().width));
     return JSON.stringify({
       names: [...document.querySelectorAll('.tname')].map(x => x.textContent),
       full: [...document.querySelectorAll('.tname')].map(x => x.dataset.full),
-      scrollW: document.getElementById('tabs').scrollWidth,
-      clientW: document.getElementById('tabs').clientWidth,
+      widths,
+      uniform: widths.length > 0 && Math.max(...widths) - Math.min(...widths) <= 1,
+      over: tabs.scrollWidth - tabs.clientWidth,
+      chevron: !document.getElementById('tabsRight').hidden,
+      // имя не должно вылезать за свою вкладку
+      fits: [...document.querySelectorAll('.tab')].map(d => {
+        const n = d.querySelector('.tname');
+        return n.getBoundingClientRect().right <= d.getBoundingClientRect().right + 0.5;
+      }),
     });
   })()`));
 
-  t('длинные имена обрезаны', r.scrollW <= r.clientW + 1,
-    'scroll=' + r.scrollW + ' client=' + r.clientW);
+  // При 12 вкладках по 110px переполнение — это норма, оно и включает
+  // скролл. Требовать «поместилось» тут нельзя: min-width вкладки не даёт
+  // им стать уже, и полоса обязана уйти в прокрутку.
+  t('полоса либо помещается, либо прокручивается',
+    r.over <= 1 || r.chevron === true,
+    'перебор=' + r.over + 'px шеврон=' + r.chevron);
+  t('при переполнении шеврон показан', r.over <= 1 || r.chevron === true,
+    'перебор=' + r.over + 'px');
+  t('вкладки одной ширины', r.uniform === true, JSON.stringify(r.widths));
   t('полное имя сохранено в data-full',
-    (r.full || []).every((x, i) => x === (r.full || [])[i] && x.length > 20), JSON.stringify(r.full));
-  t('обрезка не в самом конце (хвост виден)',
-    (r.names || []).every((x) => x.includes('…') && x.length > 8), JSON.stringify(r.names));
-  t('различающиеся хвосты имён видны',
-    new Set((r.names || []).map((x) => x.slice(-5))).size === (r.names || []).length,
+    (r.full || []).every((x) => x && x.length > 20), JSON.stringify(r.full));
+  t('длинные имена обрезаны', (r.names || []).every((x) => x.includes('…')),
     JSON.stringify(r.names));
+  t('обрезка не в самом конце: расширение сохранено',
+    (r.names || []).every((x) => x.endsWith('.md')), JSON.stringify(r.names));
+  t('имя не вылезает за свою вкладку',
+    (r.fits || []).every((x) => x === true), JSON.stringify(r.fits));
+  // Различающийся хвост имени помещается не всегда: при 70px под имя остаётся
+  // ~8 символов, и номера в хвосте просто некуда деть. Проверяем это там, где
+  // места хватает, — при семи вкладках.
+  r2 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const T = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    for (const n of ['07', '12', '05', '18', '09', '14', '03']) {
+      await M.openPath(T + '/Заметка-с-длинным-именем-' + n + '.md', { newTab: true });
+    }
+    await new Promise(r3 => setTimeout(r3, 600));
+    return JSON.stringify({
+      names: [...document.querySelectorAll('.tname')].map(x => x.textContent),
+      tabW: Math.round(document.querySelector('.tab').getBoundingClientRect().width),
+    });
+  })()`));
+  t('при семи вкладках хвосты имён различимы',
+    new Set((r2.names || []).map((x) => x.slice(-6))).size === (r2.names || []).length,
+    'ширина вкладки ' + r2.tabW + 'px: ' + JSON.stringify(r2.names));
 
   // ------------------------------------------------- индикатор загрузки
   console.log('\n== индикатор загрузки ==');
@@ -988,6 +1029,100 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
   t('переключение вкладки гасит индикатор', r.before === false && r.after === true,
     JSON.stringify(r));
+
+  // ------------------------------------------- резерв под системные кнопки
+  // titleBarOverlay рисует «свернуть/развернуть/закрыть» поверх содержимого.
+  // Без резерва полоса вкладок заезжала под них: «+» пропадала, последние
+  // вкладки были не видны, а скролла не появлялось — лента формально
+  // влезала, и переполнение считать было не от чего.
+  console.log('\n== резерв под системные кнопки окна ==');
+
+  r = JSON.parse(await js(`(() => {
+    const cap = parseInt(getComputedStyle(document.documentElement)
+      .getPropertyValue('--titlebar-right')) || 0;
+    const bar = document.getElementById('tabbar');
+    const plus = document.getElementById('btnNewTab').getBoundingClientRect();
+    const chev = document.getElementById('tabsRight');
+    const cr = chev.getBoundingClientRect();
+    return JSON.stringify({
+      cap,
+      padRight: getComputedStyle(bar).paddingRight,
+      winW: innerWidth,
+      captionStartsAt: innerWidth - cap,
+      plusRight: Math.round(plus.right),
+      chevronShown: !chev.hidden,
+      chevronRight: Math.round(cr.right),
+      hasHandler: typeof window.mdv.caption === 'function',
+    });
+  })()`));
+
+  t('ширина блока кнопок получена от main', r.cap > 60, r.cap + 'px');
+  t('полоса вкладок резервирует это место справа',
+    parseInt(r.padRight) >= r.cap - 1, 'padding=' + r.padRight + ' cap=' + r.cap);
+  t('«+» не заезжает под системные кнопки',
+    r.plusRight <= r.captionStartsAt, '+=' + r.plusRight + ' зона=' + r.captionStartsAt);
+  if (r.chevronShown) {
+    t('шеврон не заезжает под системные кнопки',
+      r.chevronRight <= r.captionStartsAt + 1, 'шеврон=' + r.chevronRight);
+  } else {
+    t('шеврон не заезжает под системные кнопки', true);
+  }
+
+  // ------------------------------------------- перетаскивание пустых вкладок
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const T = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    for (const f of ${JSON.stringify(MANY_FILES.slice(0, 4))}) await M.openPath(T + '/' + f, { newTab: true });
+    M.newTab();
+    await new Promise(r2 => setTimeout(r2, 400));
+
+    const blank = [...document.querySelectorAll('.tab')]
+      .find(d => d.querySelector('.tname').dataset.full === 'Новая вкладка');
+    if (!blank) return JSON.stringify({ err: 'нет пустой вкладки' });
+
+    const dt = new DataTransfer();
+    blank.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    const started = blank.classList.contains('dragging');
+    const payload = dt.getData('text/plain');
+    blank.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+    // Проверяем сразу: дальше снова будет dragstart, который навесит класс
+    // заново, и «снимается по завершении» выглядело бы провалом.
+    const cleared = !blank.classList.contains('dragging');
+
+    // и сразу переносим её в начало
+    const blankId = +blank.dataset.id;
+    const firstId = [...M.tabs.keys()][0];
+    const target = document.querySelector('.tab[data-id="' + firstId + '"]');
+    const rect = target.getBoundingClientRect();
+    const dt2 = new DataTransfer();
+    blank.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt2 }));
+    target.dispatchEvent(new DragEvent('dragover', {
+      bubbles: true, cancelable: true, clientX: rect.left + 2, clientY: rect.top + 5, dataTransfer: dt2,
+    }));
+    const marker = target.classList.contains('drop-before') || target.classList.contains('drop-after');
+    target.dispatchEvent(new DragEvent('drop', {
+      bubbles: true, cancelable: true, clientX: rect.left + 2, clientY: rect.top + 5, dataTransfer: dt2,
+    }));
+    await new Promise(r2 => setTimeout(r2, 400));
+
+    const after = [...M.tabs.keys()];
+    const domOrder = [...document.querySelectorAll('.tab')].map(d => +d.dataset.id);
+    return JSON.stringify({
+      started, payload, marker, blankId, cleared,
+      movedToFront: after[0] === blankId,
+      domMatches: JSON.stringify(domOrder) === JSON.stringify(after),
+      allDraggable: [...document.querySelectorAll('.tab')].every(d => d.draggable),
+    });
+  })()`));
+
+  t('пустая вкладка помечена как перетаскиваемая', r.allDraggable === true);
+  t('перетаскивание пустой вкладки начинается', r.started === true);
+  t('при перетаскивании передаётся имя вкладки', r.payload === 'Новая вкладка', r.payload);
+  t('метка класса снимается по завершении', r.cleared === true);
+  t('пустую вкладку можно перенести', r.movedToFront === true, JSON.stringify(r));
+  t('место вставки помечается', r.marker === true);
+  t('порядок DOM совпадает с порядком вкладок', r.domMatches === true);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

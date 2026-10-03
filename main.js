@@ -32,6 +32,39 @@ const HIDDEN = process.env.MDVIEW_HIDDEN === '1' || process.argv.includes('--mdv
 
 const OVERLAY = { color: '#16161e', symbolColor: '#a9b1d6', height: 40 };
 
+/*
+ * Ширина блока системных кнопок окна (свернуть/развернуть/закрыть).
+ *
+ * titleBarOverlay рисует их поверх содержимого окна, и это была наша беда:
+ * полоса вкладок не резервировала под них место. При множестве вкладок
+ * кнопка «+» уезжала под системные кнопки и становилась недоступной, а
+ * последние вкладки — невидимыми. Скролла при этом не появлялось: лента
+ * формально влезала, и переполнение считать было не от чего.
+ *
+ * Константа не годится: ширина зависит от DPI (на 150% это ~207px вместо
+ * ~138px). Меряем на живом окне через getTitleBarArea() — он отдаёт область
+ * заголовка, доступную для перетаскивания, то есть БЕЗ блока кнопок справа.
+ * Разница между правым краем окна и правым краем этой области и есть нужная
+ * ширина.
+ *
+ * Запасной путь — 138px (типичное значение при 100%): если overlay не
+ * применился, лучше перестараться и оставить пустое место, чем спрятать «+».
+ */
+const CAPTION_FALLBACK = 138;
+
+function captionButtonWidth(win) {
+  try {
+    const b = win.getBounds();
+    const area = win.getTitleBarArea();
+    const winRight = b.x + b.width;
+    const areaRight = area.x + area.width;
+    const w = Math.round(winRight - areaRight);
+    return w > 0 ? w : CAPTION_FALLBACK;
+  } catch {
+    return CAPTION_FALLBACK;
+  }
+}
+
 let logPath = null;
 let fatalShown = false;
 /** Захваченные системные хоткеи (см. registerTabShortcuts). */
@@ -121,6 +154,10 @@ function createWindow() {
     } catch (e) {
       log('setTitleBarOverlay недоступен, продолжаем без него: ' + e.message);
     }
+    // Ширину блока кнопок узнаём только после того, как overlay применён.
+    const caption = captionButtonWidth(win);
+    log('системные кнопки окна: ' + caption + 'px');
+    ipc.setCaptionWidth(caption);
   }
 
   // Страховка от «невидимого» окна: показываем по ready-to-show, но если событие

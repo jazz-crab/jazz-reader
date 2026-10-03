@@ -161,6 +161,9 @@ async function buildStandaloneHtml(title, body) {
   return { path: file, fonts: inlined, bytes: Buffer.byteLength(html) };
 }
 
+/** Ширину проставляет main после применения titleBarOverlay. */
+let captionWidth = 140;
+
 function register() {
   ipcMain.handle('mdv:read', async (_e, filePath) => {
     const st = await fsp.stat(filePath);
@@ -356,6 +359,14 @@ function register() {
     return next;
   });
 
+  /*
+   * Ширина блока системных кнопок окна. Renderer спрашивает её один раз при
+   * старте, чтобы зарезервировать место в полосе вкладок.
+   * Push-канал не годился: сообщение могло уйти раньше, чем renderer
+   * подпишется, и тогда резерв остался бы дефолтным.
+   */
+  ipcMain.handle('mdv:caption', () => captionWidth);
+
   ipcMain.handle('mdv:print', () => {
     const w = targetWindow();
     if (w) w.webContents.print({ silent: false, printBackground: true });
@@ -363,4 +374,7 @@ function register() {
   ipcMain.handle('mdv:exportHtml', (_e, { title, body }) => buildStandaloneHtml(title, body));
 }
 
-module.exports = { register, listMdTree, decodeBuffer, buildStandaloneHtml };
+module.exports = {
+  register, listMdTree, decodeBuffer, buildStandaloneHtml,
+  setCaptionWidth: (px) => { captionWidth = Math.max(0, Math.round(px || 0)); },
+};
