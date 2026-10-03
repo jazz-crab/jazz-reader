@@ -24,6 +24,8 @@ const el = {
     tocSide: $('tocSide'), filesSide: $('filesSide'),
     tocResizer: $('tocResizer'), filesResizer: $('filesResizer'),
     topbar: document.querySelector('.topbar'),
+    split: $('split'), splitDivider: $('splitDivider'),
+    panel2: $('panel2'), content2: $('content2'), secondTitle: $('secondTitle'),
   paneFiles: $('paneFiles'), paneToc: $('paneToc'), treeFilter: $('treeFilter'),
   content: $('content'), editor: $('editor'), toTop: $('toTop'),
   statusbar: $('statusbar'), statusText: $('statusText'), fileName: $('fileName'),
@@ -37,6 +39,10 @@ let seq = 0;
 /** @type {Map<number, object>} */
 const tabs = new Map();
 let activeId = null;
+/** Вкладка в правой панели разделения. null — экран не разделён.
+ *  Сама вкладка живёт в общем tabs: полоса вкладок одна на обе панели. */
+let secondId = null;
+
 /** стек посещённых вкладок — чтобы Alt+←/→ работали как в браузере */
 let visit = [];
 let visitPos = -1;
@@ -51,6 +57,19 @@ function active() { return tabs.get(activeId) || null; }
 /** Переключение вкладки. touch=false — не двигать позицию в стеке посещений. */
 function selectTab(id, touch) {
   if (!tabs.has(id)) return;
+  // Клик по вкладке правой панели: она и так на виду, и ждёшь, что окажется
+  // в рабочей области. Меняем панели местами — иначе справа оказалась бы та
+  // же заметка, что и слева, то есть ничего.
+  if (secondId !== null && id === secondId) {
+    if (active()) active().scroll = el.content.scrollTop;
+    secondId = activeId;
+    activeId = id;
+    renderTabs();
+    renderActive();
+    renderSecond();
+    updateNavButtons();
+    return;
+  }
   if (active()) active().scroll = el.content.scrollTop;
   activeId = id;
   if (touch !== false) {
@@ -333,6 +352,10 @@ function newTab() {
 async function closeTab(id, opts) {
   const t = tabs.get(id);
   if (!t) return false;
+  // Вкладку правой панели закрыли — панели больше нечего показывать.
+  // Проверяем здесь, до вопроса про правки: иначе «Сохранить» закрыл бы
+  // вкладку, а панель осталась бы висеть с чужим текстом.
+  const wasSecond = secondId === id;
   // silent — массовое закрытие («все кроме этой», «все справа»): не засоряем
   // экран пятью одинаковыми вопросами подряд. Но несохранённое не теряем:
   // такие вкладки просто не закрываем и сообщаем, сколько осталось.
@@ -359,12 +382,14 @@ async function closeTab(id, opts) {
         if (activeId === null) newTab();
         else selectTab(activeId);
       }
+      if (wasSecond) { secondId = null; renderSecond(); }
       renderTabs();
       renderActive();
       return true;
     }
   }
   tabs.delete(id);
+  if (wasSecond) { secondId = null; renderSecond(); }
   if (activeId === id) {
     const rest = [...tabs.keys()];
     activeId = null;
@@ -703,6 +728,18 @@ function showDragGhost(e, label) {
   setTimeout(() => g.remove(), 0);
 }
 
+/**
+ * Рамка на месте будущей правой панели.
+ *
+ * Пока вкладку тянут над полем заметки, показываем кромку там, где встанет
+ * вторая панель: иначе непонятно, что будет, если отпустить. Кромка снимается
+ * при уходе курсора и при отпускании — либо её повесил drop мимо цели.
+ */
+function hintSplitPlace(on) {
+  const main = document.querySelector('.main');
+  if (main) main.classList.toggle('drop-split', !!on);
+}
+
 function initTabDrag() {
   let dragId = null;
 
@@ -726,7 +763,32 @@ function initTabDrag() {
   el.tabs.addEventListener('dragend', () => {
     dragId = null;
     el.tabs.classList.remove('dragging-active');
+    hintSplitPlace(false);
     for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('dragging', 'drop-before', 'drop-after');
+  });
+
+  // Перетаскивание в поле заметки — разделение экрана. Слушаем окно, а не
+  // .main: пока вкладку тянут из ленты, указатель над лентой и над областью
+  // заметки — это разные элементы, и .main не узнает о dragover, если
+  // курсор над лентой. Над самой лентой работает перестановка вкладок.
+  window.addEventListener('dragover', (e) => {
+    if (dragId === null) return;
+    if (el.tabs.contains(e.target)) return;
+    if (!el.split.contains(e.target)) { hintSplitPlace(false); return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    hintSplitPlace(true);
+  });
+  window.addEventListener('drop', (e) => {
+    if (dragId === null) return;
+    if (el.tabs.contains(e.target)) return;
+    if (!el.split.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = dragId;
+    dragId = null;
+    el.tabs.classList.remove('dragging-active');
+    openSecond(id);
   });
 
   el.tabs.addEventListener('dragover', (e) => {
@@ -911,11 +973,15 @@ function renderTabs() {
   for (const t of tabs.values()) {
     const d = document.createElement('div');
     d.className = 'tab' + (t.id === activeId ? ' active' : '');
+    // Полоса вкладок одна на обе панели, поэтому вкладку правой панели
+    // помечаем: без метки не видно, какая заметка где.
+    if (secondId !== null && t.id === secondId) d.classList.add('in-second');
     d.dataset.id = String(t.id);
     // Таскаются и пустые: иначе «новую вкладку» нельзя было переставить,
     // хотя это самая обычная вкладка при работе с несколькими заметками.
     d.draggable = true;
-    d.title = t.path || t.name;
+    d.title = (t.path || t.name)
+      + (t.id === secondId ? '\n(справа — вторая панель)' : '');
     if (t.id === activeId) d.focus();   // чтобы Shift+F10 и клавиатура работали на активной вкладке
     const nm = document.createElement('span');
     nm.className = 'tname';
@@ -1210,6 +1276,85 @@ function renderActive() {
   el.btnToc.hidden = !t.path || el.paneToc.querySelector('.toc-hint') !== null;
 }
 
+/* ------------------------------------------------- разделение экрана
+
+ * Правая панель — вторая заметка рядом с рабочей. Полоса вкладок общая, и
+ * вкладка правой панели помечена кромкой слева: иначе непонятно, какая из
+ * двух заметок сейчас в какой панели.
+ *
+ * Панель появляется, когда вкладку тянут из ленты в поле заметки, и
+ * исчезает, когда в правой панели нажали крестик или её вкладку закрыли.
+ * Состояние намеренно не сохраняется: разделение — это способ посмотреть на
+ * две заметки сразу, а не настройка вида.
+ */
+
+/** Показать вкладку в правой панели. */
+function openSecond(id) {
+  if (!tabs.has(id)) return false;
+  // Ту же вкладку, что и в рабочей области, во вторую панель нечего помещать:
+  // рядом с самим собой пусто, и человек ничего не получает.
+  if (id === activeId) { status('Эта вкладка уже открыта слева'); return false; }
+  if (secondId !== null && tabs.has(secondId)) secondTab().scroll2 = el.content2.scrollTop;
+  secondId = id;
+  renderSecond();
+  renderTabs();
+  status('Справа: ' + tabs.get(id).name, 'ok');
+  return true;
+}
+
+/** Убрать правую панель. */
+function closeSecond() {
+  if (secondId === null) return;
+  secondId = null;
+  renderSecond();
+  renderTabs();
+  renderActive();
+}
+
+/** Правая панель и активная вкладка поменялись местами. */
+function swapPanes() {
+  const other = activeId;
+  secondId = other;
+  renderTabs();
+  renderActive();
+  renderSecond();
+}
+
+/** Правая панель занимает вторую позицию: сначала разделить, потом смотреть. */
+function splitScreen() {
+  const ids = [...tabs.keys()].filter((k) => k !== activeId);
+  if (!ids.length) { status('Нужна ещё одна вкладка — разделить нечего'); return false; }
+  return openSecond(ids[ids.length - 1]);
+}
+
+function secondTab() { return secondId === null ? null : tabs.get(secondId) || null; }
+
+function renderSecond() {
+  const t = secondTab();
+  const on = !!t;
+  el.panel2.hidden = !on;
+  el.splitDivider.hidden = !on;
+  if (!on) {
+    // Панели нет — её содержимое и рамка места разделения не нужны.
+    el.content2.innerHTML = '';
+    hintSplitPlace(null);
+    return;
+  }
+  el.secondTitle.textContent = t.name;
+  el.secondTitle.title = t.path || t.name;
+  if (t.html === null) {
+    try {
+      t.html = MDV.renderMd(t.raw, t.baseUrl);
+    } catch (e) {
+      t.html = '<pre style="color:var(--red)">Ошибка рендера: ' + MDV.escapeHtml(String(e.message || e)) + '</pre>';
+    }
+  }
+  el.content2.innerHTML = t.html;
+  el.content2.scrollTo({ top: t.scroll2 || 0, behavior: 'instant' });
+  decorateCode(el.content2);
+  decorateMath(el.content2);
+}
+
 function reload() {
   const t = active();
   if (!t || !t.path) return;
@@ -1229,8 +1374,12 @@ const LANG_NAMES = {
   dockerfile: 'Dockerfile', makefile: 'Makefile', plaintext: 'Текст', text: 'Текст',
 };
 
-function decorateCode() {
-  for (const pre of el.content.querySelectorAll('pre')) {
+/* root передаётся, потому что при разделении экрана текст рисуется в двух
+   контейнерах, а оформление блоков кода и формул должно одинаково работать
+   в обоих. Без аргумента — прежнее поведение, только el.content. */
+function decorateCode(root) {
+  const box = root || el.content;
+  for (const pre of box.querySelectorAll('pre')) {
     const code = pre.querySelector('code');
     if (!code || pre.querySelector('.code-lang')) continue;
     const m = (code.className || '').match(/language-([\w-]+)/);
@@ -1263,8 +1412,9 @@ function decorateCode() {
 }
 
 /** Клик по отрендеренной формуле показывает её LaTeX-исходник. */
-function decorateMath() {
-  for (const m of el.content.querySelectorAll('.mdv-math')) {
+function decorateMath(root) {
+  const box = root || el.content;
+  for (const m of box.querySelectorAll('.mdv-math')) {
     m.title = 'LaTeX: клик — показать исходник';
     m.style.cursor = 'pointer';
   }
@@ -1735,10 +1885,17 @@ async function refreshRoots() {
 /** Пункты «Вид» с галочками. Значения берутся из view, а не хранятся в меню. */
 function viewMenuItems() {
   return [
+    { sep: true },
     { label: 'Проводник', check: view.files, act: () => toggleView('files') },
     { label: 'Оглавление', check: view.toc, act: () => toggleView('toc') },
     { label: 'Верхняя панель', check: view.topbar, act: () => toggleView('topbar') },
     { label: 'Нижняя панель', check: view.statusbar, act: () => toggleView('statusbar') },
+    { sep: true },
+    // Разделение удобнее всего получить перетаскиванием вкладки в поле
+    // заметки, но пункт в меню нужен тоже: перетаскивать нечем, когда
+    // открыта одна вкладка и вторую ещё не открывали.
+    { label: 'Разделить экран', hint: 'перетащи вкладку', act: splitScreen, off: tabs.size < 2 },
+    { label: 'Закрыть правую панель', act: closeSecond, off: secondId === null },
   ];
 }
 
@@ -2281,6 +2438,39 @@ el.treeFilter.addEventListener('input', renderTree);
 initTabDrag();
 initTabsScroll();
 
+// --- правая панель разделения: крестик и ресайз
+$('btnHideSecond').onclick = () => closeSecond();
+
+// Позицию прокрутки второй панели запоминаем отдельно от первой: у них
+// разные контейнеры, и при перестановке панелей местами scroll и scroll2
+// меняются ролями вместе с вкладками.
+el.content2.addEventListener('scroll', () => {
+  const t = secondTab();
+  if (t) t.scroll2 = el.content2.scrollTop;
+}, { passive: true });
+
+(() => {
+  let drag = false;
+  el.splitDivider.addEventListener('mousedown', (e) => {
+    drag = true;
+    e.preventDefault();
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    const box = el.split.getBoundingClientRect();
+    const w = Math.max(260, Math.min(Math.round(box.width * 0.78), e.clientX - box.left));
+    el.panel2.style.width = w + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!drag) return;
+    drag = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
 // --- ресайз панелей: слева тянем за правый край, справа — за левый
 (() => {
   let drag = null;
@@ -2481,6 +2671,8 @@ window.__mdvTest = {
   newFileAction, newProjectAction, recentDialog, settingsDialog,
   loadSettings, applySettings, previewSettings, noteRecent,
   view: () => Object.assign({}, view),
+  secondId: () => secondId,
+  openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); syncViewButtons(); },
   settings: () => currentSettings,
   setSettings: (v) => { currentSettings = Object.assign({}, currentSettings, v); applySettings(currentSettings); },

@@ -428,7 +428,56 @@ kbd {
 .toc-hint { padding: 16px 12px; color: var(--comment); font-size: 12px; text-align: center; }
 
 /* ================= Контент ================= */
+/* .split — контейнер рабочей области. Обычно это один .main, но при
+   разделении экрана между двумя .main появляется перетаскиваемая рамка.
+   min-width:0 обязателен: иначе два flex-элемента не смогут сжаться и
+   второй упрётся в правый край окна, как это уже было с лентой вкладок. */
+.split { flex: 1 1 auto; min-width: 0; display: flex; }
+
 .main { flex: 1 1 auto; min-width: 0; position: relative; overflow: hidden; }
+
+.split-divider {
+    width: 5px; flex: 0 0 auto; cursor: col-resize;
+    background: transparent; border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+}
+.split-divider:hover { background: var(--bg-select); }
+.split-divider[hidden] { display: none; }
+
+/* Правая панель: узкая шапка с именем заметки и крестиком, под ней — своё
+   содержимое. Ширину задаёт перетаскивание рамки. */
+.main-second {
+    width: 40%; min-width: 260px; max-width: 78%;
+    display: flex; flex-direction: column;
+    background: var(--bg);
+}
+.main-second[hidden] { display: none; }
+.second-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 6px 0 11px; height: 33px; flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-alt);
+}
+/* .content позиционирован абсолютно — здесь он в потоке, иначе шапка была бы
+   перекрыта текстом. */
+/* Поля меньше, чем у основной колонки: на ~500px общие clamp-поля съедали бы
+   четверть ширины, и заголовки ломались бы на два слова. Размер шрифта не
+   трогаем — им управляет updateZoom, иначе зум вёл бы себя по-разному в
+   двух панелях.
+   Селектор из двух классов, а не один: .content объявлен ниже по файлу, и
+   при равной специфичности побеждал бы он — то есть поля не применялись бы. */
+.main-second .content-second {
+    position: relative; flex: 1 1 auto; min-height: 0;
+    padding: 20px clamp(14px, 2vw, 30px) 60px;
+}
+
+/* Место для разделения: пока вкладку тянут над полем заметки, показываем
+   рамку на месте будущей правой панели. */
+.main.drop-split { box-shadow: inset -4px 0 0 var(--blue); }
+
+/* Вкладка, открытая в правой панели, помечена кромкой слева: одна полоса
+   вкладок на обе панели, и без метки не понять, где какая заметка. */
+.tab.in-second { border-left-color: var(--blue); }
 /* Без scroll-behavior:smooth: колесо и перетаскивание полосы прокрутки
    должны быть мгновенными, а плавность переходов задаёт JS (см.
    scrollToAnchor и кнопку «Наверх»). Побочный плюс — возврат к сохранённой

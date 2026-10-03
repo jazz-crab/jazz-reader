@@ -142,6 +142,11 @@
       </aside>
       <div class="sidebar-resizer" id="tocResizer" title="Потяни, чтобы изменить ширину"></div>
 
+      <!-- Разделение экрана: слева рабочая заметка (она же активная вкладка),
+           справа вторая, с узкой шапкой. Полоса вкладок сверху одна на обе
+           панели — вкладка второй панели помечена цветной кромкой слева.
+           Появляется, когда вкладку тянут из ленты в поле заметки. -->
+      <div class="split" id="split">
       <main class="main">
         <article class="content" id="content"></article>
         <textarea class="editor" id="editor" spellcheck="false" hidden></textarea>
@@ -165,6 +170,17 @@
           </button>
         </div>
       </main>
+
+        <div class="split-divider" id="splitDivider" title="Потяни, чтобы изменить ширину" hidden></div>
+
+        <section class="main main-second" id="panel2" hidden>
+          <header class="second-head">
+            <span class="side-title" id="secondTitle"></span>
+            <button class="side-collapse" id="btnHideSecond" title="Закрыть правую панель"><span class="ico" data-i="x"></span></button>
+          </header>
+          <div class="content content-second" id="content2"></div>
+        </section>
+      </div>
 
       <div class="sidebar-resizer" id="filesResizer" title="Потяни, чтобы изменить ширину"></div>
 

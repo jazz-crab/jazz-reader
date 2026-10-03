@@ -1555,7 +1555,9 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('порядок в области: оглавление, заметка, проводник',
-    JSON.stringify(r.order) === JSON.stringify(['tocSide', 'tocResizer', 'main', 'filesResizer', 'filesSide', 'toTop']),
+    // .split — контейнер рабочей области: в нём живёт .main, а при
+    // разделении экрана ещё и вторая панель с рамкой между ними.
+    JSON.stringify(r.order) === JSON.stringify(['tocSide', 'tocResizer', 'split', 'filesResizer', 'filesSide', 'toTop']),
     JSON.stringify(r.order));
   t('оглавление слева', r.tocLeft === 0, r.tocLeft + 'px');
   t('проводник справа', r.filesRight === 0, r.filesRight + 'px');
@@ -1607,6 +1609,7 @@ const SILENCE_CONFIRM = `(() => {
     const res = {
       menus: menus.length,
       labels: [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.replace('✓', '')),
+    seps: sub.querySelectorAll('.ctxmenu-sep').length,
       checks: [...sub.querySelectorAll('.ctxmenu-check')].map(x => x.textContent),
       parentKept: !!menus[0]._keep,
     };
@@ -1616,11 +1619,14 @@ const SILENCE_CONFIRM = `(() => {
 
   t('подменю «Вид» открылось', r.menus >= 2, 'меню: ' + r.menus);
   t('родительское меню осталось', r.parentKept === true);
-  t('в «Вид» четыре пункта',
-    JSON.stringify(r.labels) === JSON.stringify(['Проводник', 'Оглавление', 'Верхняя панель', 'Нижняя панель']),
+  t('в «Вид» четыре переключателя панелей',
+    ['Проводник', 'Оглавление', 'Верхняя панель', 'Нижняя панель']
+      .every((x) => (r.labels || []).includes(x)), JSON.stringify(r.labels));
+  t('в «Вид» есть «Разделить экран»', (r.labels || []).includes('Разделить экран'),
     JSON.stringify(r.labels));
-  t('у каждого пункта галочка', (r.checks || []).length === 4, JSON.stringify(r.checks));
+  t('у каждого переключателя галочка', (r.checks || []).length === 4, JSON.stringify(r.checks));
   t('все панели включены по умолчанию', (r.checks || []).every((x) => x === '✓'), JSON.stringify(r.checks));
+  t('подменю «Вид» разделено на группы', (r.seps || []) >= 2, String(r.seps));
 
   // Щелчок по галочке выключает панель и это запоминается
   r = JSON.parse(await js(`(async () => {
@@ -1855,6 +1861,245 @@ const SILENCE_CONFIRM = `(() => {
   t('после отпускания призрак убран', r.afterEnd.ghostGone === true);
   t('после отпускания метки сняты',
     r.afterEnd.draggingClass === false && r.afterEnd.stripMarked === false);
+
+  // ---------------------------------------------------- разделение экрана
+  console.log('\n== разделение экрана ==');
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[1])}, { newTab: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[2])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+
+    const box = (sel) => {
+      const e = document.querySelector(sel);
+      return { left: Math.round(e.getBoundingClientRect().left), right: Math.round(e.getBoundingClientRect().right) };
+    };
+    return JSON.stringify({
+      second: M.secondId(),
+      panelHidden: document.getElementById('panel2').hidden,
+      dividerHidden: document.getElementById('splitDivider').hidden,
+      split: box('#split'),
+      main: box('.main'),
+      order: [...document.getElementById('split').children].map(k => k.id || k.className.split(' ')[0]),
+    });
+  })()`));
+
+  t('без разделения вторая панель скрыта', r.panelHidden === true && r.second === null);
+  t('рамка разделения не занимает место', r.dividerHidden === true);
+  // Заметку ужимает проводник справа, поэтому «во всю область» — это ширина
+  // #split, а не окна.
+  t('без разделения заметка во всю область',
+    r.main.left === r.split.left && r.main.right === r.split.right,
+    JSON.stringify(r.main) + ' против ' + JSON.stringify(r.split));
+  t('порядок: заметка, рамка, вторая панель',
+    JSON.stringify(r.order) === JSON.stringify(['main', 'splitDivider', 'panel2']),
+    JSON.stringify(r.order));
+
+  // Перетаскивание вкладки в поле заметки разделяет экран
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const tabsEl = document.getElementById('tabs');
+    const content = document.getElementById('content');
+    // берём первую НЕактивную вкладку
+    const inactive = [...document.querySelectorAll('.tab')].find(d => !d.classList.contains('active'));
+    const wantId = +inactive.dataset.id;
+
+    const ev = new Event('dragstart', { bubbles: true, cancelable: true });
+    ev.dataTransfer = { effectAllowed: '', setData() {}, setDragImage() {} };
+    inactive.dispatchEvent(ev);
+    await new Promise(r2 => setTimeout(r2, 50));
+
+    // курсор над полем заметки: рамка места разделения должна появиться
+    const over = new Event('dragover', { bubbles: true, cancelable: true });
+    over.dataTransfer = { dropEffect: '' };
+    content.dispatchEvent(over);
+    await new Promise(r2 => setTimeout(r2, 50));
+    const hinted = document.querySelector('.main').classList.contains('drop-split');
+
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    drop.dataTransfer = { dropEffect: '' };
+    content.dispatchEvent(drop);
+    await new Promise(r2 => setTimeout(r2, 500));
+
+    const main = document.querySelector('.main').getBoundingClientRect();
+    const panel = document.getElementById('panel2').getBoundingClientRect();
+    return JSON.stringify({
+      wantId, hinted,
+      second: M.secondId(),
+      panelHidden: document.getElementById('panel2').hidden,
+      dividerHidden: document.getElementById('splitDivider').hidden,
+      mainRight: Math.round(main.right),
+      panelLeft: Math.round(panel.left),
+      panelWidth: Math.round(panel.width),
+      headHeight: Math.round(document.querySelector('.second-head').getBoundingClientRect().height),
+      headTitle: document.getElementById('secondTitle').textContent,
+      pad2: parseFloat(getComputedStyle(document.getElementById('content2')).paddingLeft),
+      marked: [...document.querySelectorAll('.tab.in-second')].length,
+      markedId: +(document.querySelector('.tab.in-second') || { dataset: {} }).dataset.id,
+      contentHas: document.getElementById('content2').innerHTML.length > 20,
+      strip: tabsEl.querySelectorAll('.tab').length,
+    });
+  })()`));
+
+  t('над полем заметки показано место разделения', r.hinted === true);
+  t('отпустили в поле — экран разделён', r.second === r.wantId && r.panelHidden === false);
+  t('рамка разделения появилась', r.dividerHidden === false);
+  t('панели не наезжают друг на друга', r.mainRight <= r.panelLeft + 1,
+    r.mainRight + '/' + r.panelLeft);
+  t('вторая панель получила заметку', r.contentHas === true);
+  t('в шапке — имя заметки', (r.headTitle || '').length > 3, r.headTitle);
+  t('шапка узкая', r.headHeight > 0 && r.headHeight <= 40, String(r.headHeight));
+  // Регресс: .content объявлен в файле ПОСЛЕ блока разделения, и при равной
+  // специфичности побеждал он — общие поля 74px съедали четверть узкой панели,
+  // и заголовки ломались на два слова. Поэтому селектор из двух классов.
+  t('у второй панели свои, меньшие поля', r.pad2 > 0 && r.pad2 < 40, r.pad2 + 'px');
+  t('полоса вкладок общая, вкладок столько же', r.strip === 3, String(r.strip));
+  t('в правой панели помечена ровно одна вкладка', r.marked === 1, String(r.marked));
+  t('помечена именно та, что справа', r.markedId === r.wantId);
+
+  // Пункты оглавления левой панели относятся к рабочей заметке, а не к правой
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    return JSON.stringify({
+      tocTitle: null,
+      content2Headings: document.getElementById('content2').querySelectorAll('h1,h2').length,
+    });
+  })()`));
+  t('во второй панели есть свои заголовки', r.content2Headings > 0, String(r.content2Headings));
+
+  // Клик по вкладке правой панели меняет панели местами
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const wasActive = M.active().id;
+    const wasSecond = M.secondId();
+    document.querySelector('.tab.in-second').click();
+    await new Promise(r2 => setTimeout(r2, 500));
+    return JSON.stringify({
+      wasActive, wasSecond,
+      active: M.active().id,
+      second: M.secondId(),
+      panelHidden: document.getElementById('panel2').hidden,
+      mainText: document.getElementById('content').textContent.slice(0, 40),
+      secondText: document.getElementById('content2').textContent.slice(0, 40),
+    });
+  })()`));
+
+  t('клик по правой вкладке вывел её в рабочую область', r.active === r.wasSecond);
+  t('прежняя рабочая вкладка ушла вправо', r.second === r.wasActive);
+  t('панели после перестановки те же две', r.panelHidden === false);
+  t('тексты в панелях разные', r.mainText !== r.secondText);
+
+  // Крестик в шапке убирает правую панель
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.getElementById('btnHideSecond').click();
+    await new Promise(r2 => setTimeout(r2, 500));
+    const main = document.querySelector('.main').getBoundingClientRect();
+    return JSON.stringify({
+      second: M.secondId(),
+      panelHidden: document.getElementById('panel2').hidden,
+      dividerHidden: document.getElementById('splitDivider').hidden,
+      marked: document.querySelectorAll('.tab.in-second').length,
+      mainRight: Math.round(main.right),
+      splitRight: Math.round(document.getElementById('split').getBoundingClientRect().right),
+    });
+  })()`));
+
+  t('крестик убрал правую панель', r.second === null && r.panelHidden === true);
+  t('рамка разделения убрана', r.dividerHidden === true);
+  t('метка на вкладке снята', r.marked === 0, String(r.marked));
+  t('рабочая область вернулась на всю ширину', r.mainRight === r.splitRight, r.mainRight + '/' + r.splitRight);
+
+  // Закрытие вкладки правой панели убирает и панель
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const ids = [...M.tabs.keys()];
+    await M.selectTab(ids[0]);
+    await M.openSecond(ids[1]);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const before = { second: M.secondId(), hidden: document.getElementById('panel2').hidden };
+    await M.closeTab(ids[1], { silent: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({
+      before,
+      second: M.secondId(),
+      hidden: document.getElementById('panel2').hidden,
+      marked: document.querySelectorAll('.tab.in-second').length,
+      content2: document.getElementById('content2').innerHTML.length,
+    });
+  })()`));
+
+  t('панель была открыта до закрытия вкладки', r.before.hidden === false);
+  t('закрыли вкладку — панель закрылась', r.second === null && r.hidden === true);
+  t('в панели ничего не осталось', r.content2 === 0, String(r.content2));
+  t('метка на вкладках снята', r.marked === 0, String(r.marked));
+
+  // Разделить одной вкладкой нельзя: нечего показывать рядом
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    // Закрытие последней вкладки оставляет пустую — она и есть единственный
+    // источник для splitScreen(), и разделить нечего.
+    const one = M.splitScreen();
+    // openPath переиспользует пустую вкладку, поэтому одной заметки мало:
+    // вкладок всё равно одна.
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    const afterOne = M.tabs.size;
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[1])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 300));
+    const two = M.splitScreen();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const res = { one, two, afterOne, second: M.secondId(), tabs: M.tabs.size };
+    M.closeSecond();
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify(res);
+  })()`));
+
+  t('единственную вкладку разделить не с чем', r.one === false);
+  t('одна заметка — всё ещё одна вкладка', r.afterOne === 1, String(r.afterOne));
+  t('со второй вкладкой разделение получается', r.two === true && r.second !== null);
+  t('в разделении две вкладки', r.tabs === 2, String(r.tabs));
+
+  // Меню «Вид»: пункт есть и умеет разделять
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    M.closeSecond();
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[1])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    [...document.querySelectorAll('.ctxmenu-parent')].find(b => /Вид/.test(b.textContent))
+      .dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    const menus = [...document.querySelectorAll('.ctxmenu')];
+    const sub = menus[menus.length - 1];
+    const labels = [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent);
+    const item = [...sub.querySelectorAll('.ctxmenu-item')].find(b => /Разделить экран/.test(b.textContent));
+    const wasDisabled = !item || item.disabled;
+    item.click();
+    await new Promise(r2 => setTimeout(r2, 500));
+    const res = { wasDisabled, second: M.secondId(), labels,
+      hidden: document.getElementById('panel2').hidden };
+    M.closeSecond();
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify(res);
+  })()`));
+
+  t('пункт «Разделить экран» доступен при двух вкладках', r.wasDisabled === false);
+  t('пункт из меню разделяет экран', r.second !== null && r.hidden === false);
+  t('пункт «Закрыть правую панель» появился при разделении',
+    (r.labels || []).includes('Закрыть правую панель'), JSON.stringify(r.labels));
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
