@@ -22,8 +22,13 @@
          кнопки-шеврона, которые появляются только когда вкладки не влезают.
          Раньше лента просто уезжала за край окна без всякой прокрутки. -->
     <div class="tabbar" id="tabbar">
-      <button class="tabbar-brand" id="appBrand" title="MDView — меню приложения" aria-haspopup="menu">
-        <img src="assets/app-icon.png" width="26" height="26" alt="" draggable="false">
+      <!-- Гамбургер, а не иконка приложения. Иконка exe в полосе вкладок
+           читалась как ещё одна вкладка (тот же квадрат, тот же размер), и
+           приходилось думать, что она открывается по клику. Три полоски
+           однозначно означают меню, и площадь кнопки ближе к квадратной,
+           поэтому по ней проще попасть мышью. -->
+      <button class="tabbar-brand" id="appBrand" title="Меню: Файл, Вид, Настройки" aria-haspopup="menu" aria-label="Меню">
+        <span class="ico" data-i="menu"></span>
       </button>
 
       <div class="tabs-wrap" id="tabsWrap">

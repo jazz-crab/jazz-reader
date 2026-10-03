@@ -80,19 +80,19 @@ code, pre, kbd, .icode { font-family: var(--mono); }
    нативные рамку/фон — иначе плашка вокруг логотипа и системный фокус. */
 .tabbar-brand {
     -webkit-app-region: no-drag;
-    align-self: center; display: flex; align-items: center;
-    padding: 0 6px 0 2px; opacity: .92;
-    background: transparent; border: 0; border-radius: 8px;
+    align-self: center; display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; padding: 0;
+    opacity: .9;
+    background: transparent; border: 0; border-radius: 7px;
     cursor: pointer; line-height: 0;
 }
 .tabbar-brand:hover { opacity: 1; background: var(--bg-soft); }
 .tabbar-brand:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
-/* Иконка та же, что у exe: PNG-рендер build/icon/icon.svg, а не нарисованный
-   руками SVG с текстом. Тот SVG опирался на шрифт Lato, которого на Windows
-   нет, и «MD» выглядело криво. Теперь картинка пиксель-в-пиксель совпадает
-   с иконкой приложения. */
-.tabbar-brand img { display: block; border-radius: 6px; }
-.tabbar-brand svg { display: block; border-radius: 5px; }
+/* Гамбургер: тот же Lucide, что и все остальные значки в приложении, тот же
+   размер, что у соседних кнопок. Раньше здесь был PNG-рендер иконки exe —
+   он читался как вкладка, потому что был тем же квадратом того же размера. */
+.tabbar-brand .ico-svg { width: 18px; height: 18px; stroke: var(--fg-dark); }
+.tabbar-brand:hover .ico-svg { stroke: var(--fg); }
 .tabbar-brand:hover { opacity: 1; }
 .tab-new {
     -webkit-app-region: no-drag;

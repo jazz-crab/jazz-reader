@@ -635,15 +635,20 @@ const SILENCE_CONFIRM = `(() => {
     const iWrap = [...bar.children].indexOf(wrap);
     const iPlus = [...bar.children].indexOf(plus);
     const iSpacer = [...bar.children].indexOf(bar.querySelector('.tabbar-spacer'));
-    const img = brand.querySelector('img');
+    const svg = brand.querySelector('svg');
     return JSON.stringify({
       kids, iWrap, iPlus, iSpacer,
       brandLeft: bar.children[0] === brand,
       brandIsButton: brand.tagName === 'BUTTON',
-      brandIsImg: !!img && !brand.querySelector('svg'),
-      brandSrc: img ? img.getAttribute('src') : null,
-      brandLoaded: img ? img.naturalWidth : 0,
-      brandPx: img ? Math.round(img.getBoundingClientRect().width) : 0,
+      // Теперь это Lucide-гамбургер, тот же svg, что и все прочие значки
+      brandIsSvg: !!svg && !brand.querySelector('img'),
+      brandHasIconSlot: !!brand.querySelector('[data-i="menu"]'),
+      iconName: (brand.querySelector('[data-i]') || {}).dataset
+        ? brand.querySelector('[data-i]').dataset.i : null,
+      brandPx: Math.round(svg ? svg.getBoundingClientRect().width : 0),
+      brandBtnPx: Math.round(brand.getBoundingClientRect().width),
+      noAppIconImg: !document.querySelector('#appBrand img')
+        && !document.querySelector('img[src*="app-icon"]'),
       plusAfterTabs: iWrap >= 0 && iWrap < iPlus,
       plusBeforeSpacer: iPlus >= 0 && iPlus < iSpacer,
       plusIsIcon: !!plus.querySelector('svg'),
@@ -656,17 +661,19 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
 
-  t('иконка приложения первая слева', r.brandLeft === true, JSON.stringify(r.kids));
-  t('иконка приложения — <button>', r.brandIsButton === true);
-  t('иконка приложения — картинка, не нарисованный svg',
-    r.brandIsImg === true && /app-icon\.png$/.test(r.brandSrc || ''), String(r.brandSrc));
-  t('картинка иконки загрузилась', r.brandLoaded >= 32, r.brandLoaded + 'px');
+  t('кнопка меню первая слева', r.brandLeft === true, JSON.stringify(r.kids));
+  t('кнопка меню — <button>', r.brandIsButton === true);
+  t('в кнопке Lucide-гамбургер, а не картинка',
+    r.brandIsSvg === true && r.iconName === 'menu', String(r.iconName));
+  t('картинки иконки приложения больше нет', r.noAppIconImg === true);
+  t('гамбургер того же размера, что прочие значки',
+    r.brandPx >= 15 && r.brandPx <= 22, r.brandPx + 'px');
   t('плюс после вкладок и перед распоркой',
     r.plusAfterTabs === true && r.plusBeforeSpacer === true, JSON.stringify(r.kids));
   t('плюс крупный', r.plusIsIcon === true);
-  t('иконка увеличена (>=26px)', r.brandPx >= 26, r.brandPx + 'px');
-  t('у иконки нет нативной рамки', r.brandBorder === '0px', r.brandBorder);
-  t('у иконки прозрачный фон', /rgba\(0, 0, 0, 0\)|transparent/.test(r.brandBg), r.brandBg);
+  t('кнопка меню не мельче соседних кнопок', r.brandBtnPx >= 28, r.brandBtnPx + 'px');
+  t('у кнопки меню нет нативной рамки', r.brandBorder === '0px', r.brandBorder);
+  t('у кнопки меню прозрачный фон', /rgba\(0, 0, 0, 0\)|transparent/.test(r.brandBg), r.brandBg);
   t('мини-меню у плюсика удалено', r.noMiniMenu === true);
   t('шевроны прокрутки ленты есть', r.hasChevrons === true);
 
