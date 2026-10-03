@@ -42,6 +42,28 @@ let activeId = null;
  *  Сама вкладка живёт в общем tabs: полоса вкладок одна на обе панели. */
 let secondId = null;
 
+/*
+ * Какая из панелей «в фокусе» — та, с последней в которую ты заглянул.
+ *
+ * Новая вкладка открывается именно в ней. Раньше это работало только для
+ * правой панели и только при клике по её вкладке: во всех остальных случаях
+ * новая заметка занимала левую панель, даже если последние полминуты ты
+ * смотрел в правую. Именно это и было неудобно: ждёшь, что заметка появится
+ * там, где ты её видишь, а она появляется в другом краю экрана.
+ */
+let paneFocus = 'main';
+
+/** Отметить панель, в которую только что зашли. */
+function setPaneFocus(which) {
+  paneFocus = which;
+  // Подсветка нужна, чтобы было видно, куда придёт следующая вкладка.
+  // Ставим безусловно, а не только при смене значения: атрибут — это и есть
+  // состояние, и он должен быть верным с первой отрисовки, а не после первого
+  // клика мышью.
+  el.split.dataset.focus = which;
+}
+el.split.dataset.focus = paneFocus;
+
 /** стек посещённых вкладок — чтобы Alt+←/→ работали как в браузере */
 let visit = [];
 let visitPos = -1;
@@ -53,16 +75,26 @@ let findBar = null;
 
 function active() { return tabs.get(activeId) || null; }
 
-/** Переключение вкладки. touch=false — не двигать позицию в стеке посещений. */
+/**
+ * Переключение вкладки. touch=false — не двигать позицию в стеке посещений.
+ *
+ * При разделённом экране вкладка открывается в ту панель, которая сейчас в
+ * фокусе, а та, что её показывала, уезжает в соседнюю. Так заметка всегда
+ * появляется там, куда смотришь. Исключение — клик по вкладке, которая уже
+ * на виду в другой панели: тогда меняем панели местами, иначе рядом с
+ * самим собой оказалось бы пусто.
+ */
 function selectTab(id, touch) {
   if (!tabs.has(id)) return;
-  // Клик по вкладке правой панели: она и так на виду, и ждёшь, что окажется
-  // в рабочей области. Меняем панели местами — иначе справа оказалась бы та
-  // же заметка, что и слева, то есть ничего.
-  if (secondId !== null && id === secondId) {
+  const visibleInSecond = secondId !== null && id === secondId;
+  if (secondId !== null && (visibleInSecond || paneFocus === 'second')) {
     if (active()) active().scroll = el.content.scrollTop;
+    const other = secondTab();
+    if (other) other.scroll2 = el.content2.scrollTop;
     secondId = activeId;
     activeId = id;
+    // Новая вкладка теперь в левой панели — фокус за ней.
+    setPaneFocus('main');
     renderTabs();
     renderActive();
     renderSecond();
@@ -1358,6 +1390,9 @@ function openSecond(id) {
   if (id === activeId) { status('Эта вкладка уже открыта слева'); return false; }
   if (secondId !== null && tabs.has(secondId)) secondTab().scroll2 = el.content2.scrollTop;
   secondId = id;
+  // Правая панель только что появилась, но фокус остаётся у левой: человек
+  // тянул вкладку из правой части экрана, а не работал в новой панели.
+  setPaneFocus('main');
   renderSecond();
   renderTabs();
   status('Справа: ' + tabs.get(id).name, 'ok');
@@ -2722,6 +2757,20 @@ initTabsScroll();
 // --- правая панель разделения: крестик и ресайз
 $('btnHideSecond').onclick = () => closeSecond();
 
+// Клик по панели = «дальше работаю здесь»: новая вкладка откроется в ней.
+// Слушаем на контейнере в фазе захвата, потому что клик часто приходится по
+// самому тексту заметки, а не по кнопке.
+el.split.addEventListener('mousedown', (e) => {
+  setPaneFocus(el.panel2.contains(e.target) ? 'second' : 'main');
+}, true);
+
+// То же самое при прокрутке: человек читает правую панель колесом — значит
+// она в фокусе, и следующую вкладку ждёт именно там.
+el.panel2.addEventListener('wheel', () => setPaneFocus('second'), { passive: true });
+el.content.addEventListener('wheel', () => setPaneFocus('main'), { passive: true });
+// И при переходе по оглавлению/истории тоже полезно знать, куда смотреть.
+el.content.addEventListener('mousedown', () => setPaneFocus('main'), true);
+
 // Позицию прокрутки второй панели запоминаем отдельно от первой: у них
 // разные контейнеры, и при перестановке панелей местами scroll и scroll2
 // меняются ролями вместе с вкладками.
@@ -2741,8 +2790,16 @@ el.content2.addEventListener('scroll', () => {
   window.addEventListener('mousemove', (e) => {
     if (!drag) return;
     const box = el.split.getBoundingClientRect();
-    const w = Math.max(260, Math.min(Math.round(box.width * 0.78), e.clientX - box.left));
-    el.panel2.style.width = w + 'px';
+    // Ширина правой панели — это расстояние от её ЛЕВОГО края до правого края
+    // области, то есть box.right минус курсор. Раньше тут стояло
+    // e.clientX - box.left, и ширина росла ВМЕСТЕ с движением мыши вправо:
+    // тянешь рамку вправо — правая панель становится шире, то есть едет
+    // навстречу курсору, а не за ним. У боковых панелей такой ошибки не было
+    // именно потому, что там считается от своего края: слева — clientX,
+    // справа — innerWidth - clientX.
+    const w = box.right - e.clientX;
+    const max = Math.round(box.width * 0.78);
+    el.panel2.style.width = Math.max(260, Math.min(max, w)) + 'px';
   });
   window.addEventListener('mouseup', () => {
     if (!drag) return;
@@ -2954,6 +3011,8 @@ window.__mdvTest = {
   view: () => Object.assign({}, view),
   toggleView,
   secondId: () => secondId,
+  paneFocus: () => paneFocus,
+  setPaneFocus,
   zoom: () => zoom,
   setZoom,
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,

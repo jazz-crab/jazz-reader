@@ -498,12 +498,36 @@ kbd {
 
 /* Правая панель: узкая шапка с именем заметки и крестиком, под ней — своё
    содержимое. Ширину задаёт перетаскивание рамки. */
+/* flex: 0 0 auto — обязателен. Панель берёт .main, где flex: 1 1 auto, и с
+   flex-grow она РАСТЯГИВАЛАСЬ поверх заданной width: тянешь рамку влево,
+   width уменьшается, а панель всё равно добирает свободное место и остаётся
+   почти той же. Заданная ширина работает только при flex-shrink/grow = 0. */
 .main-second {
+    flex: 0 0 auto;
     width: 40%; min-width: 260px; max-width: 78%;
     display: flex; flex-direction: column;
     background: var(--bg);
 }
 .main-second[hidden] { display: none; }
+
+/*
+ * Акцент на панели в фокусе: следующая вкладка откроется именно в ней.
+ * Без подсказки правило «куда откроется новая вкладка» приходилось угадывать,
+ * а заметка появлялась в другом краю экрана, чем тот, куда смотришь.
+ */
+/* По id, а не по классу: .main-second наследует .main, и правило по классу
+   подсвечивало бы обе панели разом. */
+#mainPane::before,
+#panel2::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: transparent; z-index: 4; pointer-events: none;
+    transition: background .15s ease;
+}
+.split[data-focus="main"] > #mainPane::before,
+.split[data-focus="second"] > #panel2::before { background: var(--blue); }
+@media (prefers-reduced-motion: reduce) {
+    #mainPane::before, #panel2::before { transition: none; }
+}
 /* Заголовок правой панели: имя заметки и крестик. У боковых панелей
    заголовков нет вовсе (см. .side-title). */
 .second-head {

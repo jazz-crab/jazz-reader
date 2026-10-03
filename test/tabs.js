@@ -2027,7 +2027,9 @@ const SILENCE_CONFIRM = `(() => {
     r.main.left === r.split.left && r.main.right === r.split.right,
     JSON.stringify(r.main) + ' против ' + JSON.stringify(r.split));
   t('порядок: заметка, рамка, вторая панель',
-    JSON.stringify(r.order) === JSON.stringify(['main', 'splitDivider', 'panel2']),
+    // У левой панели теперь есть id: по классу .main её не отличить от правой,
+    // которая наследует тот же класс.
+    JSON.stringify(r.order) === JSON.stringify(['mainPane', 'splitDivider', 'panel2']),
     JSON.stringify(r.order));
 
   // Перетаскивание вкладки в поле заметки разделяет экран
@@ -2488,6 +2490,122 @@ const SILENCE_CONFIRM = `(() => {
   t('клик мимо закрывает меню', r.afterClickOutside === 0, String(r.afterClickOutside));
   t('Esc закрывает меню', r.afterEsc === 0, String(r.afterEsc));
   t('повторное открытие не копит меню', r.twoRoots === 1, String(r.twoRoots));
+
+  // ------------------------- направление ресайзера и фокус панели
+  console.log('\n== ресайз разделения и фокус панели ==');
+
+  // Регресс: ширина правой панели считалась как e.clientX - box.left, то есть
+  // росла ВМЕСТЕ с движением мыши вправо. Тянешь рамку вправо — панель
+  // становится шире, едет навстречу курсору. У боковых панелей такого не
+  // было: там считается от своего края (слева clientX, справа innerWidth-clientX).
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[1])}, { newTab: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[2])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    M.openSecond([...M.tabs.keys()].find((k) => k !== M.active().id));
+    await new Promise(r2 => setTimeout(r2, 500));
+
+    const split = document.getElementById('split');
+    const div = document.getElementById('splitDivider');
+    const panel = document.getElementById('panel2');
+    // Ставим ширину руками: по умолчанию панель занимает 40%, и при отмахе
+    // вправо она упёрлась бы в минимум 260px, а не в ожидаемое значение.
+    panel.style.width = '500px';
+    await new Promise(r2 => setTimeout(r2, 150));
+    const start = panel.getBoundingClientRect().width;
+
+    const box = split.getBoundingClientRect();
+    // Тянем рамку ВПРАВО на 120px — панель должна стать УЖЕ
+    div.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: box.right - start }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: box.right - start + 120 }));
+    await new Promise(r2 => setTimeout(r2, 150));
+    const afterRight = panel.getBoundingClientRect().width;
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    // И теперь ВЛЕВО на 240px — панель должна стать ШИРЕ
+    // 120, а не 240: у области ширина ~750px, и панель упирается в 78% (585px).
+    div.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: box.right - afterRight }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: box.right - afterRight - 120 }));
+    await new Promise(r2 => setTimeout(r2, 150));
+    const afterLeft = panel.getBoundingClientRect().width;
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+    return JSON.stringify({
+      start: Math.round(start),
+      afterRight: Math.round(afterRight),
+      afterLeft: Math.round(afterLeft),
+    });
+  })()`));
+
+  // Панель по умолчанию 40% области, но мы выставили 500px: иначе отмах вправо
+  // упёрся бы в минимум 260px и это ничего не проверяло.
+  t('рамка вправо -> панель УЖЕ', Math.abs(r.afterRight - (r.start - 120)) <= 6,
+    r.start + ' -> ' + r.afterRight);
+  t('рамка влево -> панель ШИРЕ', Math.abs(r.afterLeft - (r.afterRight + 120)) <= 6,
+    r.afterRight + ' -> ' + r.afterLeft);
+
+  // Новая вкладка открывается в панели в фокусе
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    const main = document.getElementById('mainPane');
+    const panel = document.getElementById('panel2');
+    const content2 = document.getElementById('content2');
+
+    const out = {};
+    out.focusAtStart = M.paneFocus();
+    out.accentMain = getComputedStyle(main, '::before').backgroundColor;
+    out.accentSecond = getComputedStyle(panel, '::before').backgroundColor;
+
+    // Заглянули в правую панель
+    panel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    out.focusAfterClick = M.paneFocus();
+    out.accentAfterClick = getComputedStyle(panel, '::before').backgroundColor;
+
+    // Теперь открываем новую заметку: она обязана оказаться СПРАВА
+    const leftBefore = main.querySelector('.content').textContent.slice(0, 30);
+    const rightBefore = content2.textContent.slice(0, 30);
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[3])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    out.leftAfter = main.querySelector('.content').textContent.slice(0, 30);
+    out.rightAfter = content2.textContent.slice(0, 30);
+    out.leftSwapped = out.leftAfter !== leftBefore;
+    out.rightGotNew = out.rightAfter !== rightBefore;
+    out.focusAfterOpen = M.paneFocus();
+
+    // Вернулись в левую панель — следующая вкладка должна уйти влево
+    main.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    out.focusBack = M.paneFocus();
+    const rightNow = content2.textContent.slice(0, 30);
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[4])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    out.rightKept = content2.textContent.slice(0, 30) === rightNow;
+    out.leftGotNew = main.querySelector('.content').textContent.slice(0, 30) !== out.leftAfter;
+    return JSON.stringify(out);
+  })()`));
+
+  t('изначально в фокусе левая панель', r.focusAtStart === 'main', r.focusAtStart);
+  t('клик по правой панели переводит на неё фокус', r.focusAfterClick === 'second',
+    r.focusAfterClick);
+  // Изначально фокус на левой: подсвечена она. После клика по правой —
+    // наоборот. Проверяем именно перенос, а не «какая-нибудь подсветка».
+  t('акцент на панели в фокусе, не на обеих',
+    r.accentMain !== r.accentSecond
+    && r.accentAfterClick === r.accentMain
+    && r.accentAfterClick !== r.accentSecond,
+    'левая ' + r.accentMain + ' правая ' + r.accentSecond + ' после клика ' + r.accentAfterClick);
+  t('новая вкладка уходит в правую панель', r.rightGotNew === true);
+  t('левая панель отдала свою вкладку', r.leftSwapped === true);
+  t('после открытия фокус перешёл в левую панель', r.focusAfterOpen === 'main',
+    r.focusAfterOpen);
+  t('клик по левой панели возвращает фокус', r.focusBack === 'main', r.focusBack);
+  t('правая панель сохранила свою заметку', r.rightKept === true);
+  t('новая вкладка ушла в левую панель', r.leftGotNew === true);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

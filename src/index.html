@@ -161,7 +161,10 @@
            панели — вкладка второй панели помечена цветной кромкой слева.
            Появляется, когда вкладку тянут из ленты в поле заметки. -->
       <div class="split" id="split">
-      <main class="main">
+      <!-- id нужен для акцента «панель в фокусе»: правило по классу .main
+           попадало бы и в правую панель, потому что .main-second наследует
+           .main — и подсветка горела на обеих сразу. -->
+      <main class="main" id="mainPane">
         <article class="content" id="content"></article>
         <textarea class="editor" id="editor" spellcheck="false" hidden></textarea>
 
