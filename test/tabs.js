@@ -320,7 +320,7 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 400));
     res.tocHiddenAfterX = tocSide.hidden;
     res.resizerHidden = document.getElementById('tocResizer').hidden;
-    document.getElementById('btnToc').click();
+    await window.__mdvTest.toggleView('toc', true);
     await new Promise(r2 => setTimeout(r2, 400));
     res.tocBack = !tocSide.hidden;
     return JSON.stringify(res);
@@ -334,7 +334,7 @@ const SILENCE_CONFIRM = `(() => {
   t('старый переключатель «Файлы/Оглавление» убран', r.oldSwitchGone === true);
   t('крестик в панели прячет оглавление', r.tocHiddenAfterX === true);
   t('ресайзер панели тоже спрятан', r.resizerHidden === true);
-  t('кнопка в тулбаре возвращает оглавление', r.tocBack === true);
+  t('оглавление возвращается через меню', r.tocBack === true);
 
   // Shift+F10 / ContextMenu: в тесте контекстное меню открывалось только по
   // contextmenu с координатами, а с клавиатуры (Shift+F10) — нет.
@@ -1262,9 +1262,13 @@ const SILENCE_CONFIRM = `(() => {
       pathFirst: sb.firstElementChild === document.getElementById('fileName'),
       statusLast: sb.lastElementChild === document.getElementById('statusText'),
       dlIcon: document.querySelector('#dlBtn .ico-svg') ? 'svg' : 'none',
+      // Кнопок панелей в тулбаре больше нет: они живут в меню и на хоткеях
+      noPanelBtns: !document.getElementById('btnToc')
+        && !document.getElementById('btnSidebar'),
     });
   })()`));
 
+  t('в тулбаре нет кнопок панелей', r.noPanelBtns === true);
   t('в тулбаре нет кнопки «Файл»', r.noOpenFile === true);
   t('в тулбаре нет кнопки «Папка»', r.noOpenFolder === true);
   t('масштаб в тулбаре есть', r.zoomHasBoth === true, JSON.stringify(r.zoomKids));
@@ -1666,7 +1670,7 @@ const SILENCE_CONFIRM = `(() => {
       filesHidden: document.getElementById('filesSide').hidden,
       resizerHidden: document.getElementById('filesResizer').hidden,
       tocHidden: document.getElementById('tocSide').hidden,
-      btnOff: !document.getElementById('btnSidebar').classList.contains('on'),
+      noToolbarBtn: !document.getElementById('btnSidebar'),
       mainRight: Math.round(document.querySelector('.main').getBoundingClientRect().right),
       winW: innerWidth,
       menusGone: document.querySelectorAll('.ctxmenu').length,
@@ -1678,7 +1682,7 @@ const SILENCE_CONFIRM = `(() => {
   t('его ресайзер тоже скрылся', r.resizerHidden === true);
   t('оглавление не тронуто', r.tocHidden === false);
   t('заметка заняла освободившееся место', r.mainRight === r.winW, r.mainRight + '/' + r.winW);
-  t('кнопка в тулбаре погасла', r.btnOff === true);
+  t('кнопки панели в тулбаре нет', r.noToolbarBtn === true);
   t('меню закрылось после выбора', r.menusGone === 0);
   t('выбор вида сохранён', r.saved && r.saved.files === false, JSON.stringify(r.saved));
 
@@ -1708,27 +1712,29 @@ const SILENCE_CONFIRM = `(() => {
   t('вкладки на месте', r.tabsPresent > 0, String(r.tabsPresent));
   t('заметка всё ещё видна', r.workspace === true);
 
-  // Кнопки в тулбара дублируют переключение
+  // Кнопок панелей в тулбаре больше нет — переключение только через меню и хоткеи
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    document.getElementById('btnSidebar').click();
-    await new Promise(r2 => setTimeout(r2, 400));
-    const off = { filesHidden: document.getElementById('filesSide').hidden };
-    document.getElementById('btnSidebar').click();
-    await new Promise(r2 => setTimeout(r2, 400));
-    const on = { filesHidden: document.getElementById('filesSide').hidden };
-    document.getElementById('btnToc').click();
-    await new Promise(r2 => setTimeout(r2, 400));
-    const tocOff = { tocHidden: document.getElementById('tocSide').hidden };
-    document.getElementById('btnToc').click();
-    await new Promise(r2 => setTimeout(r2, 400));
-    return JSON.stringify({ off, on, tocOff, tocBack: document.getElementById('tocSide').hidden });
+    const res = { noToolbarBtns: !document.getElementById('btnToc')
+      && !document.getElementById('btnSidebar') };
+    // Состояние читаем ПОСЛЕ каждого переключения: если прочитать раньше,
+    // проверка «вернулся ли проводник» будет смотреть на уже спрятанную панель.
+    res.toggled = await M.toggleView('files');
+    res.hiddenAfterToggle = document.getElementById('filesSide').hidden;
+    res.back = await M.toggleView('files');
+    res.shownAfterBack = document.getElementById('filesSide').hidden;
+    res.tocOff = await M.toggleView('toc', false);
+    res.tocHidden = document.getElementById('tocSide').hidden;
+    res.tocOn = await M.toggleView('toc', true);
+    res.tocBack = document.getElementById('tocSide').hidden;
+    return JSON.stringify(res);
   })()`));
 
-  t('кнопка тулбара скрывает проводник', r.off.filesHidden === true);
-  t('повторный клик возвращает проводник', r.on.filesHidden === false);
-  t('кнопка тулбара скрывает оглавление', r.tocOff.tocHidden === true);
-  t('повторный клик возвращает оглавление', r.tocBack === false);
+  t('в тулбаре нет кнопок панелей', r.noToolbarBtns === true);
+  t('toggleView скрывает проводник', r.toggled === false && r.hiddenAfterToggle === true);
+  t('повторный вызов возвращает проводник', r.back === true && r.shownAfterBack === false);
+  t('toggleView скрывает оглавление', r.tocOff === false && r.tocHidden === true);
+  t('toggleView возвращает оглавление', r.tocOn === true && r.tocBack === false);
 
   // ПКМ по «+»
   r = JSON.parse(await js(`(async () => {

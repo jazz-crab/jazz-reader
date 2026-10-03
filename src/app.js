@@ -17,8 +17,7 @@ const el = {
   btnBack: $('btnBack'), btnForward: $('btnForward'),
   btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
   btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), zoomVal: $('zoomVal'),
-  dlBtn: $('dlBtn'), dlMenu: $('dlMenu'), btnSidebar: $('btnSidebar'),
-  btnToc: $('btnToc'),
+  dlBtn: $('dlBtn'), dlMenu: $('dlMenu'),
   welcome: $('welcome'), wOpenFile: $('wOpenFile'), wOpenFolder: $('wOpenFolder'),
     workspace: $('workspace'),
     tocSide: $('tocSide'), filesSide: $('filesSide'),
@@ -1239,7 +1238,6 @@ function renderActive() {
     el.statusbar.hidden = true;
     // Док режима целиком прячем: файла нет — правки негде и нечего.
     el.modeDock.hidden = true;
-    el.btnToc.hidden = true;
     document.title = 'MDView';
     updateNavButtons();
     return;
@@ -1261,9 +1259,6 @@ function renderActive() {
   el.btnSave.hidden = !editing;
   el.btnCancelEdit.hidden = !editing;
   el.btnSave.classList.toggle('btn-save-dirty', editing && t.dirty);
-  // Кнопка оглавления нужна только при открытом файле (и то, когда есть
-  // что показывать — заголовки строятся в buildToc() ниже).
-  el.btnToc.hidden = false;
 
   if (editing) {
     el.editor.value = t.raw;
@@ -1287,8 +1282,6 @@ function renderActive() {
   updateNavButtons();
   updateZoom();
   refreshTreeSelection();
-  // Нет заголовков — прятать кнопку бессмысленно.
-  el.btnToc.hidden = !t.path || el.paneToc.querySelector('.toc-hint') !== null;
 }
 
 /* ------------------------------------------------- разделение экрана
@@ -2188,15 +2181,9 @@ async function loadSettings() {
     }
   }
   applyView();
-  syncViewButtons();
   return merged;
 }
 
-/** Актуальное состояние панелей на кнопках тулбара. */
-function syncViewButtons() {
-  el.btnToc.classList.toggle('on', view.toc);
-  el.btnSidebar.classList.toggle('on', view.files);
-}
 
 /**
  * Открыта ли пустая вкладка. Проверка стояла инлайном в renderActive, а
@@ -2482,7 +2469,6 @@ el.editor.addEventListener('input', () => {
 el.btnZoomIn.onclick = () => setZoom(zoom + 0.1);
 el.btnZoomOut.onclick = () => setZoom(zoom - 0.1);
 
-el.btnSidebar.onclick = () => toggleView('files');
 
 el.dlBtn.onclick = (e) => { e.stopPropagation(); el.dlBtn.parentElement.classList.toggle('open'); };
 document.addEventListener('click', () => el.dlBtn.parentElement.classList.remove('open'));
@@ -2535,7 +2521,7 @@ async function toggleView(key, force) {
   if (view[key] === next) return view[key];
   view[key] = next;
   applyView();
-  syncViewButtons();
+ 
   try {
     currentSettings = Object.assign({}, currentSettings, { view: Object.assign({}, view) });
     await api.settingsSet({ view: Object.assign({}, view) });
@@ -2546,7 +2532,6 @@ async function toggleView(key, force) {
 }
 
 function toggleToc(force) { return toggleView('toc', force); }
-el.btnToc.onclick = () => toggleView('toc');
 $('btnHideToc').onclick = () => toggleView('toc', false);
 $('btnHideFiles').onclick = () => toggleView('files', false);
 
@@ -2789,11 +2774,12 @@ window.__mdvTest = {
   newFileAction, newProjectAction, recentDialog, settingsDialog,
   loadSettings, applySettings, previewSettings, noteRecent,
   view: () => Object.assign({}, view),
+  toggleView,
   secondId: () => secondId,
   zoom: () => zoom,
   setZoom,
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
-  setView: (patch) => { Object.assign(view, patch); applyView(); syncViewButtons(); },
+  setView: (patch) => { Object.assign(view, patch); applyView(); },
   settings: () => currentSettings,
   setSettings: (v) => { currentSettings = Object.assign({}, currentSettings, v); applySettings(currentSettings); },
   modalShell, modalBox, wireModal,
