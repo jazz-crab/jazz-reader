@@ -69,11 +69,18 @@
            столкновение с этой. -->
 
       <!-- Масштаб — по центру тулбара, а не сбоку от кнопок навигации:
-           им пользуются постоянно, и искать их в углу неудобно. -->
+           им пользуются постоянно, и искать их в углу неудобно.
+
+           Процент — поле ввода, а не подпись: «+» и «−» дают только шаг, а
+           нужно ещё и 83% или 175%. Именно input, а не contenteditable:
+           тот не мешает выделять текст и не требует заново вставлять узел
+           при каждой перерисовке. -->
       <div class="topbar-center">
-        <button class="btn ico-only" id="btnZoomOut" title="Уменьшить"><span class="ico" data-i="zoom-out"></span></button>
-        <span class="zoomval" id="zoomVal">100%</span>
-        <button class="btn ico-only" id="btnZoomIn" title="Увеличить"><span class="ico" data-i="zoom-in"></span></button>
+        <button class="btn ico-only" id="btnZoomOut" title="Уменьшить (Ctrl+−)"><span class="ico" data-i="zoom-out"></span></button>
+        <input class="zoomval" id="zoomVal" type="text" value="100%"
+               spellcheck="false" autocomplete="off" inputmode="decimal"
+               title="Масштаб: впиши число, например 85 или 175 (Enter)">
+        <button class="btn ico-only" id="btnZoomIn" title="Увеличить (Ctrl++)"><span class="ico" data-i="zoom-in"></span></button>
       </div>
 
       <div class="topbar-right">

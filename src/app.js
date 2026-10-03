@@ -230,6 +230,12 @@ function askConfirm(title, okText, opts) {
     resolve(v);
   }
   const onKey = (e) => {
+    // См. комментарий в wireModal: узел могли снести извне, и тогда этот
+    // слушатель цеплялся за каждый последующий Enter и Escape в приложении.
+    if (!back.isConnected) {
+      document.removeEventListener('keydown', onKey, true);
+      return;
+    }
     if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); done(o.closeIsNo ? false : null); }
     else if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); done(true); }
   };
@@ -276,6 +282,15 @@ function wireModal(back, focusTarget) {
   };
   const onKey = (e) => {
     if (e.key !== 'Escape') return;
+    // Окно могли закрыть иначе, чем через close(): снести узел извне. Тогда
+    // наш слушатель остаётся висеть на document и следующий Escape во всём
+    // приложении «закрывает» несуществующее окно — у настроек это откат
+    // только что подтверждённых значений. Проверяем, что узел ещё в документе,
+    // и заодно снимаем с себя слушатель: дальше он не нужен.
+    if (!back.isConnected) {
+      document.removeEventListener('keydown', onKey, true);
+      return;
+    }
     e.stopPropagation();
     e.preventDefault();
     close(true);
@@ -1595,15 +1610,100 @@ function renderTree() {
 
 // ------------------------------------------------------------------ зум
 
+/* Границы масштаба. Ниже 40% текст становится нечитаемым, выше 250%
+   полосы перестают помещаться в колонку и она начинает прыгать на строках. */
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 2.5;
+
+/* Пока в поле печатают, updateZoom его не трогает: иначе каждый setZoom
+   затирал бы половину набранного. */
+let zoomEditing = false;
+
 function updateZoom() {
-  el.zoomVal.textContent = Math.round(zoom * 100) + '%';
+  if (!zoomEditing) el.zoomVal.value = Math.round(zoom * 100) + '%';
   el.content.style.fontSize = (15 * zoom).toFixed(2) + 'px';
   el.editor.style.fontSize = (14 * zoom).toFixed(2) + 'px';
+  el.zoomVal.classList.toggle('pending', zoomEditing);
 }
+
 function setZoom(z) {
-  zoom = Math.min(2.5, Math.max(0.5, z));
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
   updateZoom();
 }
+
+/**
+ * Применить масштаб, вписанный в поле.
+ *
+ * Понимаем «85», «85%», «0.85», «1,85» и пробелы вокруг. Молча ставить
+ * 100% при опечатке — плохо: человек думал, что задал 130%, и получал 100%
+ * без единого слова. Поэтому неудача — это строка в статусе и возврат
+ * того, что было.
+ */
+function applyZoomInput() {
+  const raw = el.zoomVal.value.trim();
+  const bare = raw.replace(/%/g, '').replace(',', '.').trim();
+  let n = parseFloat(bare);
+  if (raw === '' || !isFinite(n)) {
+    status('Не понял масштаб: ' + raw, 'err');
+    zoomEditing = false;
+    updateZoom();
+    return false;
+  }
+  // Без знака «%» число <= 1 читаем как долю (0.85 -> 85%), больше 1 — как
+  // проценты (85 -> 85%). Иначе «1» означал бы 1% невозможного.
+  const z = raw.indexOf('%') >= 0 ? n / 100 : (n <= 1 ? n : n / 100);
+  if (z < ZOOM_MIN || z > ZOOM_MAX) {
+    status('Масштаб вне ' + Math.round(ZOOM_MIN * 100) + '–'
+      + Math.round(ZOOM_MAX * 100) + '%: ' + raw, 'err');
+    zoomEditing = false;
+    updateZoom();
+    return false;
+  }
+  zoom = z;
+  zoomEditing = false;
+  updateZoom();
+  return true;
+}
+
+el.zoomVal.addEventListener('focus', () => {
+  zoomEditing = true;
+  el.zoomVal.select();
+  el.zoomVal.classList.add('pending');
+});
+el.zoomVal.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.stopPropagation();
+    applyZoomInput();
+    el.zoomVal.blur();
+    return;
+  }
+  // Escape — откат к настоящему масштабу, поле закрывается.
+  // stopPropagation обязателен: иначе Escape, отменявший набор в поле,
+  // долетал до обработчика окна и доходил до диалогов — там он закрывал
+  // их и откатывал настройки, то есть одно нажатие делало три разных
+  // вещи. Остальные клавиши останавливаем ниже.
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    zoomEditing = false;
+    updateZoom();
+    el.zoomVal.blur();
+    return;
+  }
+  // Остальные клавиши не должны улетать в обработчик окна: пробел там
+  // означал бы «листать вниз», и «85 » не применилось бы.
+  e.stopPropagation();
+});
+el.zoomVal.addEventListener('blur', () => {
+  if (zoomEditing) applyZoomInput();
+});
+/* Ctrl+колесо над полем — грубая подстройка, раз точное значение вводится
+   руками. preventDefault обязателен: иначе страница едет от прокрутки. */
+el.zoomVal.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  setZoom(zoom + (e.deltaY < 0 ? 0.05 : -0.05));
+}, { passive: false });
 
 // ------------------------------------------------------------ сохранение и т.п.
 
@@ -1961,6 +2061,15 @@ async function newProjectAction() {
  * исчезнувшие файлы — метку «не найден» в списке показывать незачем.
  */
 async function recentDialog() {
+  /*
+   * Закрывать это окно можно только через closeModal (= close из
+   * wireModal). back.remove() сам по себе сносит узел, но НЕ снимает
+   * слушатель Escape, который wireModal вешает на document в фазе
+   * захвата: тот остаётся жить, и следующий Escape во всём приложении
+   * «закрывает» уже несуществующее окно — для настроек это откат только
+   * что подтверждённых значений.
+   */
+  let closeModal = () => back.remove();
   let st;
   try {
     st = await api.recentGet();
@@ -2006,7 +2115,7 @@ async function recentDialog() {
       col.append(n, d);
 
       b.append(ico, col);
-      b.onclick = async () => { back.remove(); await openPath(f.path, { newTab: true }); };
+      b.onclick = async () => { closeModal(false); await openPath(f.path, { newTab: true }); };
       list.append(b);
     }
     box.append(list);
@@ -2023,7 +2132,7 @@ async function recentDialog() {
   clear.disabled = !files.length;
   clear.onclick = async () => {
     await api.recentClear();
-    back.remove();
+    closeModal(false);
     status('Список недавних очищен', 'ok');
   };
   row.append(clear);
@@ -2031,7 +2140,7 @@ async function recentDialog() {
 
   back.append(box);
   document.body.append(back);
-  wireModal(back, () => box.querySelector('.recent-item') || clear);
+  closeModal = wireModal(back, () => box.querySelector('.recent-item') || clear);
 }
 
 /**
@@ -2107,6 +2216,15 @@ function applySettings(s) {
 }
 
 function settingsDialog() {
+  /*
+   * Закрывать это окно можно только через closeModal (= close из
+   * wireModal). back.remove() сам по себе сносит узел, но НЕ снимает
+   * слушатель Escape, который wireModal вешает на document в фазе
+   * захвата: тот остаётся жить, и следующий Escape во всём приложении
+   * «закрывает» уже несуществующее окно — для настроек это откат только
+   * что подтверждённых значений.
+   */
+  let closeModal = () => back.remove();
   const back = modalShell();
   const box = modalBox('Настройки', 470, 460);
 
@@ -2248,14 +2366,14 @@ function settingsDialog() {
     } catch (e) {
       status('Настройки не сохранены: ' + (e.message || e), 'err');
     }
-    back.remove();
+    closeModal(false);
   };
   row.append(reset, ok);
   box.append(row);
 
   back.append(box);
   document.body.append(back);
-  wireModal(back, () => font);
+  closeModal = wireModal(back, () => font);
 }
 
 let currentSettings = Object.assign({}, SETTINGS_DEFAULT);
@@ -2672,6 +2790,8 @@ window.__mdvTest = {
   loadSettings, applySettings, previewSettings, noteRecent,
   view: () => Object.assign({}, view),
   secondId: () => secondId,
+  zoom: () => zoom,
+  setZoom,
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); syncViewButtons(); },
   settings: () => currentSettings,

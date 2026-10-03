@@ -230,7 +230,24 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     max-width: 34vw; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; direction: rtl; text-align: left;   /* путь читаем с конца */
 }
-.zoomval { font-family: var(--mono); font-size: 11px; color: var(--comment); min-width: 38px; text-align: center; }
+/* Поле масштаба выглядит как подпись, пока в нём не печатают: без рамки и
+   фона. Иначе тулбар из трёх кнопок превращался бы в форму. */
+.zoomval {
+    font-family: var(--mono); font-size: 11px; color: var(--comment);
+    width: 46px; padding: 3px 2px; text-align: center;
+    background: transparent; border: 1px solid transparent; border-radius: 5px;
+    outline: none; cursor: text;
+    /* Нативная рамка input'а мигала бы при каждом обновлении из
+       updateZoom, то есть на каждый зум кнопкой. */
+    -webkit-appearance: none; appearance: none;
+}
+.zoomval:hover { color: var(--fg-dark); }
+.zoomval:focus {
+    color: var(--fg); background: var(--bg-soft);
+    border-color: var(--blue); cursor: text;
+}
+/* Набранное значение ещё не подтверждено — подсказываем цветом. */
+.zoomval.pending { color: var(--yellow); }
 
 .dropdown { position: relative; }
 .dropdown-menu {

@@ -23,6 +23,7 @@ function t(name, cond, extra) {
   else { fail++; console.log('  FAIL ' + name + (extra ? '\n       ' + extra : '')); }
 }
 
+
 function freePort() {
   return new Promise((res, rej) => {
     const s = net.createServer();
@@ -127,6 +128,26 @@ const SILENCE_CONFIRM = `(() => {
   }
   const c = cdp(page.webSocketDebuggerUrl);
   const js = (e) => c.js(e);
+
+  /*
+   * Закрытие модальных окон по-человечески: крестик, иначе главная
+   * кнопка, иначе Escape (его ловит сам диалог). Сносить узел напрямую
+   * нельзя: слушатель Escape, который wireModal вешает на document в
+   * фазе захвата, остаётся жить, и дальше каждый Escape в приложении
+   * «закрывает» все накопленные окна — настройки откатывают масштаб и
+   * колонку, портя состояние несвязанных проверок.
+   */
+  const closeModals = () => js(`(async () => {
+    for (const m of document.querySelectorAll('.modal-back')) {
+      const x = m.querySelector('.dlg-x');
+      if (x) { x.click(); continue; }
+      const ok = m.querySelector('.dlgbtn-primary');
+      if (ok) { ok.click(); continue; }
+      m.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    }
+    await new Promise(r2 => setTimeout(r2, 120));
+    return document.querySelectorAll('.modal-back').length;
+  })()`);
 
   // Дожидаемся готовности renderer'а
   for (let i = 0; i < 40; i++) {
@@ -672,7 +693,7 @@ const SILENCE_CONFIRM = `(() => {
     const mid = M.settings();
     const cssDuring = getComputedStyle(document.getElementById('content')).fontSize;
     const widthDuring = getComputedStyle(document.documentElement).getPropertyValue('--content-max-width').trim();
-    const zoomLabel = document.getElementById('zoomVal').textContent;
+    const zoomLabel = document.getElementById('zoomVal').value;
     return JSON.stringify({
       shown: true,
       rows: back.querySelectorAll('.set-row').length,
@@ -728,7 +749,7 @@ const SILENCE_CONFIRM = `(() => {
     return JSON.stringify({
       closed: !document.querySelector('.modal-back'),
       saved,
-      zoomLabel: document.getElementById('zoomVal').textContent,
+      zoomLabel: document.getElementById('zoomVal').value,
       css: getComputedStyle(document.getElementById('content')).fontSize,
       width: getComputedStyle(document.documentElement).getPropertyValue('--content-max-width').trim(),
     });
@@ -794,13 +815,13 @@ const SILENCE_CONFIRM = `(() => {
   fs.writeFileSync(path.join(notesDir, 'a.md'), '# a.md\n\nтекст\n', 'utf8');
 
   // возвращаем дефолты и убираем мусор из ключевых файлов
+  await closeModals();
   await js(`(async () => {
     const M = window.__mdvTest;
     M.setConfirm(null);
     M.setSettings({ zoom: 1, columnWidth: 900, autosave: false });
     await window.mdv.settingsSet({ zoom: 1, columnWidth: 900, autosave: false });
     await M.clearRecents();
-    document.querySelector('.modal-back')?.remove();
     document.querySelector('.ctxmenu')?.remove();
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
     return 1;
@@ -1741,9 +1762,12 @@ const SILENCE_CONFIRM = `(() => {
       opened: !!back,
       title: back ? (back.querySelector('.modal-title') || {}).textContent : '',
     };
-    document.querySelectorAll('.modal-back').forEach(m => m.remove());
     return JSON.stringify(res);
   })()`));
+  // Закрывать окно настроек — по-человечески (см. closeModals). Снос узла
+  // оставлял слушатель Escape от wireModal жить, и каждый следующий Escape
+  // во всём приложении откатывал настройки «несуществующего» диалога.
+  await closeModals();
 
   t('Ctrl+, открывает настройки', r.opened === true && /Настройки/.test(r.title || ''), r.title);
 
@@ -2101,6 +2125,162 @@ const SILENCE_CONFIRM = `(() => {
   t('пункт «Закрыть правую панель» появился при разделении',
     (r.labels || []).includes('Закрыть правую панель'), JSON.stringify(r.labels));
 
+  // ------------------------------------------------------ масштаб числом
+  console.log('\n== масштаб числом ==');
+
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const z = document.getElementById('zoomVal');
+    const out = {};
+    out.tag = z.tagName;
+    out.initial = z.value;
+
+    // Ввод числа с клавиатуры. Фокус снимаем и ставим заново на каждый набор:
+    // focus() на уже сфокусированном поле не присылает событие focus.
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, 'value').set;
+    const key = (k) => z.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    const type = async (v) => {
+      z.blur();
+      await new Promise(r2 => setTimeout(r2, 60));
+      z.focus();
+      z.select();
+      setter.call(z, v);
+      key('Enter');
+      await new Promise(r2 => setTimeout(r2, 220));
+    };
+
+    await type('85');
+    key('Enter');
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.after85 = { val: z.value, font: document.getElementById('content').style.fontSize };
+
+    out.after85b = out.after85;
+    await type('175%');
+    out.after175 = { val: z.value, font: document.getElementById('content').style.fontSize };
+
+    // Запятая как десятичный разделитель: без blur Enter тоже годится
+    await type('0,6');
+    out.after06 = { val: z.value, font: document.getElementById('content').style.fontSize };
+
+    return JSON.stringify(out);
+  })()`));
+
+  t('процент масштаба — поле ввода', r.tag === 'INPUT', r.tag);
+  t('исходное значение 100%', r.initial === '100%', r.initial);
+  t('вписали 85 — применилось', r.after85.val === '85%'
+    && Math.abs(parseFloat(r.after85.font) - 12.75) < 0.1, JSON.stringify(r.after85));
+  t('вписали 175% — применилось', r.after175.val === '175%'
+    && Math.abs(parseFloat(r.after175.font) - 26.25) < 0.1, JSON.stringify(r.after175));
+  t('вписали 0,6 через запятую — это 60%', r.after06.val === '60%'
+    && Math.abs(parseFloat(r.after06.font) - 9) < 0.1, JSON.stringify(r.after06));
+
+  // Кнопки продолжают работать, поле показывает их результат
+  r = JSON.parse(await js(`(async () => {
+    const z = document.getElementById('zoomVal');
+    const before = parseFloat(z.value);
+    document.getElementById('btnZoomIn').click();
+    await new Promise(r2 => setTimeout(r2, 200));
+    const up = z.value;
+    document.getElementById('btnZoomOut').click();
+    await new Promise(r2 => setTimeout(r2, 200));
+    return JSON.stringify({ before, up, back: z.value });
+  })()`));
+
+  t('кнопка «+» меняет масштаб', parseFloat(r.up) > parseFloat(r.before), r.before + ' -> ' + r.up);
+  t('кнопка «−» возвращает', parseFloat(r.back) < parseFloat(r.up), r.up + ' -> ' + r.back);
+
+  // Мусор и выход за границы не применяются молча
+  r = JSON.parse(await js(`(async () => {
+    const z = document.getElementById('zoomVal');
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, 'value').set;
+    const key = (k) => z.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    const bad = [];
+    const type = async (v) => {
+      // focus() на уже сфокусированном элементе не шлёт событие focus
+      z.blur();
+      await new Promise(r2 => setTimeout(r2, 60));
+      z.focus();
+      z.select();
+      setter.call(z, v);
+    };
+    const tryVal = async (v) => {
+      document.getElementById('btnZoomIn').click();
+      await new Promise(r2 => setTimeout(r2, 120));
+      const keep = z.value;
+      await type(v);
+      key('Enter');
+      await new Promise(r2 => setTimeout(r2, 220));
+      bad.push({ typed: v, kept: keep, now: z.value,
+        status: document.getElementById('statusText').textContent });
+      return z.value;
+    };
+    await tryVal('абв');
+    await tryVal('900');
+    await tryVal('');
+    return JSON.stringify(bad);
+  })()`));
+
+  t('ерунда не применяется', parseFloat(r[0].now) === parseFloat(r[0].kept), JSON.stringify(r[0]));
+  t('на ерунду есть сообщение', /Не понял/.test(r[0].status || ''), r[0].status);
+  t('900% отклонено', parseFloat(r[1].now) === parseFloat(r[1].kept), JSON.stringify(r[1]));
+  t('на выход за границу есть сообщение', /вне/.test(r[1].status || ''), r[1].status);
+  t('пустое поле не обнуляет масштаб', parseFloat(r[2].now) === parseFloat(r[2].kept), JSON.stringify(r[2]));
+
+  // Escape откатывает набор
+  r = JSON.parse(await js(`(async () => {
+    const z = document.getElementById('zoomVal');
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, 'value').set;
+    const M = window.__mdvTest;
+    const good = z.value;
+    z.blur();
+    await new Promise(r2 => setTimeout(r2, 60));
+    z.focus();
+    z.select();
+    setter.call(z, '120');
+    z.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    z.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    return JSON.stringify({ good, after: z.value, zoom: M.zoom(),
+      focused: document.activeElement === z,
+      modalsLeft: document.querySelectorAll('.modal-back').length });
+  })()`));
+
+  t('Escape откатывает набор', r.after === r.good && Math.abs(r.zoom - 0.9) < 0.01,
+    r.good + ' -> ' + r.after + ' зум=' + r.zoom + ' окон=' + r.modalsLeft);
+  t('Escape снимает фокус с поля', r.focused === false);
+
+  // Пробел не уводит фокус (иначе «85 » не применилось бы)
+  r = JSON.parse(await js(`(async () => {
+    const z = document.getElementById('zoomVal');
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, 'value').set;
+    let bubbled = 0;
+    const spy = () => { bubbled++; };
+    z.blur();
+    await new Promise(r2 => setTimeout(r2, 60));
+    z.focus();
+    z.select();
+    setter.call(z, '70');
+    await new Promise(r2 => setTimeout(r2, 60));
+
+    // Слушаем ТОЛЬКО на время пробела: Enter поле обрабатывает сам и тоже не
+    // выпускает событие наружу, но проверять это здесь незачем — важен пробел,
+    // потому что в обработчике окна он означает «листать вниз».
+    document.addEventListener('keydown', spy);
+    z.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 120));
+    document.removeEventListener('keydown', spy);
+
+    z.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 220));
+    return JSON.stringify({ bubbled, val: z.value });
+  })()`));
+
+  t('пробел не улетает в обработчик окна', r.bubbled === 0, String(r.bubbled));
+  t('пробел внутри числа не мешает', r.val === '70%', r.val);
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
   // через IPC. Отмену тоже проверяем — файл должен остаться на месте.
