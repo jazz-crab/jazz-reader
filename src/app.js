@@ -678,6 +678,31 @@ function moveTab(id, after) {
 }
 
 /** Перетаскивание вкладок мышью: сортировка по середине элементов. */
+/**
+ * Призрак перетаскиваемой вкладки.
+ *
+ * По умолчанию браузер рисует его со снимка элемента: туда попадают старые
+ * размеры, обводка выделения, обрезанное имя и куски соседних вкладок — и под
+ * курсором едет обрывок интерфейса, а не вкладка. Рисуем ровно то, что нужно:
+ * плашку с тем же именем, и отдаём её setDragImage.
+ *
+ * Элемент должен быть в документе на момент вызова setDragImage, но не
+ * виден — поэтому уводим его за левый край и убираем на следующем тике.
+ */
+function showDragGhost(e, label) {
+  const g = document.createElement('div');
+  g.className = 'drag-ghost';
+  const nm = document.createElement('span');
+  nm.className = 'tname';
+  nm.textContent = label;
+  g.append(nm);
+  document.body.append(g);
+  // Точка захвата: за левый край плашки, а не за центр — так вкладка
+  // «висит» на курсоре слева, как её тянут за вкладку, а не за середину.
+  e.dataTransfer.setDragImage(g, Math.min(24, Math.round(g.offsetWidth / 4)), 13);
+  setTimeout(() => g.remove(), 0);
+}
+
 function initTabDrag() {
   let dragId = null;
 
@@ -691,13 +716,16 @@ function initTabDrag() {
     if (!t) { e.preventDefault(); return; }
     dragId = +d.dataset.id;
     d.classList.add('dragging');
+    el.tabs.classList.add('dragging-active');
     e.dataTransfer.effectAllowed = 'move';
     // Firefox требует данные, иначе drag не стартует
     e.dataTransfer.setData('text/plain', t.name);
+    showDragGhost(e, t.name);
   });
 
   el.tabs.addEventListener('dragend', () => {
     dragId = null;
+    el.tabs.classList.remove('dragging-active');
     for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('dragging', 'drop-before', 'drop-after');
   });
 
@@ -755,6 +783,11 @@ function initTabDrag() {
 function initTabsScroll() {
   const step = () => Math.max(120, Math.round(el.tabs.clientWidth * 0.6));
 
+  // Плавность живёт здесь, а не в CSS: у ленты и контента стояло
+  // scroll-behavior:smooth, и колесо мыши тоже анимировалось — прокрутка
+  // шла рывками. Правило простое: то, что человек двигает руками (колесо,
+  // полоса прокрутки, перетаскивание), мгновенное; то, что он нажимает
+  // (шевроны, «Наверх», пункт оглавления), — плавное.
   el.tabsLeft.onclick = () => el.tabs.scrollBy({ left: -step(), behavior: 'smooth' });
   el.tabsRight.onclick = () => el.tabs.scrollBy({ left: step(), behavior: 'smooth' });
 
@@ -769,6 +802,15 @@ function initTabsScroll() {
     e.preventDefault();
     el.tabs.scrollLeft += e.deltaY;
   }, { passive: false });
+
+  // Шевроны должны знать текущее положение ленты. Раньше updateTabsNav
+  // звался только из ResizeObserver, то есть только при изменении ширины:
+  // уехав колесом или шевроном в конец, вкладка «уезжала» под обрезку, но
+  // шеврон, которым можно вернуться, оставался скрытым — назад было нечем
+  // листать. Слушатель passive: он ничего не отменяет и не тормозит.
+  // Обратной связи с updateTabsNav нет: он только прячет/показывает шевроны,
+  // а ширину ленты не меняет.
+  el.tabs.addEventListener('scroll', updateTabsNav, { passive: true });
 
   // Шефроны зависят от ширины ЛЕНТЫ, а обрезка имени — от ширины ВКЛАДКИ.
   // Это разные величины: при сжатии полосы общая ширина может не измениться
@@ -1154,7 +1196,9 @@ function renderActive() {
       }
     }
     el.content.innerHTML = t.html;
-    el.content.scrollTop = t.scroll || 0;
+    // Явно мгновенно: при переключении вкладок «уезжать» к прежнему месту
+  // анимацией не нужно — это задерживает появление текста.
+  el.content.scrollTo({ top: t.scroll || 0, behavior: 'instant' });
     decorateCode();
     decorateMath();
   }

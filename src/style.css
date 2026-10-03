@@ -118,11 +118,14 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     position: relative; flex: 0 1 auto; min-width: 0;
     display: flex; align-items: stretch;
 }
+/* scroll-behavior:smooth здесь стоял и ломал колесо: анимировался даже
+   присваиваемый из wheel-обработчика scrollLeft, и лента ползла рывками.
+   Теперь гладкость задаёт только код — шевроны зовут scrollBy с
+   behavior:'smooth', а колёсо и перетаскивание полосы мгновенны. */
 .tabs {
     display: flex; align-items: stretch; gap: 4px;
     flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden;
     scrollbar-width: none; -ms-overflow-style: none;
-    scroll-behavior: smooth;
 }
 .tabs::-webkit-scrollbar { height: 0; }
 
@@ -426,10 +429,13 @@ kbd {
 
 /* ================= Контент ================= */
 .main { flex: 1 1 auto; min-width: 0; position: relative; overflow: hidden; }
+/* Без scroll-behavior:smooth: колесо и перетаскивание полосы прокрутки
+   должны быть мгновенными, а плавность переходов задаёт JS (см.
+   scrollToAnchor и кнопку «Наверх»). Побочный плюс — возврат к сохранённой
+   позиции при переключении вкладки больше не «уезжает» анимацией. */
 .content {
     position: absolute; inset: 0; overflow-y: auto;
     padding: 30px clamp(20px, 6vw, 74px) 90px;
-    scroll-behavior: smooth;
 }
 /* Колонка чтения: 900px и по центру. margin-inline (а НЕ margin-left/right)
    намеренно: ниже у h1-h6, ul, ol, pre, table, blockquote стоят правила с
@@ -888,3 +894,22 @@ kbd {
     border-color: var(--comment);
     color: var(--fg);
 }
+
+/* ================= Призрак перетаскиваемой вкладки =================
+   Браузер по умолчанию рисует «призрак» из снимка элемента: туда попадают
+   старые размеры, обводка выделения и куски соседних вкладок, и вкладка
+   выглядит как обрывок интерфейса. Вместо снимка отдаём setDragImage
+   плашку с именем — ровно то, что пользователь и тащит. */
+.drag-ghost {
+    position: fixed; left: -400px; top: 0; z-index: 999;
+    display: flex; align-items: center;
+    height: 26px; max-width: 240px; padding: 0 10px;
+    box-sizing: border-box; overflow: hidden;
+    background: var(--bg-soft); color: var(--fg);
+    border: 1px solid var(--blue); border-radius: 5px;
+    box-shadow: 0 5px 16px rgba(0, 0, 0, .45);
+    font-family: var(--ui); font-size: 12.5px; white-space: nowrap;
+    opacity: .95;
+    pointer-events: none;
+}
+.drag-ghost .tname { overflow: hidden; text-overflow: ellipsis; }

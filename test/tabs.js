@@ -837,6 +837,7 @@ const SILENCE_CONFIRM = `(() => {
       overflowPx: tabs.scrollWidth - tabs.clientWidth,
       rightShown: !right.hidden,
       leftShown: !left.hidden,
+      atRightEnd: tabs.scrollLeft >= tabs.scrollWidth - tabs.clientWidth - 2,
       // лента обязана сжиматься, иначе вкладки просто уедут за окно
       shrinkable: getComputedStyle(tabs).minWidth === '0px',
     });
@@ -847,7 +848,25 @@ const SILENCE_CONFIRM = `(() => {
   t('лента сжимается (min-width:0)', r.shrinkable === true);
   t('лента переполняется', r.overflowPx > 100, r.overflowPx + 'px');
   t('обёрка знает о переполнении', r.hasOverflow === true);
-  t('шеврон вправо показан', r.rightShown === true);
+  // Активная вкладка последняя, поэтому лента прокручена вправо до конца:
+  // правый шеврон тут и должен быть скрыт, а листать должна левая стрелка.
+  t('лента прокручена к активной вкладке', r.atRightEnd === true);
+  t('правый шеврон убран в конце ленты', r.rightShown === false);
+  t('есть чем листать назад', r.leftShown === true);
+
+  // а из начала ленты — наоборот, виден правый
+  r = JSON.parse(await js(`(async () => {
+    const tabs = document.getElementById('tabs');
+    tabs.scrollLeft = 0;
+    await new Promise(r2 => setTimeout(r2, 200));
+    return JSON.stringify({
+      rightShown: !document.getElementById('tabsRight').hidden,
+      leftShown: !document.getElementById('tabsLeft').hidden,
+    });
+  })()`));
+
+  t('из начала ленты виден правый шеврон', r.rightShown === true);
+  t('в начале ленты левый шеврон убран', r.leftShown === false);
 
   // прокрутка шевроном
   r = JSON.parse(await js(`(async () => {
@@ -878,6 +897,34 @@ const SILENCE_CONFIRM = `(() => {
 
   t('колесо листает ленту вбок', r.after > 20, 'scrollLeft=' + r.after);
   t('колесо не прокручивает страницу', r.prevented === true, String(r.prevented));
+
+  // Регресс: updateTabsNav звался только из ResizeObserver, то есть только
+  // при смене ширины. Уехав колесом в конец, пользователь оказывался в
+  // обрезке без шеврона, которым можно вернуться: назад листать было нечем.
+  r = JSON.parse(await js(`(async () => {
+    const tabs = document.getElementById('tabs');
+    const left = document.getElementById('tabsLeft');
+    const right = document.getElementById('tabsRight');
+    const max = tabs.scrollWidth - tabs.clientWidth;
+    tabs.scrollLeft = 0;
+    await new Promise(r2 => setTimeout(r2, 200));
+    const atStart = { leftHidden: left.hidden, rightShown: !right.hidden };
+    // Прокручиваем вручную — так же, как это делает wheel-обработчик
+    tabs.scrollLeft = max;
+    await new Promise(r2 => setTimeout(r2, 300));
+    const atEnd = { leftShown: !left.hidden, rightHidden: right.hidden };
+    // И обратно: шеврон должен появиться снова, а не остаться «навсегда»
+    left.click();
+    await new Promise(r2 => setTimeout(r2, 900));
+    const back = { moved: tabs.scrollLeft < max - 5, rightShown: !right.hidden };
+    return JSON.stringify({ max, atStart, atEnd, back });
+  })()`));
+
+  t('из начала ленты правый шеврон виден', r.atStart.rightShown === true);
+  t('уехав в конец, видим шеврон назад', r.atEnd.leftShown === true);
+  t('в конце ленты правый шеврон убран', r.atEnd.rightHidden === true);
+  t('шеврон назад действительно листает', r.back.moved === true);
+  t('после возврата виден шеврон вперёд', r.back.rightShown === true);
 
   // крестик строго справа, ничего не обрезано
   r = JSON.parse(await js(`(async () => {
@@ -938,7 +985,10 @@ const SILENCE_CONFIRM = `(() => {
       widths,
       uniform: widths.length > 0 && Math.max(...widths) - Math.min(...widths) <= 1,
       over: tabs.scrollWidth - tabs.clientWidth,
-      chevron: !document.getElementById('tabsRight').hidden,
+      // «чем листать» — это хоть один шеврон: у ленты, прокрученной вправо,
+      // правый скрыт по правилу, и это не «нечем листать».
+      chevron: !document.getElementById('tabsRight').hidden
+        || !document.getElementById('tabsLeft').hidden,
       // имя не должно вылезать за свою вкладку
       fits: [...document.querySelectorAll('.tab')].map(d => {
         const n = d.querySelector('.tname');
@@ -1690,6 +1740,121 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('Ctrl+, открывает настройки', r.opened === true && /Настройки/.test(r.title || ''), r.title);
+
+  // ------------------------------------------------- прокрутка и призрак
+  console.log('\n== прокрутка и призрак вкладки ==');
+
+  // Правило: руками (колесо, полоса) — мгновенно, кнопками — плавно.
+  // Глобальный scroll-behavior:smooth ломал именно колесо, поэтому проверяем
+  // вычисленное значение, а не «на ощупь».
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+
+    const cs = getComputedStyle;
+    const out = {
+      content: cs(document.getElementById('content')).scrollBehavior,
+      tabs: cs(document.getElementById('tabs')).scrollBehavior,
+    };
+
+    // Шевроны обязаны просить плавно
+    const calls = [];
+    const tabsEl = document.getElementById('tabs');
+    const real = tabsEl.scrollBy;
+    tabsEl.scrollBy = (o) => { calls.push(o); };
+    document.getElementById('tabsLeft').click();
+    document.getElementById('tabsRight').click();
+    tabsEl.scrollBy = real;
+    out.chevronCalls = calls.length;
+    out.chevronSmooth = calls.length > 0 && calls.every((o) => o.behavior === 'smooth');
+    return JSON.stringify(out);
+  })()`));
+
+  t('колесо в заметке мгновенное (нет smooth в CSS)', r.content === 'auto', r.content);
+  t('колесо в ленте вкладок мгновенное', r.tabs === 'auto', r.tabs);
+  t('шевроны просят плавную прокрутку', r.chevronCalls === 2 && r.chevronSmooth === true,
+    r.chevronCalls + '/' + r.chevronSmooth);
+
+  // Возврат к сохранённой позиции при переключении вкладок — тоже мгновенно
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const c = document.getElementById('content');
+    c.scrollTop = 0;
+    await new Promise(r2 => setTimeout(r2, 200));
+    const t = M.active();
+    t.scroll = 1200;
+    const seen = [];
+    const real = c.scrollTo.bind(c);
+    c.scrollTo = (o) => { seen.push(o); real(o); };
+    const first = M.tabs.keys().next().value;
+    await M.newTab();
+    await new Promise(r2 => setTimeout(r2, 300));
+    await M.selectTab(first);
+    await new Promise(r2 => setTimeout(r2, 300));
+    c.scrollTo = real;
+    return JSON.stringify({ calls: seen.length, behavior: seen.map((o) => o.behavior) });
+  })()`));
+
+  t('возврат к позиции задан явно', r.calls >= 1, String(r.calls));
+  t('возврат к позиции мгновенный, не плавный',
+    (r.behavior || []).every((b) => b === 'instant'), JSON.stringify(r.behavior));
+
+  // Призрак перетаскивания: не снимок вкладки, а плашка с именем
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    const D = ${JSON.stringify(TABS_DIR)};
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[1])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+
+    const tab = document.querySelector('.tab');
+    const name = tab.querySelector('.tname').textContent;
+    const ghostCalls = [];
+    const ev = new Event('dragstart', { bubbles: true, cancelable: true });
+    ev.dataTransfer = {
+      effectAllowed: '', setData() {}, setDragImage(img, x, y) { ghostCalls.push({ img, x, y }); },
+    };
+    tab.dispatchEvent(ev);
+    // Призрак живёт до конца текущей задачи, поэтому смотрим синхронно
+    const ghost = document.querySelector('.drag-ghost');
+    const res = {
+      name,
+      ghostExists: !!ghost,
+      ghostName: ghost ? ghost.querySelector('.tname').textContent : '',
+      offscreen: ghost ? ghost.getBoundingClientRect().right <= 0 : false,
+      setDragImage: ghostCalls.length,
+      ghostIsNotTheTab: ghost ? ghost !== tab : false,
+      ghostNoCloseBtn: ghost ? !ghost.querySelector('.tclose') : false,
+      draggingClass: tab.classList.contains('dragging'),
+      stripMarked: document.getElementById('tabs').classList.contains('dragging-active'),
+    };
+    tab.dispatchEvent(new Event('dragend', { bubbles: true }));
+    // Призрак снимается на следующем тике (setTimeout 0): Firefox не
+    // успевает снять снимок раньше. Здесь ждём этот тик.
+    await new Promise(r2 => setTimeout(r2, 50));
+    res.afterEnd = {
+      ghostGone: !document.querySelector('.drag-ghost'),
+      draggingClass: tab.classList.contains('dragging'),
+      stripMarked: document.getElementById('tabs').classList.contains('dragging-active'),
+    };
+    return JSON.stringify(res);
+  })()`));
+
+  t('призрак вкладки создаётся при перетаскивании', r.ghostExists === true);
+  t('в призраке имя той же вкладки', r.ghostName === r.name, r.ghostName + ' / ' + r.name);
+  t('призрак — не копия вкладки (без крестика)',
+    r.ghostIsNotTheTab === true && r.ghostNoCloseBtn === true);
+  t('призрак не мелькает на экране', r.offscreen === true);
+  t('призрак отдан через setDragImage', r.setDragImage === 1, String(r.setDragImage));
+  t('исходная вкладка приглушена', r.draggingClass === true);
+  t('полоса вкладок помечена как перетаскиваемая', r.stripMarked === true);
+  t('после отпускания призрак убран', r.afterEnd.ghostGone === true);
+  t('после отпускания метки сняты',
+    r.afterEnd.draggingClass === false && r.afterEnd.stripMarked === false);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
