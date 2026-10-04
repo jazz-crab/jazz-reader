@@ -2898,7 +2898,16 @@ function buildRadial() {
     b.style.setProperty('--my', Math.round(Math.sin(rad) * RADIAL_MID) + 'px');
     b.title = item.tip;
     b.setAttribute('aria-label', item.tip);
-    b.innerHTML = '<span class="rd-dot">' + ICONS.icon(item.icon) + '</span>';
+    /*
+     * Квадрат под попадание мыши — ровно по размеру кольца.
+     *
+     * Маска не участвует в hit-testing: у сектора остаётся клип по углу, и
+     * кнопкой считался весь треугольник до 240px. Клик в двухстах пикселях от
+     * кольца запускал действие вместо того, чтобы закрыть меню. Видимую часть
+     * по-прежнему рисует сектор, а ловит клики этот квадрат.
+     */
+    b.innerHTML = '<span class="rd-hit"></span>'
+      + '<span class="rd-dot">' + ICONS.icon(item.icon) + '</span>';
     item.tipRef = item.tip;
     item.midRef = { x: b.style.getPropertyValue('--mx'), y: b.style.getPropertyValue('--my') };
     b.disabled = !radialEnabled(item.act);
