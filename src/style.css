@@ -1329,23 +1329,25 @@ kbd {
 }
 
 /*
- * Подложка кольца — плотный диск без рамки.
+ * Подложка кольца — плотный голубой диск без рамки.
  *
- * Рамка по внешнему краю перечёркивала подпись выбранного действия: подпись
- * уходит вниз от значка и пересекает кольцо, а тонкая линия по краю резала её
- * пополам. Рамки нет вовсе, круглость даёт сама заливка.
+ * Рамки нет вовсе: по краю она перечёркивала подпись выбранного действия —
+ * подпись уходит вниз от значка и пересекает кольцо, и тонкая линия по краю
+ * резала её пополам. Круглость даёт сама заливка.
  *
- * Фон непрозрачный: сквозь него был виден текст заметки, и кольцо читалось
- * как грязное пятно, а не как слой поверх. Кнопка отмены в центре осталась
- * полупрозрачной — её должно быть видно насквозь, это «здесь ничего не
- * выбрано».
+ * Голубой, а не серый: серый диск на тёмной теме читался как грязное пятно и
+ * не отличался от фона приложения, кольцо терялось в заметке. Теперь это
+ * слой поверх, и его видно сразу.
+ *
+ * Кнопка отмены в центре осталась полупрозрачной — её должно быть видно
+ * насквозь, это «здесь ничего не выбрано».
  *
  * Ничего не ловит: клик в центре и мимо кольца должен закрывать меню.
  */
 .radial::before {
     content: ''; position: absolute; left: -126px; top: -126px;
     width: 252px; height: 252px; border-radius: 50%;
-    background: #16161e;
+    background: #16345c;
     box-shadow: 0 10px 34px rgba(0, 0, 0, .55);
     pointer-events: none;
     opacity: 0; transition: opacity .12s ease;
@@ -1371,7 +1373,7 @@ kbd {
     width: 480px; height: 480px;
     margin: -240px 0 0 -240px;
     padding: 0; border: 0; cursor: pointer;
-    background: rgba(190, 200, 235, .06);
+    background: rgba(127, 162, 247, .09);
     color: var(--fg);
     clip-path: polygon(50% 50%, var(--p0), var(--p1));
     mask: radial-gradient(circle at 50% 50%,
@@ -1380,41 +1382,52 @@ kbd {
     transition: opacity .12s ease, background .1s ease;
 }
 .radial.on .radial-sector { opacity: 1; }
-.radial-sector:hover:not(:disabled) { background: rgba(190, 200, 235, .1); }
+.radial-sector:hover:not(:disabled) { background: rgba(127, 162, 247, .16); }
 .radial-sector:disabled { cursor: default; color: var(--comment); }
 
 /* Выбранный сектор: распознавание срабатывает по направлению, то есть намного
    раньше, чем курсор доедет до самого сектора. */
-.radial-sector.sel { background: rgba(127, 162, 247, .2); }
+.radial-sector.sel { background: rgba(127, 162, 247, .26); }
 
 .radial-sector .ico-svg { width: 19px; height: 19px; }
 
-/* Значок в секторе: круглая плашка для вида, цель — весь сектор. */
+/* Значок в секторе: круглая плашка для вида, цель — весь сектор.
+   Без рамки: на маленьком значке обводка съедала иконку и превращала кольцо
+   в россыпь кружков с обводками. Плашка сама по себе круглая, ей рамка не
+   нужна. */
 .radial-sector .rd-dot {
     position: absolute; left: 50%; top: 50%;
     width: 40px; height: 40px; margin: -20px 0 0 -20px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 50%;
-    background: var(--bg-soft); border: 1px solid var(--border);
+    background: rgba(127, 162, 247, .22);
     transform: translate(var(--mx), var(--my));
-    transition: background .1s ease, border-color .1s ease;
+    transition: background .1s ease;
 }
+/* Наведение и выбор — голубая заливка плашки. */
 .radial-sector:hover:not(:disabled) .rd-dot,
-.radial-sector.sel .rd-dot { background: var(--bg-select); border-color: var(--comment); }
-.radial-sector.sel .rd-dot { border-color: var(--blue); }
+.radial-sector.sel .rd-dot { background: rgba(127, 162, 247, .38); }
 .radial-sector:disabled .rd-dot { opacity: .55; }
 
-/* Цветовые семейства секторов */
+/*
+ * Цветовые семейства секторов.
+ *
+ * Раньше цвет семья давался обводкой значка, но у значка больше нет рамки —
+ * иначе кольцо читалось как россыпь кружков с обводками. Теперь семейство
+ * видно по цвету иконки и по заливке плашки при наведении.
+ */
 .radial-sector.r-save .ico-svg { stroke: var(--green); }
 .radial-sector.r-save:hover:not(:disabled) .rd-dot,
-.radial-sector.r-save.sel .rd-dot { border-color: var(--green); }
+.radial-sector.r-save.sel .rd-dot { background: rgba(158, 206, 106, .38); }
 .radial-sector.r-cancel .ico-svg { stroke: var(--red); }
 .radial-sector.r-cancel:hover:not(:disabled) .rd-dot,
-.radial-sector.r-cancel.sel .rd-dot { border-color: var(--red); }
+.radial-sector.r-cancel.sel .rd-dot { background: rgba(247, 118, 142, .38); }
 .radial-sector.r-export:hover:not(:disabled) .rd-dot,
-.radial-sector.r-export.sel .rd-dot { border-color: var(--blue); }
+.radial-sector.r-export.sel .rd-dot { background: rgba(255, 158, 100, .38); }
 .radial-sector.r-open:hover:not(:disabled) .rd-dot,
-.radial-sector.r-open.sel .rd-dot { border-color: var(--cyan); }
+.radial-sector.r-open.sel .rd-dot { background: rgba(125, 207, 255, .38); }
+.radial-sector.r-path:hover:not(:disabled) .rd-dot,
+.radial-sector.r-path.sel .rd-dot { background: rgba(157, 124, 216, .4); }
 
 /*
  * Подпись — ОТДЕЛЬНЫЙ слой, а не элемент внутри сектора.

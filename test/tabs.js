@@ -2879,18 +2879,19 @@ const SILENCE_CONFIRM = `(() => {
     const cs = getComputedStyle(b);
     const px = (v) => (v.match(/[\\d.]+/g) || []).map(Number);
     const bg = px(cs.backgroundColor);
-    const bgc = px(cs.borderColor);
     return JSON.stringify({
       hovered: b.matches(':hover'),
       bgAlpha: bg.length > 3 ? bg[3] : 1,
       bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
-      borderAlpha: bgc.length > 3 ? bgc[3] : 1,
-      // Подложка кольца тёмная, и полупрозрачная подсветка лишь подмешивала
-      // цвет к ней — кнопка на глаз бледнела, а не становилась заметнее.
-      bgSolid: bg.length <= 3 || bg[3] === 1,
+      // Рамки у значка нет: на 40px она съедала иконку, и кольцо читалось как
+      // россыпь кружков с обводками.
+      borderW: cs.borderTopWidth,
       icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
     });
   })()`);
+
+  const saveRest = JSON.parse(await readBtn('[data-act="save"]'));
+  const cancelRest = JSON.parse(await readBtn('[data-act="cancel"]'));
 
   await c.hover(r.save[0], r.save[1]);
   await new Promise((x) => setTimeout(x, 250));
@@ -2914,16 +2915,19 @@ const SILENCE_CONFIRM = `(() => {
   const ch = JSON.parse(cancelHover);
 
   t('курсор действительно наведён на «Сохранить»', sh.hovered === true);
-  t('фон «Сохранить» при наведении непрозрачный',
-    sh.bgSolid === true && sh.bgAlpha >= 0.25, 'alpha=' + sh.bgAlpha);
+  // Подложка кольца теперь голубая и достаточно насыщенная, поэтому плашка
+  // наводится полупрозрачной заливкой поверх неё: важно, что заливка
+  // становится заметнее, а не что она непрозрачная.
+  t('наведение на «Сохранить» видно', sh.bgAlpha > saveRest.bgAlpha + 0.1,
+    'было ' + saveRest.bgAlpha + ', стало ' + sh.bgAlpha);
   t('фон «Сохранить» при наведении светлеет', sh.bgLum >= 45, 'lum=' + Math.round(sh.bgLum));
-  t('рамка «Сохранить» заметная', sh.borderAlpha >= 0.5, 'alpha=' + sh.borderAlpha);
+  t('рамки у значка «Сохранить» нет', sh.borderW === '0px', sh.borderW);
   t('иконка «Сохранить» остаётся зелёной', /158,\s*206,\s*106/.test(sh.icon), sh.icon);
   t('курсор действительно наведён на «Отменить»', ch.hovered === true);
-  t('фон «Отменить» при наведении непрозрачный',
-    ch.bgSolid === true && ch.bgAlpha >= 0.25, 'alpha=' + ch.bgAlpha);
+  t('наведение на «Отменить» видно', ch.bgAlpha > cancelRest.bgAlpha + 0.1,
+    'было ' + cancelRest.bgAlpha + ', стало ' + ch.bgAlpha);
   t('фон «Отменить» при наведении светлеет', ch.bgLum >= 40, 'lum=' + Math.round(ch.bgLum));
-  t('рамка «Отменить» заметная', ch.borderAlpha >= 0.5, 'alpha=' + ch.borderAlpha);
+  t('рамки у значка «Отменить» нет', ch.borderW === '0px', ch.borderW);
   t('иконка «Отменить» остаётся красной', /247,\s*118,\s*142/.test(ch.icon), ch.icon);
 
   // Линия прогресса чтения. Файл создаём здесь: браузеру нечем писать на
