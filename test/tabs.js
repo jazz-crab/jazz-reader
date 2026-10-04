@@ -836,25 +836,73 @@ const SILENCE_CONFIRM = `(() => {
     r.cssDuring + ' (было ' + (r.before && r.before.zoom) + ')');
   t('ползунок текста двигает и тулбарный зум', /^\d+%$/.test(r.zoomLabel || ''), r.zoomLabel);
   t('ширина колонки применена сразу', r.widthDuring === '1200px', r.widthDuring);
-  t('есть кнопка «Готово»', (r.buttons || []).some((b) => /Готово/.test(b)), JSON.stringify(r.buttons));
+  // Проверяем ТЕКСТ кнопки, а не сам объект: /Сbросить/.test(btn) превращал
+  // объект в «[object Object]» и всегда давал false — проверка проходила,
+  // ничего не проверяя.
+  t('в настройках есть кнопка «По умолчанию»',
+    (r.buttons || []).some((b) => b === 'По умолчанию'), JSON.stringify(r.buttons));
+  t('в настройках есть кнопка «Готово»',
+    (r.buttons || []).some((b) => b === 'Готово'), JSON.stringify(r.buttons));
+  t('кнопки «Сбросить» больше нет',
+    !(r.buttons || []).some((b) => b === 'Сбросить'), JSON.stringify(r.buttons));
 
-  // Esc откатывает предпросмотр
+  // Esc закрывает окно настроек и НЕ откатывает сделанное. Раньше закрытие
+  // отменяло правку ползунка, и правка терялась молча: человек двигал
+  // ползунок, видел результат, закрывал окно — а настройка была прежней.
+  // Теперь настройки применяются и сохраняются по ходу работы с окном.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    const zoomNow = M.settings().zoom;
+    const zoomBefore = M.settings().zoom;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 300));
+    await new Promise(r2 => setTimeout(r2, 400));
     return JSON.stringify({
-      zoomBefore: zoomNow,
+      zoomBefore,
       zoomAfter: M.settings().zoom,
       closed: !document.querySelector('.modal-back'),
       css: getComputedStyle(document.getElementById('content')).fontSize,
     });
   })()`));
 
-  t('Esc закрывает настройки', r.closed === true);
-  t('Esc откатывает размер текста', r.zoomAfter === 1,
-    'стало ' + r.zoomAfter + ', css ' + r.css);
+  t('Esc закрывает окно настроек', r.closed === true);
+  t('Esc не откатывает настройку', r.zoomAfter === r.zoomBefore,
+    'стало ' + r.zoomAfter + ', было ' + r.zoomBefore);
+  t('настройка применена к тексту', r.css !== '15px', r.css);
+
+  // Клик мимо окна сохраняет, а не отменяет
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.settingsDialog();
+    await new Promise(r2 => setTimeout(r2, 350));
+    const opened = !!document.querySelector('.modal-back');
+    const font = document.querySelector('.modal-box .set-row input[type="range"]');
+    font.value = '19';
+    font.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const during = getComputedStyle(document.getElementById('content')).fontSize;
+    const saved = await M.savedSettings();
+    document.querySelector('.modal-back').dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({
+      opened, during, zoomSaved: saved ? saved.zoom : null,
+      closed: !document.querySelector('.modal-back'),
+      after: M.settings().zoom,
+      css: getComputedStyle(document.getElementById('content')).fontSize,
+    });
+  })()`));
+  t('окно настроек открывается', r.opened === true);
+  t('движение ползунка сразу применяется', r.during === '19px', r.during);
+  t('движение ползунка сразу ложится в settings.json',
+    r.zoomSaved !== null && Math.abs(r.zoomSaved - 19 / 15) < 0.01, String(r.zoomSaved));
+  t('клик мимо закрывает окно', r.closed === true);
+  t('клик мимо не отменяет настройку', r.css === '19px', r.css);
+
+  // возвращаем как было
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.previewSettings({ zoom: 1, columnWidth: 900, autosave: false });
+    return 1;
+  })()`);
 
   // Готово сохраняет настройки и закрывает
   r = JSON.parse(await js(`(async () => {

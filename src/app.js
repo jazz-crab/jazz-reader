@@ -2834,7 +2834,10 @@ function settingsDialog() {
    */
   let closeModal = () => back.remove();
   const back = modalShell();
-  const box = modalBox('Настройки', 470, 460);
+  // Окно было 470×460, а в него набилось четыре карточки с длинными
+  // подсказками: содержимое уходило под нижний край и окно приходилось
+  // прокручивать. Стало просторнее — подсказки видны целиком.
+  const box = modalBox('Настройки', 560, 720);
 
   const rows = [];
 
@@ -2955,22 +2958,21 @@ function settingsDialog() {
   addCard('Автосохранение', null,
     'Выход из правки сразу пишет файл — кнопка «Сохранить» не нужна.').addControl(auto);
 
-  // Предпросмотр должен откатываться при отмене
-  const before = Object.assign({}, currentSettings);
+  /*
+   * Откатывать предпросмотр больше нечего: изменения сохраняются сразу, и
+   * закрытие окна — обычное закрытие. Раньше здесь стоял откат к снимку
+   * «до», из-за чего клик мимо окна тихо выбрасывал правку ползунка.
+   */
   const oldOnCancel = back._onCancel;
-  back._onCancel = () => {
-    // previewSettings, а не applySettings: откатить надо и CSS, и currentSettings,
-    // иначе состояние в памяти разойдётся с тем, что на экране.
-    previewSettings(before);
-    if (oldOnCancel) oldOnCancel();
-  };
 
   const row = document.createElement('div');
   row.className = 'modal-row';
-  const reset = document.createElement('button');
-  reset.className = 'dlgbtn';
-  reset.textContent = 'Сбросить';
-  reset.onclick = () => {
+  // «По умолчанию», а не «Сбросить»: слово сбивало с толку, будто отменяет
+  // правку. Здесь возвращаются исходные значения — как в новой установке.
+  const def = document.createElement('button');
+  def.className = 'dlgbtn';
+  def.textContent = 'По умолчанию';
+  def.onclick = () => {
     const d = SETTINGS_DEFAULT;
     font.value = String(zoomToPx(d.zoom));
     width.value = String(d.columnWidth);
@@ -2978,28 +2980,24 @@ function settingsDialog() {
     dragIn.checked = d.radialMode === 'drag';
     syncFont();
     syncWidth();
-    previewSettings(Object.assign({}, d));
+    previewSettings(Object.assign({}, currentSettings, d));
   };
   const ok = document.createElement('button');
   ok.className = 'dlgbtn dlgbtn-primary';
   ok.textContent = 'Готово';
-  ok.onclick = async () => {
-    const val = {
+  // Значения уже сохранены по ходу работы с окном, поэтому кнопка только
+  // закрывает. Всё равно пишем их раз: закрытие может прийти по Esc или
+  // клику мимо, и значения ползунков — источник истины.
+  ok.onclick = () => {
+    previewSettings({
       zoom: pxToZoom(+font.value),
       columnWidth: +width.value,
       autosave: autoIn.checked,
       radialMode: dragIn.checked ? 'drag' : 'click',
-    };
-    currentSettings = val;
-    applySettings(val);
-    try {
-      await api.settingsSet(val);
-    } catch (e) {
-      status('Настройки не сохранены: ' + (e.message || e), 'err');
-    }
+    });
     closeModal(false);
   };
-  row.append(reset, ok);
+  row.append(def, ok);
   box.append(row);
 
   back.append(box);
@@ -3009,9 +3007,23 @@ function settingsDialog() {
 
 let currentSettings = Object.assign({}, SETTINGS_DEFAULT);
 
-function previewSettings(patch) {
+/**
+ * Применить и СОХРАНИТЬ настройки.
+ *
+ * Раньше изменения ждали кнопки «Готово», а клик мимо окна откатывал
+ * предпросмотр. Окно настроек — это не форма с кнопкой, а набор
+ * переключателей: человек двигает ползунок и сразу видит результат, и
+ * ждать отдельного подтверждения незачем. Поэтому каждое движение сразу
+ * уходит в settings.json, а закрытие окна чем угодно — просто закрытие.
+ */
+async function previewSettings(patch) {
   Object.assign(currentSettings, patch);
   applySettings(currentSettings);
+  try {
+    await api.settingsSet(currentSettings);
+  } catch (e) {
+    status('Настройки не сохранены: ' + (e.message || e), 'err');
+  }
 }
 
 /** Отмечаем файл в списке недавних (без await — ошибка тут не критична). */
@@ -3685,6 +3697,9 @@ window.__mdvTest = {
   enterEdit: toggleEditMode, exitEdit, save, saveTab, undoEdit, redoEdit, resetUndo,
   radialPick, radialDragging: () => radialDrag,
   setRadialMode: (m) => previewSettings({ radialMode: m }), radialMode: () => currentSettings.radialMode,
+  settings: () => currentSettings, previewSettings, settingsDialog,
+  /* Что реально лежит в settings.json: проверка «сохранилось ли». */
+  savedSettings: () => api.settingsGet().catch(() => null),
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); },
   settings: () => currentSettings,
