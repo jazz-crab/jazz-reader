@@ -548,7 +548,39 @@ async function closeAll() {
  */
 let menuChain = [];
 
+/*
+ * «Коридор» между кнопкой, открывшей меню, и самим меню.
+ *
+ * Меню вызывается кликом по кнопке, а открывается под ней. Между ними
+ * остаётся пустое место — и наведение мыши на это место означало «курсор вне
+ * меню», то есть закрытие. На гамбургере это выглядело так: нажал, повёл
+ * вниз на «Файл» — по дороге всё закрылось, выбрать было нельзя.
+ *
+ * Поэтому запоминаем прямоугольник кнопки-источника и, если курсор внутри
+ * него или внутри прямоугольника, натянутого между ним и меню, меню НЕ
+ * закрываем. Именно коридор, а не задержка: задержка на уход приходится
+ * платить при каждом обычном закрытии, а коридор стоит пустого места на
+ * экране и ничего не портит — под него всё равно нельзя попасть кликом.
+ */
+let menuCorridor = null;
+
+function menuCorridorFor(anchorRect, menuRect) {
+  if (!anchorRect || !menuRect) return null;
+  const x0 = Math.min(anchorRect.left, menuRect.left);
+  const x1 = Math.max(anchorRect.right, menuRect.right);
+  const y0 = Math.min(anchorRect.top, menuRect.top);
+  const y1 = Math.max(anchorRect.bottom, menuRect.bottom);
+  return { x0, y0, x1, y1 };
+}
+
+function inCorridor(pt) {
+  if (!menuCorridor) return false;
+  const c = menuCorridor;
+  return pt.clientX >= c.x0 && pt.clientX <= c.x1 && pt.clientY >= c.y0 && pt.clientY <= c.y1;
+}
+
 function closeAllMenus() {
+  menuCorridor = null;
   for (const link of menuChain) link.menu.remove();
   menuChain = [];
   document.removeEventListener('mousedown', onMenuDown, true);
@@ -627,6 +659,11 @@ function showContextMenu(x, y, items, opts) {
 
   document.body.append(m);
   menuChain.push({ menu: m, parent: o.parent || null, item: o.parentItem || null });
+  if (!o.parent) {
+    // Коридор строится один раз, по геометрии корневого меню: подменю
+    // открывается от пункта ВНУТРИ меню и курсор до него уже внутри.
+    menuCorridor = menuCorridorFor(o.anchorRect, m.getBoundingClientRect());
+  }
 
   // Слушатели вешаем на весь корень, а не на каждый вызов: иначе на
   // подменю висели бы копии, и закрытие одного закрывало бы не своё.
@@ -666,6 +703,7 @@ function onMenuHover(e) {
   for (const link of menuChain) {
     if (link.menu.contains(e.target)) return;
   }
+  if (inCorridor(e)) return;
   closeAllMenus();
 }
 
@@ -2220,7 +2258,7 @@ el.btnNewTab.oncontextmenu = (e) => {
   showContextMenu(r.left - 60, r.bottom + 4, [
     { label: 'Открыть .md', hint: 'Ctrl+O', act: openFileDialog },
     { label: 'Открыть папку', hint: 'Ctrl+Shift+O', act: openFolderDialog },
-  ], { width: 232, height: 80 });
+  ], { width: 232, height: 80, anchorRect: r });
 };
 
 // ------------------------------------------------------- временный файл / папка
@@ -2311,7 +2349,7 @@ el.appBrand.onclick = (e) => {
     { label: 'Вид', items: viewMenuItems() },
     { sep: true },
     { label: 'Настройки', hint: 'Ctrl+,', act: settingsDialog },
-  ], { width: 250, height: 190, subWidth: 240 });
+  ], { width: 250, height: 190, subWidth: 240, anchorRect: r });
 };
 el.appBrand.oncontextmenu = (e) => {
   e.preventDefault();

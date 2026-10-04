@@ -2521,9 +2521,55 @@ const SILENCE_CONFIRM = `(() => {
   t('при возврате «Вид» закрывается', r.viewClosedAfterBack === true);
   t('подменю не пересоздаётся на каждый проход', r.reusedSameNode === true);
   t('уход курсора закрывает меню', r.afterLeave === 0, String(r.afterLeave));
+
   t('клик мимо закрывает меню', r.afterClickOutside === 0, String(r.afterClickOutside));
   t('Esc закрывает меню', r.afterEsc === 0, String(r.afterEsc));
   t('повторное открытие не копит меню', r.twoRoots === 1, String(r.twoRoots));
+
+  // 5a. КОРИДОР. Между гамбургером и открывшимся под ним меню есть пустое
+  // место, и наведение на него раньше закрывало меню: нажал на гамбургер,
+  // повёл вниз на «Файл» — по дороге всё исчезало, выбрать было нельзя.
+  r = JSON.parse(await js(`(async () => {
+    const tick = () => new Promise(r2 => setTimeout(r2, 260));
+    const menus = () => [...document.querySelectorAll('.ctxmenu')];
+    const brand = document.getElementById('appBrand');
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    brand.click();
+    await tick();
+    const menu = document.querySelector('.ctxmenu');
+    const b = brand.getBoundingClientRect();
+    const m = menu.getBoundingClientRect();
+    const out = { opened: menus().length };
+    out.gap = Math.round(m.top - b.bottom);
+    out.mid = [Math.round(b.left + b.width / 2), Math.round((b.bottom + m.top) / 2)];
+
+    // Наводимся в пустоту МЕЖДУ кнопкой и меню
+    document.body.dispatchEvent(new MouseEvent('mouseover', {
+      bubbles: true, clientX: out.mid[0], clientY: out.mid[1],
+    }));
+    await tick();
+    out.afterCorridor = menus().length;
+
+    // Наводимся на сам пункт «Файл» — он должен открыться
+    const file = [...menu.querySelectorAll('.ctxmenu-item')].find(b2 => /Файл/.test(b2.textContent));
+    file.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+    out.afterFileHover = menus().length;
+
+    // И уводим курсор далеко — закрылось
+    document.getElementById('content').dispatchEvent(
+      new MouseEvent('mouseover', { bubbles: true, clientX: 5, clientY: 500 }));
+    await tick();
+    out.afterFar = menus().length;
+    return JSON.stringify(out);
+  })()`));
+
+  t('меню открылось по гамбургеру', r.opened === 1, String(r.opened));
+  t('между кнопкой и меню есть зазор', r.gap > 0, r.gap + 'px');
+  t('в коридоре меню не закрывается', r.afterCorridor === 1, String(r.afterCorridor));
+  t('после этого пункт «Файл» раскрывается', r.afterFileHover === 2, String(r.afterFileHover));
+  t('уход далеко по-прежнему закрывает', r.afterFar === 0, String(r.afterFar));
+
 
   // ------------------------- направление ресайзера и фокус панели
   console.log('\n== ресайз разделения и фокус панели ==');
