@@ -2245,6 +2245,27 @@ async function downloadHtml() {
   }
 }
 
+/**
+ * PDF мимо системного диалога печати.
+ *
+ * Диалог на Windows и есть тот самый нижний тулбар с подписями: он рисует
+ * колонтитул с именем файла и номерами страниц, и он попадал в результат.
+ * Здесь файл собирает main и сразу пишет на диск — смотреть не на что.
+ */
+async function downloadPdf() {
+  const t = active();
+  if (!t || !t.path) return;
+  if (t.mode === 'edit' && t.dirty) { toast('Сначала сохрани (Ctrl+S)'); return; }
+  try {
+    const body = MDV.renderMd(t.raw, t.baseUrl);
+    const res = await api.exportPdf({ title: t.name, body });
+    toast('Сохранено: ' + res.path + ' (' + fmtSize(res.bytes) + ')', 'ok');
+    api.reveal(res.path);
+  } catch (e) {
+    status('Ошибка сборки PDF: ' + (e.message || e), 'err');
+  }
+}
+
 // ------------------------------------------------------------------ поиск
 
 function openFind() {
@@ -2843,7 +2864,7 @@ function radialToMenu(which) {
     showContextMenu(x, y, [
       { label: 'Сохранить MD', icon: 'file-down', act: () => downloadMd() },
       { label: 'Сохранить HTML', icon: 'file-code', act: () => downloadHtml() },
-      { label: 'Печать / PDF…', icon: 'printer', act: () => api.print() },
+      { label: 'Сохранить PDF', icon: 'printer', act: () => downloadPdf() },
       { sep: true },
       { label: 'Показать в проводнике', icon: 'folder-search', act: () => revealFile() },
       { label: 'Скопировать путь', icon: 'copy', act: () => copyPath() },

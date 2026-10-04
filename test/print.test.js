@@ -116,6 +116,32 @@ t('inline-код не сломан', /<code[^>]*>const x = 1 &lt; 2/.test(html))
 
 console.log('\n== печать ==');
 
+// Для печати buildStandaloneHtml отдаёт сам HTML, а не файл: его грузит
+// скрытое окно, из которого Chromium печатает. Проверяем именно эту сборку.
+const printed = await buildStandaloneHtml('Заметка.md', body, { print: true });
+t('для печати приходит HTML, а не путь', typeof printed.html === 'string'
+  && !printed.path, JSON.stringify(Object.keys(printed)));
+t('в HTML для печати есть @page', /@page\s*\{[^}]*margin:\s*0/.test(printed.html || ''));
+t('у блоков кода и цитат рамки нет',
+  /\.content pre, \.content blockquote \{ border: none !important; \}/.test(printed.html || ''));
+t('PRINT_CSS после style.css, иначе @media print перебьёт выбор',
+  printed.html.lastIndexOf('@page') > printed.html.lastIndexOf('.radial-kill:hover'));
+t('отступ до текста задан padding, а не полем страницы',
+  /\.content \{ padding: 16mm 18mm 18mm !important; \}/.test(printed.html || ''));
+t('свой шрифт вшит и в печатную сборку', /@font-face\s*\{[^}]*JetBrainsMono/.test(printed.html || ''));
+
+const ipcSrc = fs.readFileSync(path.join(ROOT, 'ipc.js'), 'utf8');
+t('PDF идёт мимо диалога печати', /printToPDF\(/.test(ipcSrc)
+  && !/buildPdf[\s\S]{0,400}?webContents\.print\(/.test(ipcSrc));
+t('колонтитулы выключены (нижний тулбар с подписями)',
+  /headerFooter:\s*false/.test(ipcSrc));
+t('поля страницы пустые', /margins:\s*\{\s*marginType:\s*'none'\s*\}/.test(ipcSrc));
+t('размер страницы берётся из @page', /preferCSSPageSize:\s*true/.test(ipcSrc));
+t('обработчик mdv:exportPdf есть', /ipcMain\.handle\('mdv:exportPdf'/.test(ipcSrc));
+t('окно печати скрытое', /show:\s*false/.test(
+  /async function buildPdf[\s\S]*?new BrowserWindow\(\{[\s\S]*?\}\)/.exec(ipcSrc)[0]));
+
+
 const mainJs = fs.readFileSync(path.join(ROOT, 'ipc.js'), 'utf8');
 t('обработчик mdv:print есть', /ipcMain\.handle\('mdv:print'/.test(mainJs));
 t('печать с фоном (иначе тёмная тема печатается белым)',
@@ -125,14 +151,18 @@ t('диалог не скрыт (silent:false)', /print\(\{[^}]*silent:\s*false/
 const preload = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
 t('печать доступна из renderer', /print:/.test(preload));
 t('экспорт доступен из renderer', /exportHtml:/.test(preload));
+t('экспорт PDF доступен из renderer', /exportPdf:/.test(preload));
 
 const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
-// Пункта печати в разметке тулбара больше нет: экспорт целиком живёт в
-// круговом меню заметки и собирается кодом. Проверяем, что он там есть.
-t('в меню экспорта есть пункт печати',
-  /label: 'Печать \/ PDF…', icon: 'printer'/.test(appJs)
-  && /api\.print\(/.test(appJs));
-t('пункт печати вызывает api.print', /api\.print\(/.test(appJs));
+// Пункта печати в разметке тулбара нет: экспорт живёт в круговом меню
+// заметки. В списке экспорта — «Сохранить PDF», он собирает файл сам, без
+// системного диалога. А Ctrl+P (api.print) остался: иногда нужен именно
+// диалог, чтобы печатать на принтере.
+t('в меню экспорта есть «Сохранить PDF»',
+  /label: 'Сохранить PDF', icon: 'printer'/.test(appJs));
+t('пункт вызывает downloadPdf', /act: \(\) => downloadPdf\(\)/.test(appJs));
+t('downloadPdf зовёт api.exportPdf', /api\.exportPdf\(\{/.test(appJs));
+t('Ctrl+P остался системным диалогом', /api\.print\(\)/.test(appJs));
 
 console.log('\n== на печать отдаётся непустая страница ==');
 // Chromium печатает текущий DOM. Если бы мы печатали скрытый контейнер или

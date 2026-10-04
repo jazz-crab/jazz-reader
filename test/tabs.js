@@ -3049,6 +3049,34 @@ const SILENCE_CONFIRM = `(() => {
     'labels=' + JSON.stringify(r.labels) + ' first=' + r.firstHtml);
   t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
 
+  // ------------------------------------------- экспорт PDF: настоящий файл
+  // Проверяем на живом API, а не по исходнику: printToPDF в скрытом окне —
+  // единственное место, где ошибка не видна в коде, а всплывает пустым листом.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    await new Promise(r2 => setTimeout(r2, 250));
+    const t = M.active();
+    const body = MDV.renderMd('# PDF\\n\\nПроверка экспорта.\\n\\n\`\`\`js\\nconst x = 1;\\n\`\`\`\\n', t.baseUrl);
+    const res = await window.mdv.exportPdf({ title: t.name, body });
+    return JSON.stringify({ path: res.path, bytes: res.bytes });
+  })()`));
+  t('PDF собран', !!r.path && r.bytes > 1000, r.path + ' ' + r.bytes + ' байт');
+  t('PDF лежит в Загрузках', /downloads/i.test(String(r.path)), String(r.path));
+  if (r.path && fs.existsSync(r.path)) {
+    const head = fs.readFileSync(r.path).slice(0, 5).toString('latin1');
+    t('файл начинается с %PDF-', head === '%PDF-', JSON.stringify(head));
+    // Ищем в потоке страницу: одна пустая страница — тоже «файл», только
+    // бесполезная. Считаем /Type /Page (без /Pages).
+    const raw = fs.readFileSync(r.path).toString('latin1');
+    const pages = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length;
+    t('в PDF есть страницы с содержимым', pages >= 1, String(pages));
+    fs.rmSync(r.path, { force: true });
+  } else {
+    t('файл PDF создан на диске', false, String(r.path));
+  }
+
   // ------------------------------------------- кольцо: сектора и зона отмены
   console.log('\n== кольцо: сектора ==');
 

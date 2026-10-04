@@ -126,7 +126,8 @@ async function inlineLocalFonts(css, baseDir) {
  * подставляем в @font-face base64-шрифты — но только те, что реально
  * встречаются на этой странице, иначе файл распухнет на пару мегабайт.
  */
-async function buildStandaloneHtml(title, body) {
+async function buildStandaloneHtml(title, body, opts) {
+  const o = opts || {};
   const katexDir = path.join(__dirname, 'src', 'vendor', 'katex');
   const katexCss = await fsp.readFile(path.join(katexDir, 'katex.min.css'), 'utf8');
   let ourCss = await fsp.readFile(path.join(__dirname, 'src', 'style.css'), 'utf8');
@@ -197,12 +198,84 @@ async function buildStandaloneHtml(title, body) {
     + '<title>' + esc(title) + '</title>\n<style>\n' + out + '\n' + ourCss + '\n'
     + 'html,body{height:auto;overflow:visible;background:#1a1b26}\n'
     + '.content{position:static;max-width:900px;margin:0 auto;padding:34px 26px 70px}\n'
+    + (o.print ? PRINT_CSS : '')
     + '</style>\n</head>\n<body>\n<article class="content">' + body + '</article>\n</body>\n</html>\n';
+
+  if (o.print) return { html, fonts: inlined + own.inlined, bytes: Buffer.byteLength(html) };
 
   const name = String(title).replace(/\.md$/i, '') + '.html';
   const file = path.join(app.getPath('downloads'), name);
   await fsp.writeFile(file, html, 'utf8');
   return { path: file, fonts: inlined + own.inlined, bytes: Buffer.byteLength(html) };
+}
+
+/*
+ * Дополнение к автономному HTML для печати.
+ *
+ * Стоит ПОСЛЕ style.css, где лежит @media print, и поэтому перебивает его
+ * !important-правила — иначе выбор человека (палитра, шрифт, размер)
+ * оказывался бы перебит печатными значениями.
+ *
+ *   @page margin: 0 — печать без полей. Отступ до текста задаёт padding
+ *   .content: иначе текст ложился бы в самый край листа.
+ *   pre и blockquote без рамок: @media print рисует вокруг них
+ *   1px solid #ccc — на бумаге это рамка вокруг каждого блока кода, а на
+ *   цветном фоне она вообще выглядит как ошибка вёрстки.
+ */
+const PRINT_CSS = `
+/* печать */
+@page { size: A4; margin: 0; }
+.content { padding: 16mm 18mm 18mm !important; }
+.content pre, .content blockquote { border: none !important; }
+`;
+
+/**
+ * PDF без системного диалога печати.
+ *
+ * Диалог на Windows — это и есть «нижний тулбар с надписями»: у него внизу
+ * панель с кнопками и колонтитул с именем файла и номерами страниц, и она
+ * попадала в результат. printToPDF идёт мимо диалога и возвращает готовый
+ * файл; колонтитулов там нет в принципе.
+ *
+ * Страница печатается в скрытом окне из того же автономного HTML, что и
+ * экспорт: одна сборка на оба формата, значит PDF и HTML не могут разойтись.
+ */
+async function buildPdf(title, body, opts) {
+  const built = await buildStandaloneHtml(title, body, Object.assign({}, opts, { print: true }));
+  const file = path.join(app.getPath('temp'), 'mdview-print-' + process.pid + '.html');
+  await fsp.writeFile(file, built.html, 'utf8');
+
+  const w = new BrowserWindow({
+    show: false,
+    width: 900,
+    height: 1200,
+    webPreferences: { sandbox: true, contextIsolation: true, javascript: false },
+  });
+  try {
+    await w.loadFile(file);
+    // Шрифты вшиты в CSS как base64, но Chromium успевает разложить их
+    // позже, чем сработает did-finish-load: печать без этого даст лист, где
+    // половина текста напечатана запасным шрифтом. fonts.ready — честное
+    // ожидание, а если страница его не отдаёт (старый Chromium) — просто
+    // ждём немного.
+    try { await w.webContents.executeJavaScript('document.fonts.ready.then(function(){return 1})'); }
+    catch { await new Promise((r) => setTimeout(r, 600)); }
+    const buf = await w.webContents.printToPDF({
+      printBackground: true,
+      // Колонтитулы: имя файла, дата, номер страницы. Их и рисует тот самый
+      // нижний тулбар, поэтому выключаем явно.
+      headerFooter: false,
+      preferCSSPageSize: true,
+      margins: { marginType: 'none' },
+    });
+    const name = String(title).replace(/\.md$/i, '') + '.pdf';
+    const out = path.join(app.getPath('downloads'), name);
+    await fsp.writeFile(out, buf);
+    return { path: out, bytes: buf.length };
+  } finally {
+    if (!w.isDestroyed()) w.destroy();
+    try { await fsp.unlink(file); } catch { /* временный файл мог не создаться */ }
+  }
 }
 
 /** Ширину проставляет main после применения titleBarOverlay. */
@@ -480,10 +553,11 @@ function register() {
     const w = targetWindow();
     if (w) w.webContents.print({ silent: false, printBackground: true });
   });
-  ipcMain.handle('mdv:exportHtml', (_e, { title, body }) => buildStandaloneHtml(title, body));
+  ipcMain.handle('mdv:exportHtml', (_e, { title, body, opts }) => buildStandaloneHtml(title, body, opts));
+  ipcMain.handle('mdv:exportPdf', (_e, { title, body, opts }) => buildPdf(title, body, opts));
 }
 
 module.exports = {
-  register, listMdTree, decodeBuffer, buildStandaloneHtml,
+  register, listMdTree, decodeBuffer, buildStandaloneHtml, buildPdf,
   setCaptionWidth: (px) => { captionWidth = Math.max(0, Math.round(px || 0)); },
 };

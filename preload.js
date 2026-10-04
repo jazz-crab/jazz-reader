@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('mdv', {
   settingsSet: (patch) => ipcRenderer.invoke('mdv:settingsSet', patch),
   print: () => ipcRenderer.invoke('mdv:print'),
   exportHtml: (payload) => ipcRenderer.invoke('mdv:exportHtml', payload),
+  /** PDF без системного диалога печати: готовый файл в Загрузках. */
+  exportPdf: (payload) => ipcRenderer.invoke('mdv:exportPdf', payload),
 
   /** Путь файла из DataTransfer (drop) или из <input type=file>. */
   pathForFile: (file) => {
