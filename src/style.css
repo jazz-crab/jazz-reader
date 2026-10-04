@@ -1244,6 +1244,26 @@ kbd {
 .radial-btn:hover:not(:disabled) { z-index: 2; }
 .radial.on .radial-btn { opacity: 1; }
 
+/*
+ * Неактивная кнопка.
+ *
+ * Буфер обмена виден всегда, но копировать без выделения нечего, а
+ * вырезать и вставить вне поля правки некуда. Такие кнопки остаются на своих
+ * местах и просто гаснут: кольцо не меняет форму от выделения, и палец
+ * попадает туда же, куда привык.
+ *
+ * Гасим только значок и рамку, но не прозрачность кнопки целиком: при
+ * opacity .3 кнопка на тёмном фоне почти исчезала и выглядела как «иконка
+ * не нажимается», а не как «сейчас нельзя».
+ */
+.radial-btn:disabled { cursor: default; color: var(--comment); }
+.radial-btn:disabled .ico-svg { stroke: var(--comment); }
+.radial-btn:disabled.r-save,
+.radial-btn:disabled.r-save .ico-svg { stroke: var(--comment); }
+.radial-btn:disabled.r-cancel,
+.radial-btn:disabled.r-cancel .ico-svg { stroke: var(--comment); }
+.radial-btn:disabled:hover { background: var(--bg-soft); border-color: var(--border); }
+
 /* Задержка по кольцу: кнопки появляются по часовой стрелке от верхней. */
 .radial.on .radial-btn:nth-child(1) { transition-delay: 0ms; }
 .radial.on .radial-btn:nth-child(2) { transition-delay: 15ms; }

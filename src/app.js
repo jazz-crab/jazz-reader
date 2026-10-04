@@ -2316,13 +2316,16 @@ el.btnNewTab.oncontextmenu = (e) => {
  * выглядело это как «иконка сломалась».
  */
 const RADIAL_LAYOUT = [
-  { act: 'copy', slot: 'top', icon: 'copy', tip: 'Копировать' },
-  { act: 'cut', slot: 'top', icon: 'scissors', tip: 'Вырезать' },
-  { act: 'paste', slot: 'top', icon: 'clipboard-paste', tip: 'Вставить' },
+  // Правка сверху, буфер обмена снизу. Секции поменялись местами по просьбе:
+  // правка — то, за чем чаще тянутся, и она должна быть под рукой сверху, а
+  // буфер обмена внизу, где до него тянутся реже.
+  { act: 'mode', slot: 'top', icon: 'pencil', tip: 'Правка (Ctrl+E)' },
+  { act: 'save', slot: 'top', icon: 'save', tip: 'Сохранить (Ctrl+S)', cls: 'r-save' },
+  { act: 'cancel', slot: 'top', icon: 'x', tip: 'Отменить правки (Esc)', cls: 'r-cancel' },
   { act: 'export', slot: 'right', icon: 'folder-output', tip: 'Экспорт', cls: 'r-export' },
-  { act: 'mode', slot: 'bottom', icon: 'pencil', tip: 'Правка (Ctrl+E)' },
-  { act: 'save', slot: 'bottom', icon: 'save', tip: 'Сохранить (Ctrl+S)', cls: 'r-save' },
-  { act: 'cancel', slot: 'bottom', icon: 'x', tip: 'Отменить правки (Esc)', cls: 'r-cancel' },
+  { act: 'copy', slot: 'bottom', icon: 'copy', tip: 'Копировать' },
+  { act: 'cut', slot: 'bottom', icon: 'scissors', tip: 'Вырезать' },
+  { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: 'Вставить' },
   { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть файл или папку', cls: 'r-open' },
 ];
 
@@ -2352,29 +2355,46 @@ function hasSelection() {
 }
 
 /**
- * Что кольцо показывает в текущем состоянии заметки.
+ * Что кольцо показывает.
  *
- * В чтении буфер обмена ограничен копированием (вырезать и вставлять некуда),
- * в правке добавляются «Сохранить» и «Отмена», а карандаш исчезает.
- * «Сохранить» и «Отмена» показываем всегда, когда идёт правка: «Сохранить»
- * без изменений просто скажет «Изменений нет», а «Отмена» вернёт к чтению.
- * Раньше они были серыми при отсутствии правок, и нажатие на них ничего
- * не делало — выглядело как сломанная иконка.
+ * Буфер обмена показывается ВСЕГДА, в любом режиме: три его кнопки стоят на
+ * своих местах и просто гаснут, когда действие сейчас невозможно. Иначе
+ * кольцо меняло форму от заметки к заметке и от выделения к отсутствию
+ * выделения, и приходилось искать глазами, где кнопка вообще.
+ *
+ * Правка, наоборот, меняется по режиму: в чтении карандаш, в правке «Сохранить»
+ * и «Отмена». Здесь зависимость не от наличия правок, а от самого режима, и
+ * показывать неработающую кнопку незачем.
  */
 function radialVisible(act) {
   const t = active();
   const editing = !!(t && t.mode === 'edit');
   const hasFile = !!(t && t.path);
-  const sel = hasSelection();
+  if (act === 'copy' || act === 'cut' || act === 'paste') return true;
   switch (act) {
-    case 'copy': return sel;
-    case 'cut': return editing && sel;
-    case 'paste': return editing;
     case 'mode': return hasFile && !editing;
     case 'save': return editing;
     case 'cancel': return editing;
     default: return hasFile;
   }
+}
+
+/**
+ * Что из показанного нажимается прямо сейчас.
+ *
+ * Копировать нечего без выделения, вырезать и вставлять некуда вне поля
+ * правки. Такие кнопки остаются на месте, но гаснут: место в кольце не
+ * меняется, и палец, привыкший к одному и тому же, попадает туда же.
+ */
+function radialEnabled(act) {
+  const t = active();
+  const editing = !!(t && t.mode === 'edit');
+  const hasFile = !!(t && t.path);
+  const sel = hasSelection();
+  if (act === 'copy') return hasFile && sel;
+  if (act === 'cut') return editing && sel;
+  if (act === 'paste') return editing;
+  return true;
 }
 
 /** Собрать кольцо под текущее состояние заметки. */
@@ -2406,6 +2426,7 @@ function buildRadial() {
     b.style.setProperty('--y', Math.round(Math.sin(rad) * RADIAL_R) + 'px');
     b.title = item.tip;
     b.innerHTML = ICONS.icon(item.icon) + '<span class="rd-tip">' + item.tip + '</span>';
+    b.disabled = !radialEnabled(item.act);
     b.onclick = () => radialAct(item.act);
     el.radial.append(b);
   }

@@ -3092,6 +3092,19 @@ const SILENCE_CONFIRM = `(() => {
       }),
       inWindow: rad.getBoundingClientRect().left >= 0,
       dead: btns.filter((b) => b.disabled).length,
+      clipOff: ['copy', 'cut', 'paste']
+        .filter((a) => btns.find((b) => b.dataset.act === a) && btns.find((b) => b.dataset.act === a).disabled)
+        .length,
+      // Секции по сторонам от центра кольца
+      side: btns.map((b) => {
+        const r = b.getBoundingClientRect();
+        const c = rad.getBoundingClientRect();
+        return {
+          act: b.dataset.act,
+          half: Math.abs((r.top + r.height / 2) - (c.top + c.height / 2)) < 8 ? 'центр'
+            : ((r.top + r.height / 2) < c.top + c.height / 2 ? 'верх' : 'низ'),
+        };
+      }),
       // Подложка — кольцо, а не кружок в середине
       ringW: parseFloat(getComputedStyle(rad, '::before').width),
       ringRadius: getComputedStyle(rad, '::before').borderRadius,
@@ -3142,19 +3155,20 @@ const SILENCE_CONFIRM = `(() => {
 
   t('правый клик в заметке открывает кольцо', r.open === true);
   t('системное меню подавлено', r.prevented === true);
-  // Мёртвых кнопок в кольце нет: то, что сейчас бесполезно, просто не
-  // показывается. Раньше они оставались на месте серыми и не нажимались —
-  // со стороны это выглядело как «иконка сломалась».
-  t('в чтении без выделения кольцо пустое от буфера обмена',
-    !r.acts.includes('copy') && !r.acts.includes('cut') && !r.acts.includes('paste'),
-    JSON.stringify(r.acts));
+  // Буфер обмена стоит в кольце ВСЕГДА: три кнопки на своих местах, просто
+  // гаснут, когда действие невозможно. Иначе кольцо меняло форму от
+  // выделения и приходилось искать глазами, где кнопка вообще.
+  t('буфер обмена в кольце есть и в чтении',
+    ['copy', 'cut', 'paste'].every((a) => r.acts.includes(a)), JSON.stringify(r.acts));
+  t('в чтении буфер обмена неактивен',
+    r.clipOff === 3, String(r.clipOff));
   t('справа экспорт', r.acts.includes('export'), JSON.stringify(r.acts));
   t('слева открытие', r.acts.includes('open'), JSON.stringify(r.acts));
   t('снизу карандаш', r.acts.includes('mode'), JSON.stringify(r.acts));
   t('в чтении нет «Сохранить» и «Отменить»',
     !r.acts.includes('save') && !r.acts.includes('cancel'), JSON.stringify(r.acts));
-  t('в кольце нет неактивных кнопок',
-    r.disabled.every((d) => d === 0) && r.dead === 0, JSON.stringify(r.disabled));
+  // Неактивны ровно три — буфер обмена; всё остальное в чтении работает.
+  t('неактивен только буфер обмена', r.dead === 3, JSON.stringify(r.disabled));
   t('кнопки круглые',
     r.round.every((w) => w === r.round[0]) && r.round[0] === 42
     && r.radius === '50%' && r.roundH.every((h) => h === r.round[0]),
@@ -3178,6 +3192,12 @@ const SILENCE_CONFIRM = `(() => {
   t('кнопки в секции не налезают друг на друга',
     r.sectionGap === -1 || r.sectionGap >= r.btnW + 8,
     r.sectionGap + 'px при кнопке ' + r.btnW + 'px');
+  // Секции: правка сверху, буфер обмена снизу.
+  t('правка сверху', ['mode'].every((a) => r.side.find((x) => x.act === a).half === 'верх'),
+    JSON.stringify(r.side));
+  t('буфер обмена снизу',
+    ['copy', 'cut', 'paste'].every((a) => r.side.find((x) => x.act === a).half === 'низ'),
+    JSON.stringify(r.side));
   t('иконки стоят ровно, без поворота',
     r.icoLevel.every((d) => d < 1), JSON.stringify(r.icoLevel));
   t('экспорт убран из тулбара', r.exportBtnGone === true);
@@ -3261,13 +3281,44 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 400));
     const ed = document.getElementById('editor');
     const box = ed.getBoundingClientRect();
-    await window.__mdvTest.openRingIn('editor', Math.round(box.left + 160), Math.round(box.top + 90));
+    /*
+     * Жест собираем здесь, а не через openRingIn: выделение надо поставить
+     * МЕЖДУ нажатием и отпусканием. Настоящий mousedown ставит каретку по
+     * координатам и схлопывает выделение, а кольцо собирается на mouseup —
+     * то есть уже после того, как выделение должно появиться.
+     */
+    ed.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, clientX: Math.round(box.left + 160),
+      clientY: Math.round(box.top + 90), button: 2 }));
+    ed.focus();
+    ed.setSelectionRange(0, 25);
+    ed.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, cancelable: true, clientX: Math.round(box.left + 160),
+      clientY: Math.round(box.top + 90), button: 2 }));
     await new Promise(r2 => setTimeout(r2, 400));
     const rad = document.getElementById('radial');
     const btns = [...rad.querySelectorAll('.radial-btn')];
     return JSON.stringify({
       acts: btns.map(b => b.dataset.act),
       disabled: btns.map(b => (b.disabled ? 1 : 0)),
+      // Выделение нужно, чтобы буфер обмена ожил: без него копировать и
+      // вырезать нечего даже в правке.
+      clipOff: ['copy', 'cut', 'paste'].filter((a) => btns.find((b) => b.dataset.act === a)
+        && btns.find((b) => b.dataset.act === a).disabled).length,
+      editTop: ['save', 'cancel'].every((a) => {
+        const b = btns.find((x) => x.dataset.act === a);
+        if (!b) return false;
+        const q = b.getBoundingClientRect();
+        const c = rad.getBoundingClientRect();
+        return q.top + q.height / 2 < c.top + c.height / 2;
+      }),
+      clipBottom: ['copy', 'cut', 'paste'].every((a) => {
+        const b = btns.find((x) => x.dataset.act === a);
+        if (!b) return false;
+        const q = b.getBoundingClientRect();
+        const c = rad.getBoundingClientRect();
+        return q.top + q.height / 2 > c.top + c.height / 2;
+      }),
     });
   })()`);
   t('в правке карандаша нет', !r.acts.includes('mode'), JSON.stringify(r.acts));
@@ -3275,6 +3326,9 @@ const SILENCE_CONFIRM = `(() => {
     r.acts.includes('save') && r.acts.includes('cancel'), JSON.stringify(r.acts));
   t('«Отмена» активна при несохранённых правках',
     r.disabled[r.acts.indexOf('cancel')] === 0, JSON.stringify(r.disabled));
+  t('в правке с выделением буфер обмена активен', r.clipOff === 0, String(r.clipOff));
+  t('«Сохранить» и «Отмена» сверху кольца', r.editTop === true);
+  t('буфер обмена снизу кольца', r.clipBottom === true);
   t('«Сохранить» активна при несохранённых правках',
     r.disabled[r.acts.indexOf('save')] === 0, JSON.stringify(r.disabled));
 
