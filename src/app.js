@@ -2735,6 +2735,17 @@ const RADIAL_LAYOUT = [
 let radialOpen = false;
 /** Выбранное действие: по нему идёт и подсветка, и клавиатурный обход. */
 let radialCur = null;
+/**
+ * Где стоял значок выбранного сектора — на момент, когда кольцо ещё было
+ * открыто.
+ *
+ * Нужно меню, которое открывается под нажатой иконкой: в режиме «зажать и
+ * вести» решение принимается на отпускании, и к этому моменту кольцо уже
+ * закрыто. У скрытого элемента getBoundingClientRect() отдаёт нули, поэтому
+ * меню и вылезало в левый верхний угол окна. Запоминаем прямоугольник, пока
+ * кольцо живо.
+ */
+let radialDotRect = null;
 /** Действия кольца в порядке по часовой стрелке от верха — для клавиатуры. */
 let radialOrder = [];
 /** Идёт ли «зажать и вести»: точка нажатия и признак, что кольцо уже открыто. */
@@ -2868,6 +2879,7 @@ function buildRadial() {
   el.radial.innerHTML = '';
   radialOrder = acts.map((i) => i.act);
   radialCur = null;
+  radialDotRect = null;
   for (const item of acts) {
     const b = document.createElement('button');
     b.className = 'radial-sector' + (item.cls ? ' ' + item.cls : '');
@@ -2994,6 +3006,11 @@ function radialHighlight(hit) {
     b.classList.toggle('sel', b === hit);
   }
   radialCur = hit ? hit.dataset.act : null;
+  if (hit) {
+    const dot = hit.querySelector('.rd-dot');
+    const q = dot ? dot.getBoundingClientRect() : null;
+    if (q && q.width) radialDotRect = { left: q.left, right: q.right, top: q.top, bottom: q.bottom };
+  }
   if (!hit) {
     radialSetLabel(null);
   } else if (hit.classList.contains('radial-kill')) {
@@ -3132,9 +3149,14 @@ function radialClipboard(act) {
 function radialToMenu(which) {
   const sec = el.radial.querySelector('[data-act="' + which + '"]');
   const dot = sec ? sec.querySelector('.rd-dot') : null;
-  const r = dot ? dot.getBoundingClientRect() : {
-    left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2,
-  };
+  const live = dot ? dot.getBoundingClientRect() : null;
+  const r = live && live.width ? live
+    : radialDotRect || {
+      // Совсем без кольца (например, из теста): центр экрана — внятнее, чем
+      // ноль в левом верхнем углу.
+      left: innerWidth / 2, right: innerWidth / 2,
+      top: innerHeight / 2, bottom: innerHeight / 2,
+    };
   closeRadial();
   /*
    * Меню открывается так, чтобы его ПЕРВЫЙ пункт стоял ровно под нажатой

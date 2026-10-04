@@ -4091,6 +4091,56 @@ const SILENCE_CONFIRM = `(() => {
   t('после отпускания кольцо закрыто и не открылось заново',
     r.closed === true && r.hidden === true, 'rings=' + r.rings);
 
+  // 3a. Побочное меню открывается под иконкой и в режиме «зажать и вести»
+  // Ошибка была ровно в этом режиме: решение принимается на отпускании, и к
+  // этому моменту кольцо уже закрыто. У скрытого элемента getBoundingClientRect()
+  // отдаёт нули, и меню вылезало в левый верхний угол окна.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    M.exitEdit(true);
+    await new Promise(r2 => setTimeout(r2, 500));
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 240);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    await new Promise(r2 => setTimeout(r2, 250));
+    // Дуга «Путь» — 180..219 градусов, середина 199.5: влево и чуть вверх.
+    right(c, x, y, 'mousedown');
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x - 95, clientY: y - 35, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    const rad = document.getElementById('radial');
+    const sel = document.querySelector('#radial .radial-sector.sel');
+    const dot = rad.querySelector('[data-act="path"] .rd-dot').getBoundingClientRect();
+    const out = { picked: sel ? sel.dataset.act : null,
+      dot: [Math.round(dot.left), Math.round(dot.bottom)] };
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, clientX: x - 95, clientY: y - 35, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 500));
+    const m = document.querySelector('.ctxmenu');
+    out.opened = !!m;
+    out.closed = !ringOpen();
+    if (m) {
+      const mb = m.getBoundingClientRect();
+      out.menu = [Math.round(mb.left), Math.round(mb.top)];
+      out.underIcon = Math.abs(mb.left - out.dot[0]) < 30 && mb.top >= out.dot[1] - 4
+        && mb.top < out.dot[1] + 40;
+      out.notCorner = mb.left > 60 || mb.top > 60;
+      out.count = m.querySelectorAll('.ctxmenu-item').length;
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return JSON.stringify(out);
+  })()`));
+  t('ведение влево выбирает «Путь»', r.picked === 'path', String(r.picked));
+  t('меню «Путь» открылось', r.opened === true);
+  t('кольцо после отпускания закрыто', r.closed === true);
+  t('меню открылось под иконкой, а не в углу окна',
+    r.underIcon === true && r.notCorner === true,
+    JSON.stringify(r.menu) + ' против значка ' + JSON.stringify(r.dot));
+  t('в меню два пункта', r.count === 2, String(r.count));
+
   // 4. Отпускание в центре кольца — отмена
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
