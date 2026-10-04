@@ -258,12 +258,25 @@ code, pre, kbd, .icode { font-family: var(--mono); }
     display: none; flex-direction: column; gap: 2px;
 }
 .dropdown.open .dropdown-menu { display: flex; }
+/*
+ * Кнопка выпадающего меню — строка, а не столбик.
+ *
+ * Раньше здесь не было display:flex, и .ico (он inline-flex) вставал отдельной
+ * строкой: иконка оказывалась НАД надписью, а колонка из двух слов с
+ * картинкой сверху читалась как список картинок, а не как меню. Иконка должна
+ * быть слева от текста, в одной строке с ним.
+ */
 .dropdown-menu button {
-    text-align: left; padding: 8px 11px; border: 0; border-radius: 6px;
+    display: flex; align-items: center; gap: 9px;
+    width: 100%; text-align: left; padding: 7px 10px;
+    border: 0; border-radius: 6px;
     background: transparent; color: var(--fg); font-size: 13px;
     font-family: var(--ui); cursor: pointer;
 }
 .dropdown-menu button:hover { background: var(--bg-select); }
+.dropdown-menu button .ico { flex: 0 0 auto; display: inline-flex; }
+.dropdown-menu button .ico-svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.dropdown-menu button > span:not(.ico) { flex: 1 1 auto; }
 
 /* ================= Пустое состояние ================= */
 .welcome {

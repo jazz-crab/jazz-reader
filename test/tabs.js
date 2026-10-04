@@ -2919,6 +2919,49 @@ const SILENCE_CONFIRM = `(() => {
   // Заметка для проверки прокрутки была изменена на диске: возвращаем как было
   fs.rmSync(longFile, { force: true });
 
+  // ------------------------------------------- меню экспорта: иконка слева
+  console.log('\n== меню экспорта ==');
+
+  // Раньше у кнопки не было display:flex, и .ico (inline-flex) вставал
+  // отдельной строкой — иконка оказывалась НАД надписью. Меню из двух слов с
+  // картинкой сверху читается как список картинок, а не как список действий.
+  r = JSON.parse(await js(`(async () => {
+    const out = {};
+    document.getElementById('dlBtn').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    const m = document.getElementById('dlMenu');
+    const items = [...m.querySelectorAll('button')];
+    out.open = m.offsetParent !== null;
+    out.count = items.length;
+    out.allRows = items.every((b) => {
+      const icon = b.querySelector('.ico');
+      const label = b.querySelector('.dd-label');
+      if (!icon || !label) return false;
+      const bi = icon.getBoundingClientRect();
+      const bl = label.getBoundingClientRect();
+      // Иконка и надпись в одной строке: вертикальные центры совпадают
+      if (Math.abs((bi.top + bi.height / 2) - (bl.top + bl.height / 2)) > 2) return false;
+      // Иконка СЛЕВА от надписи
+      return bi.right <= bl.left + 1;
+    });
+    out.leftAligned = items.every((b) => {
+      const i = b.querySelector('.ico').getBoundingClientRect();
+      return Math.abs(i.left - b.getBoundingClientRect().left) < 24;
+    });
+    const one = items[0];
+    out.height = Math.round(one.getBoundingClientRect().height);
+    out.display = getComputedStyle(one).display;
+    out.iconSize = Math.round(one.querySelector('.ico-svg').getBoundingClientRect().width);
+    return JSON.stringify(out);
+  })()`));
+
+  t('меню экспорта открывается', r.open === true);
+  t('в меню пять пунктов', r.count === 5, String(r.count));
+  t('иконка и надпись в одной строке', r.allRows === true, r.display);
+  t('пункт — flex-строка', r.display === 'flex', r.display);
+  t('иконка слева от надписи', r.leftAligned === true);
+  t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
+
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
   // через IPC. Отмену тоже проверяем — файл должен остаться на месте.

@@ -94,12 +94,15 @@
            зелёная «Сохранить» принадлежит правке, эта — выгрузке копии. -->
       <div class="dropdown">
         <button class="btn ico-only" id="dlBtn" title="Экспорт: сохранить копией / печать"><span class="ico" data-i="folder-output"></span></button>
+        <!-- Надпись обёрнута в span: без неё это голый текстовый узел, и
+             проверить, что иконка стоит слева от текста, а не над ним,
+             нечем. -->
         <div class="dropdown-menu" id="dlMenu">
-          <button data-act="download-md"><span class="ico" data-i="file-down"></span>Сохранить MD</button>
-          <button data-act="download-html"><span class="ico" data-i="file-code"></span>Сохранить HTML</button>
-          <button data-act="print"><span class="ico" data-i="printer"></span>Печать / PDF&#8230;</button>
-          <button data-act="reveal"><span class="ico" data-i="folder-search"></span>Показать в проводнике</button>
-          <button data-act="copy-path"><span class="ico" data-i="copy"></span>Скопировать путь</button>
+          <button data-act="download-md"><span class="ico" data-i="file-down"></span><span class="dd-label">Сохранить MD</span></button>
+          <button data-act="download-html"><span class="ico" data-i="file-code"></span><span class="dd-label">Сохранить HTML</span></button>
+          <button data-act="print"><span class="ico" data-i="printer"></span><span class="dd-label">Печать / PDF&#8230;</span></button>
+          <button data-act="reveal"><span class="ico" data-i="folder-search"></span><span class="dd-label">Показать в проводнике</span></button>
+          <button data-act="copy-path"><span class="ico" data-i="copy"></span><span class="dd-label">Скопировать путь</span></button>
         </div>
       </div>
 
