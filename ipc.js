@@ -129,12 +129,26 @@ async function inlineLocalFonts(css, baseDir) {
 async function buildStandaloneHtml(title, body, opts) {
   const o = opts || {};
   const katexDir = path.join(__dirname, 'src', 'vendor', 'katex');
-  const katexCss = await fsp.readFile(path.join(katexDir, 'katex.min.css'), 'utf8');
-  let ourCss = await fsp.readFile(path.join(__dirname, 'src', 'style.css'), 'utf8');
+  /*
+   * BOM снимаем обязательно.
+   *
+   * style.css начинается с U+FEFF — в файле это нормально, парсер читает файл
+   * и знак не видит. А в автономном HTML этот же CSS оказывается в середине
+   * одного <style>, и знак посередине уже не «начало файла», а недопустимый
+   * символ: Chromium съедает на нём следующий блок целиком.
+   *
+   * Так терялся :root — то есть ВСЕ переменные темы: --bg, --fg, --border и
+   * остальные. Страница собиралась без цвета вообще: цвет текста и фона
+   * брался из неопределённой переменной, то есть становился чёрным на
+   * прозрачном. Отсюда и «экспорт сохраняет не весь CSS».
+   */
+  const readCss = async (p) => (await fsp.readFile(p, 'utf8')).replace(/^\uFEFF/, '');
+  const katexCss = await readCss(path.join(katexDir, 'katex.min.css'));
+  let ourCss = await readCss(path.join(__dirname, 'src', 'style.css'));
   // Свой шрифт лежит отдельным файлом src/fonts.css и в style.css его нет —
   // про него забыли, и в экспорте вместо JetBrains Mono была системная
   // моноширинная. Подключаем и вшиваем наравне с KaTeX.
-  const fontCss = await fsp.readFile(path.join(__dirname, 'src', 'fonts.css'), 'utf8');
+  const fontCss = await readCss(path.join(__dirname, 'src', 'fonts.css'));
   const own = await inlineLocalFonts(fontCss, path.join(__dirname, 'src'));
   ourCss += '\n/* шрифты приложения */\n' + own.css;
 
