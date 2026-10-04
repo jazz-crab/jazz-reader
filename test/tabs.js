@@ -173,50 +173,63 @@ const SILENCE_CONFIRM = `(() => {
   const openOne = `window.__mdvTest.openPath(${JSON.stringify(path.join(notesDir, 'a.md'))}, { newTab: true })`;
 
   let r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
     await ${openOne};
-    const t = window.__mdvTest.active();
+    const t = M.active();
     const res = { before: t.mode };
-    document.getElementById('btnMode').click();
+    // Карандаша, «Сохранить» и «Отменить» в интерфейсе больше нет: они живут
+    // в круговом меню по правому клику. Проверяем, что старого дока не
+    // осталось и в правку можно войти.
+    res.dockGone = !document.getElementById('modeDock');
+    res.buttonsGone = !document.getElementById('btnMode')
+      && !document.getElementById('btnSave')
+      && !document.getElementById('btnCancelEdit');
+    M.enterEdit();
     res.afterClick = t.mode;
-    res.modeBtnHidden = document.getElementById('btnMode').hidden;
-    res.saveVisible = !document.getElementById('btnSave').hidden;
-    res.cancelVisible = !document.getElementById('btnCancelEdit').hidden;
-    res.saveColor = getComputedStyle(document.getElementById('btnSave')).color;
-    res.cancelColor = getComputedStyle(document.getElementById('btnCancelEdit')).color;
+    res.editorVisible = !document.getElementById('editor').hidden;
     return JSON.stringify(res);
   })()`));
 
   t('Ctrl+E / «Правка» входит в режим правки', r.afterClick === 'edit');
-  t('в правке переключатель «Правка» скрыт', r.modeBtnHidden === true);
-  t('в правке видна кнопка «Сохранить»', r.saveVisible === true);
-  t('в правке видна кнопка «Отменить»', r.cancelVisible === true);
-  t('«Сохранить» зелёная', /158,\s*206,\s*106/.test(r.saveColor), r.saveColor);
-  t('«Отменить» красная', /247,\s*118,\s*142/.test(r.cancelColor), r.cancelColor);
+  t('старый док правки удалён', r.dockGone === true);
+  t('отдельных кнопок правки больше нет', r.buttonsGone === true);
+  t('в правке открыт редактор', r.editorVisible === true);
 
   // Отмена без вопроса не должна проходить при несохранённых правках
   r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
     const ed = document.getElementById('editor');
     ed.value = '# ИЗМЕНЕНО\\n';
     ed.dispatchEvent(new Event('input'));
     const t = window.__mdvTest.active();
-    const res = { dirty: t.dirty,
-      // У круглой кнопки «есть несохранённое» это отдельный класс .rnd-dirty:
-      // просто .dirty не годится — он попал бы на что угодно с таким же
-      // словом в разметке.
-      saveHighlighted: document.getElementById('btnSave').classList.contains('rnd-dirty') };
+    const res = { dirty: t.dirty };
 
     // Подменяем askConfirm: тест не должен зависнуть на диалоге
     window.__asked = [];
     window.__mdvTest.setConfirm((title) => { window.__asked.push(title); return null; });
 
-    document.getElementById('btnCancelEdit').click();
+    // Кольцо в этот момент показывает активные «Сохранить» и «Отмена»:
+    // без несохранённых правок они были бы серыми, и правку можно было бы
+    // потерять, не заметив.
+    const ed2 = document.getElementById('editor');
+    const bx = ed2.getBoundingClientRect();
+    ed2.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(bx.left + 160), clientY: Math.round(bx.top + 90) }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    res.ringSaveOn = !rad.querySelector('[data-act="save"]').disabled;
+    res.ringCancelOn = !rad.querySelector('[data-act="cancel"]').disabled;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 250));
     res.askedOnDirty = window.__asked.length;
     res.stillEditing = window.__mdvTest.active().mode;
 
     // Соглашаемся — правки должны откатиться к диску
     window.__mdvTest.setConfirm(() => true);
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
     const t2 = window.__mdvTest.active();
     res.modeAfter = t2.mode;
@@ -226,7 +239,11 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('правка в редакторе помечает вкладку как изменённую', r.dirty === true);
-  t('при несохранённом «Сохранить» подсвечена', r.saveHighlighted === true);
+  // «Есть несохранённое» теперь видно по кольцу: без правок кнопки
+  // «Сохранить» и «Отмена» неактивны, с правками — активны.
+  t('при несохранённых правках «Сохранить» и «Отмена» доступны',
+    r.ringSaveOn === true && r.ringCancelOn === true,
+    'save=' + r.ringSaveOn + ' cancel=' + r.ringCancelOn);
   t('отмена несохранённого СПРАШИВАЕТ', r.askedOnDirty === 1,
     'вопросов: ' + r.askedOnDirty);
   t('при отказе от отмены остаёмся в правке', r.stillEditing === 'edit');
@@ -799,7 +816,7 @@ const SILENCE_CONFIRM = `(() => {
     return JSON.stringify({
       shown: true,
       rows: back.querySelectorAll('.set-row').length,
-      labels: [...back.querySelectorAll('.set-label')].map(x => x.textContent),
+      labels: [...back.querySelectorAll('.set-label')].map(x => x.textContent.trim()),
       rangeCount: ranges.length, hasCheckbox: !!check,
       before, mid, cssDuring, widthDuring, zoomLabel,
       buttons: [...back.querySelectorAll('.dlgbtn')].map(b => b.textContent),
@@ -886,7 +903,7 @@ const SILENCE_CONFIRM = `(() => {
     let asked = 0;
     M.setConfirm(() => { asked++; return null; });
     // exitEdit не экспортирован — дёргаем кнопку «Отменить»
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
     return JSON.stringify({ asked, mode: M.active().mode, dirty: M.active().dirty });
   })()`));
@@ -899,7 +916,7 @@ const SILENCE_CONFIRM = `(() => {
     M.setSettings({ autosave: true });
     let asked = 0;
     M.setConfirm(() => { asked++; return null; });
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 600));
     return JSON.stringify({
       asked, mode: M.active().mode, dirty: M.active().dirty,
@@ -1103,7 +1120,7 @@ const SILENCE_CONFIRM = `(() => {
     const tabs = document.getElementById('tabs');
     const widths = [...document.querySelectorAll('.tab')].map(d => Math.round(d.getBoundingClientRect().width));
     return JSON.stringify({
-      names: [...document.querySelectorAll('.tname')].map(x => x.textContent),
+      names: [...document.querySelectorAll('.tname')].map(x => x.textContent.trim()),
       full: [...document.querySelectorAll('.tname')].map(x => x.dataset.full),
       widths,
       uniform: widths.length > 0 && Math.max(...widths) - Math.min(...widths) <= 1,
@@ -1335,7 +1352,6 @@ const SILENCE_CONFIRM = `(() => {
     const ids = [...bar.querySelectorAll('[id]')].map(x => x.id);
     const zoom = document.querySelector('.topbar-center');
     const zoomKids = [...zoom.querySelectorAll('[id]')].map(x => x.id);
-    const dock = document.getElementById('modeDock');
     const sb = document.getElementById('statusbar');
     const kids = [...sb.children].map(x => x.className || x.id);
     return JSON.stringify({
@@ -1353,20 +1369,14 @@ const SILENCE_CONFIRM = `(() => {
         const mid = z.left + z.width / 2;
         return Math.abs(mid - (b.left + b.width / 2)) < b.width * 0.12;
       })(),
-      dockInMain: dock.parentElement.classList.contains('main'),
-      // Док по центру заметки: меряем относительно .main, потому что он
-      // начинается после боковой панели и в координатах окна «центр» — это
-      // примерно 960px, а не середина окна.
-      dockCenterOffset: Math.round(
-        (dock.getBoundingClientRect().left + dock.getBoundingClientRect().width / 2)
-        - (document.querySelector('.main').getBoundingClientRect().left
-          + document.querySelector('.main').getBoundingClientRect().width / 2)),
-      dockBottom: Math.round(document.querySelector('.main').getBoundingClientRect().bottom
-        - dock.getBoundingClientRect().bottom),
+      // Дока правки больше нет: карандаш, «Сохранить» и «Отмена» живут в
+      // круговом меню по правому клику (см. секцию «круговое меню заметки»).
+      dockGone: !document.getElementById('modeDock'),
       statusKids: kids,
       pathFirst: sb.firstElementChild === document.getElementById('fileName'),
       statusLast: sb.lastElementChild === document.getElementById('statusText'),
-      dlIcon: document.querySelector('#dlBtn .ico-svg') ? 'svg' : 'none',
+      // Экспорт уехал в круговое меню, кнопки в тулбаре нет
+      noExportBtn: !document.getElementById('dlBtn'),
       // Кнопок панелей в тулбаре больше нет: они живут в меню и на хоткеях
       noPanelBtns: !document.getElementById('btnToc')
         && !document.getElementById('btnSidebar'),
@@ -1379,43 +1389,42 @@ const SILENCE_CONFIRM = `(() => {
   t('масштаб в тулбаре есть', r.zoomHasBoth === true, JSON.stringify(r.zoomKids));
   t('масштаб по центру тулбара', r.zoomCentered === true && r.zoomNearCenter === true,
     JSON.stringify(r.zoomKids));
-  t('док режима внутри заметки', r.dockInMain === true);
-  // Док по центру заметки. Смещение от центра .main — в пределах пары
-  // пикселей: раньше док стоял слева (left=18px) и проверялось именно это.
-  t('док режима по центру заметки', Math.abs(r.dockCenterOffset) <= 6,
-    'смещение ' + r.dockCenterOffset + 'px');
-  t('док режима прижат к низу', r.dockBottom > 0 && r.dockBottom <= 40,
-    'снизу ' + r.dockBottom + 'px');
+  t('док режима удалён из интерфейса', r.dockGone === true);
+  t('кнопки экспорта в тулбаре нет', r.noExportBtn === true);
   t('путь к файлу — внизу слева', r.pathFirst === true, JSON.stringify(r.statusKids));
   t('сообщение — внизу справа', r.statusLast === true, JSON.stringify(r.statusKids));
-  t('иконка экспорта — svg-иконка', r.dlIcon === 'svg');
-
-  // «Сохранить» в правке и «Экспорт» в тулбаре не путаются
+  // «Сохранить» из кольца и «Экспорт» из кольца не путаются: первые два
+  // меняют заметку, вторые — выгружают копию.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
-    await M.openPath(T + '/Заметка-с-длинным-именем-01.md', { newTab: true });
-    await new Promise(r2 => setTimeout(r2, 300));
-    document.getElementById('btnMode').click();
-    await new Promise(r2 => setTimeout(r2, 300));
-    const dock = document.getElementById('modeDock');
+    await M.openPath(T + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    M.enterEdit();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const c = document.getElementById('editor');
+    const box = c.getBoundingClientRect();
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + 160), clientY: Math.round(box.top + 90) }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    const acts = [...rad.querySelectorAll('.radial-btn')].map((b) => b.dataset.act);
     return JSON.stringify({
       editing: M.active().mode,
-      saveInDock: dock.contains(document.getElementById('btnSave')),
-      cancelInDock: dock.contains(document.getElementById('btnCancelEdit')),
-      modeInDock: dock.contains(document.getElementById('btnMode')),
-      modeHiddenInEdit: document.getElementById('btnMode').hidden,
-      saveVisible: !document.getElementById('btnSave').hidden,
+      acts,
+      hasSave: acts.includes('save'),
+      hasCancel: acts.includes('cancel'),
+      noPencil: !acts.includes('mode'),
+      hasExport: acts.includes('export'),
       topbarHasSave: !!document.querySelector('.topbar #btnSave'),
-      topbarHasCancel: !!document.querySelector('.topbar #btnCancelEdit'),
     });
   })()`));
 
-  t('«Правка» внутри дока', r.modeInDock === true);
-  t('в правке «Правка» скрыта', r.modeHiddenInEdit === true);
-  t('«Сохранить» и «Отменить» в доке', r.saveInDock === true && r.cancelInDock === true);
-  t('зелёная «Сохранить» видна в правке', r.saveVisible === true);
-  t('в тулбаре нет второй «Сохранить»', r.topbarHasSave === false && r.topbarHasCancel === false);
+  t('в правке кольцо показывает «Сохранить»', r.hasSave === true, JSON.stringify(r.acts));
+  t('в правке кольцо показывает «Отмена»', r.hasCancel === true, JSON.stringify(r.acts));
+  t('в правке в кольце нет карандаша', r.noPencil === true, JSON.stringify(r.acts));
+  t('экспорт в кольце есть и в правке', r.hasExport === true);
+  t('в тулбаре нет второй «Сохранить»', r.topbarHasSave === false);
 
   // Цвета статуса: сохранено — зелёный, отмена правок — жёлтый.
   // Сначала ОТКАЗ от отмены: вкладка должна остаться в правке, и статус
@@ -1428,7 +1437,7 @@ const SILENCE_CONFIRM = `(() => {
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 150));
     M.setConfirm(() => null);
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 400));
     return JSON.stringify({
       text: document.getElementById('statusText').textContent,
@@ -1448,7 +1457,7 @@ const SILENCE_CONFIRM = `(() => {
     const sb = document.getElementById('statusbar');
     const t = M.active();
     M.setConfirm(() => false);
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 500));
     const res = {
       text: document.getElementById('statusText').textContent,
@@ -1475,14 +1484,14 @@ const SILENCE_CONFIRM = `(() => {
     const T = ${JSON.stringify(TABS_DIR)};
     await M.openPath(T + '/Открываемый.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 300));
-    document.getElementById('btnMode').click();
+    M.enterEdit();
     await new Promise(r2 => setTimeout(r2, 200));
     const t = M.active();
     t.raw = t._diskRaw + '\\n\\nпишу в файл\\n';
     t.dirty = true;
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 150));
-    document.getElementById('btnSave').click();
+    M.save();
     await new Promise(r2 => setTimeout(r2, 800));
     return JSON.stringify({
       text: document.getElementById('statusText').textContent,
@@ -1507,12 +1516,12 @@ const SILENCE_CONFIRM = `(() => {
     return JSON.stringify({
       name: document.getElementById('fileName').textContent,
       dash: document.getElementById('fileName').textContent === '\\u2014',
-      dockHidden: document.getElementById('modeDock').hidden,
+      dockGone: !document.getElementById('modeDock'),
     });
   })()`));
 
   t('без файла в нижней панели пусто', r.name === '' && r.dash === false, JSON.stringify(r.name));
-  t('без файла док режима скрыт', r.dockHidden === true);
+  t('без файла док режима отсутствует', r.dockGone === true);
 
   // ---------------------------------------------- диалог «Сохранить правки?»
   console.log('\n== диалог несохранённых правок ==');
@@ -1525,14 +1534,14 @@ const SILENCE_CONFIRM = `(() => {
     M.setConfirm(null);
     await M.openPath(T + '/Открываемый.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 300));
-    document.getElementById('btnMode').click();
+    M.enterEdit();
     await new Promise(r2 => setTimeout(r2, 200));
     const t = M.active();
     t.raw = t._diskRaw + '\\n\\nнесохранённый черновик\\n';
     t.dirty = true;
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 200));
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 400));
     const back = document.querySelector('.modal-back');
     const box = back && back.querySelector('.modal-box');
@@ -1593,7 +1602,7 @@ const SILENCE_CONFIRM = `(() => {
   // Esc — то же, что крестик
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
     const wasOpen = !!document.querySelector('.modal-back');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -1613,7 +1622,7 @@ const SILENCE_CONFIRM = `(() => {
   // «Сохранить» в диалоге — пишет файл и выходит в просмотр
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
     [...document.querySelectorAll('.dlgbtn')].find(b => b.textContent === 'Сохранить').click();
     await new Promise(r2 => setTimeout(r2, 700));
@@ -1637,13 +1646,13 @@ const SILENCE_CONFIRM = `(() => {
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const t = M.active();
-    document.getElementById('btnMode').click();
+    M.enterEdit();
     await new Promise(r2 => setTimeout(r2, 200));
     t.raw = t._diskRaw + '\\n\\nвторой черновик\\n';
     t.dirty = true;
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 200));
-    document.getElementById('btnCancelEdit').click();
+    M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
     [...document.querySelectorAll('.dlgbtn')].find(b => b.textContent === 'Отменить').click();
     await new Promise(r2 => setTimeout(r2, 500));
@@ -1691,7 +1700,9 @@ const SILENCE_CONFIRM = `(() => {
   t('порядок в области: оглавление, заметка, проводник',
     // .split — контейнер рабочей области: в нём живёт .main, а при
     // разделении экрана ещё и вторая панель с рамкой между ними.
-    JSON.stringify(r.order) === JSON.stringify(['tocSide', 'tocResizer', 'split', 'filesResizer', 'filesSide', 'toTop']),
+    // toTop в списке раньше не было бы: кнопка «Наверх» переехала внутрь
+    // заметки, а не висит поверх всего окна.
+    JSON.stringify(r.order) === JSON.stringify(['tocSide', 'tocResizer', 'split', 'filesResizer', 'filesSide']),
     JSON.stringify(r.order));
   t('оглавление слева', r.tocLeft === 0, r.tocLeft + 'px');
   t('проводник справа', r.filesRight === 0, r.filesRight + 'px');
@@ -1708,7 +1719,7 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 300));
     const top = document.querySelector('.ctxmenu');
     const out = {
-      labels: [...top.querySelectorAll('.ctxmenu-label')].map(x => x.textContent),
+      labels: [...top.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim()),
       parents: [...top.querySelectorAll('.ctxmenu-parent')].map(x => x.querySelector('.ctxmenu-label').textContent),
       hint: ([...top.querySelectorAll('.ctxmenu-item')]
         .find(x => /Настройки/.test(x.textContent)) || {}).querySelector
@@ -1744,7 +1755,7 @@ const SILENCE_CONFIRM = `(() => {
       menus: menus.length,
       labels: [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.replace('✓', '')),
       seps: sub.querySelectorAll('.ctxmenu-sep').length,
-      checks: [...sub.querySelectorAll('.ctxmenu-check')].map(x => x.textContent),
+      checks: [...sub.querySelectorAll('.ctxmenu-check')].map(x => x.textContent.trim()),
       // Раньше здесь проверялся флажок _keep на родительском меню: он
       // ставился подменю навсегда, и закрыть цепочку можно было только кликом
       // мимо. Теперь никаких флажков нет — родитель просто остаётся в DOM.
@@ -1859,7 +1870,7 @@ const SILENCE_CONFIRM = `(() => {
     const m = document.querySelector('.ctxmenu');
     const res = {
       shown: !!m,
-      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent) : [],
+      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim()) : [],
       tabsUnchanged: window.__mdvTest.tabs.size === before,
     };
     document.querySelectorAll('.ctxmenu').forEach(x => x.remove());
@@ -2251,7 +2262,7 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 350));
     const menus = [...document.querySelectorAll('.ctxmenu')];
     const sub = menus[menus.length - 1];
-    const labels = [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent);
+    const labels = [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim());
     const item = [...sub.querySelectorAll('.ctxmenu-item')].find(b => /Разделить экран/.test(b.textContent));
     const wasDisabled = !item || item.disabled;
     item.click();
@@ -2771,7 +2782,8 @@ const SILENCE_CONFIRM = `(() => {
 
   // При наведении кнопки правки не должны «обесцвечиваться»: раньше фон был
   // rgba(158,206,106,.18) — на тёмном фоне это читалось как «кнопка стала
-  // прозрачной», и наведение делало её незаметнее, а не заметнее.
+  // прозрачной», и наведение делало её незаметнее, а не заметнее. Проверяем на
+  // кнопках кругового меню: в интерфейсе их больше нет.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
@@ -2782,54 +2794,53 @@ const SILENCE_CONFIRM = `(() => {
     t.mode = 'edit'; t.dirty = true;
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 400));
-    const save = document.getElementById('btnSave').getBoundingClientRect();
+    const ed = document.getElementById('editor');
+    const box = ed.getBoundingClientRect();
+    ed.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + 160), clientY: Math.round(box.top + 90) }));
+    await new Promise(r2 => setTimeout(r2, 450));
+    const mid = (sel) => {
+      const q = document.querySelector('#radial ' + sel).getBoundingClientRect();
+      return [q.left + q.width / 2, q.top + q.height / 2];
+    };
     return JSON.stringify({
-      save: [save.left + save.width / 2, save.top + save.height / 2],
-      cancel: (() => {
-        const r = document.getElementById('btnCancelEdit').getBoundingClientRect();
-        return [r.left + r.width / 2, r.top + r.height / 2];
-      })(),
-      pencilHidden: document.getElementById('btnMode').hidden,
+      save: mid('[data-act="save"]'),
+      cancel: mid('[data-act="cancel"]'),
+      pencilGone: !document.querySelector('#radial [data-act="mode"]'),
     });
   })()`));
 
-  await c.hover(r.save[0], r.save[1]);
-  await new Promise((x) => setTimeout(x, 250));
-  const saveHover = await js(`(() => {
-    const b = document.getElementById('btnSave');
+  const readBtn = (sel) => js(`(() => {
+    const b = document.querySelector('#radial ${sel}');
     const cs = getComputedStyle(b);
-    const px = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+    const px = (v) => (v.match(/[\\d.]+/g) || []).map(Number);
     const bg = px(cs.backgroundColor);
     const bgc = px(cs.borderColor);
     return JSON.stringify({
       hovered: b.matches(':hover'),
       bgAlpha: bg.length > 3 ? bg[3] : 1,
-      // Итоговая непрозрачность фона над тёмной подложкой: чем выше, тем
-      // заметнее кнопка
       bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
       borderAlpha: bgc.length > 3 ? bgc[3] : 1,
       icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
     });
   })()`);
 
+  await c.hover(r.save[0], r.save[1]);
+  await new Promise((x) => setTimeout(x, 250));
+  const saveHover = await readBtn('[data-act="save"]');
+
   await c.hover(r.cancel[0], r.cancel[1]);
   await new Promise((x) => setTimeout(x, 250));
-  const cancelHover = await js(`(() => {
-    const b = document.getElementById('btnCancelEdit');
-    const cs = getComputedStyle(b);
-    const px = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
-    const bg = px(cs.backgroundColor);
-    const bgc = px(cs.borderColor);
-    return JSON.stringify({
-      hovered: b.matches(':hover'),
-      bgAlpha: bg.length > 3 ? bg[3] : 1,
-      bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
-      borderAlpha: bgc.length > 3 ? bgc[3] : 1,
-      icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
-    });
-  })()`);
+  const cancelHover = await readBtn('[data-act="cancel"]');
   await c.unhover();
-  await js(`window.__mdvTest.active().dirty = false; window.__mdvTest.renderActive();`);
+  await js(`(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const t = window.__mdvTest.active();
+    t.dirty = false;
+    t.mode = 'read';
+    window.__mdvTest.renderActive();
+    return 1;
+  })()`);
   await new Promise((x) => setTimeout(x, 250));
 
   const sh = JSON.parse(saveHover);
@@ -2927,40 +2938,264 @@ const SILENCE_CONFIRM = `(() => {
   // картинкой сверху читается как список картинок, а не как список действий.
   r = JSON.parse(await js(`(async () => {
     const out = {};
-    document.getElementById('dlBtn').click();
-    await new Promise(r2 => setTimeout(r2, 250));
-    const m = document.getElementById('dlMenu');
-    const items = [...m.querySelectorAll('button')];
-    out.open = m.offsetParent !== null;
+    // Кнопки экспорта в тулбаре больше нет, поэтому проверяем то же меню там,
+    // где оно теперь: раскрытое из кругового.
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 200) }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    document.getElementById('radial').querySelector('[data-act="export"]').click();
+    await new Promise(r2 => setTimeout(r2, 450));
+    const m = document.querySelector('.ctxmenu');
+    const items = [...m.querySelectorAll('.ctxmenu-item')];
+    out.open = !!m;
     out.count = items.length;
+    // В контекстном меню иконка и надпись живут в .ctxmenu-label, который и так
+    // flex-строка с зазором — то есть иконка слева. Проверяем геометрией.
     out.allRows = items.every((b) => {
-      const icon = b.querySelector('.ico');
-      const label = b.querySelector('.dd-label');
-      if (!icon || !label) return false;
+      const icon = b.querySelector('.ctxmenu-label .ico');
+      if (!icon) return false;
       const bi = icon.getBoundingClientRect();
-      const bl = label.getBoundingClientRect();
-      // Иконка и надпись в одной строке: вертикальные центры совпадают
-      if (Math.abs((bi.top + bi.height / 2) - (bl.top + bl.height / 2)) > 2) return false;
-      // Иконка СЛЕВА от надписи
-      return bi.right <= bl.left + 1;
-    });
-    out.leftAligned = items.every((b) => {
-      const i = b.querySelector('.ico').getBoundingClientRect();
-      return Math.abs(i.left - b.getBoundingClientRect().left) < 24;
+      const bb = b.getBoundingClientRect();
+      return bi.right <= bb.left + bb.width && bi.top >= bb.top - 1 && bi.bottom <= bb.bottom + 1;
     });
     const one = items[0];
-    out.height = Math.round(one.getBoundingClientRect().height);
-    out.display = getComputedStyle(one).display;
-    out.iconSize = Math.round(one.querySelector('.ico-svg').getBoundingClientRect().width);
+    const lab = one ? one.querySelector('.ctxmenu-label') : null;
+    const ico = one ? one.querySelector('.ico') : null;
+    out.firstHtml = one ? one.outerHTML.slice(0, 220) : 'нет пунктов';
+    out.labels = items.map((b) => b.textContent.trim());
+    if (lab && ico) {
+      const lb = lab.getBoundingClientRect();
+      const ib = ico.getBoundingClientRect();
+      out.iconLeft = ib.right <= lb.left + lb.width && ib.left < lb.left + lb.width;
+      out.iconSize = Math.round(one.querySelector('.ico-svg').getBoundingClientRect().width);
+    }
+    out.height = one ? Math.round(one.getBoundingClientRect().height) : 0;
     return JSON.stringify(out);
   })()`));
 
   t('меню экспорта открывается', r.open === true);
   t('в меню пять пунктов', r.count === 5, String(r.count));
-  t('иконка и надпись в одной строке', r.allRows === true, r.display);
-  t('пункт — flex-строка', r.display === 'flex', r.display);
-  t('иконка слева от надписи', r.leftAligned === true);
+  t('иконка и надпись в одной строке', r.allRows === true, JSON.stringify(r.labels));
+
+  t('иконка слева от надписи', r.iconLeft === true,
+    'labels=' + JSON.stringify(r.labels) + ' first=' + r.firstHtml);
   t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
+
+  // ------------------------------------------- круговое меню заметки
+  console.log('\n== круговое меню заметки ==');
+
+  const openRing = async (jsExpr) => JSON.parse(await js(jsExpr));
+
+  // 1. Кольцо по правому клику в заметке
+  r = await openRing(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    const rad = document.getElementById('radial');
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 220) });
+    c.dispatchEvent(ev);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const btns = [...rad.querySelectorAll('.radial-btn')];
+    return JSON.stringify({
+      open: !rad.hidden && rad.classList.contains('on'),
+      prevented: ev.defaultPrevented,
+      acts: btns.map(b => b.dataset.act),
+      disabled: btns.map(b => (b.disabled ? 1 : 0)),
+      // Размер берём из offsetWidth, а НЕ из getBoundingClientRect: кнопка
+      // повёрнута на свой угол, и её описанный прямоугольник у повёрнутой
+      // кнопки шире самой кнопки (40px превращались в 56px). Это артефакт
+      // измерения, а неLayout: offsetWidth не учитывает transform.
+      round: btns.map(b => b.offsetWidth),
+      roundH: btns.map(b => b.offsetHeight),
+      radius: getComputedStyle(btns[0]).borderRadius,
+      angles: btns.map(b => b.style.getPropertyValue('--a')),
+      onScreen: btns.every((b) => {
+        const q = b.getBoundingClientRect();
+        return q.left >= 0 && q.right <= innerWidth && q.top >= 0 && q.bottom <= innerHeight;
+      }),
+      inWindow: rad.getBoundingClientRect().left >= 0,
+      dockGone: !document.getElementById('modeDock'),
+      exportBtnGone: !document.getElementById('dlBtn'),
+      toTopInsideNote: (document.getElementById('toTop') || {}).parentElement
+        ? document.getElementById('toTop').parentElement.id : null,
+    });
+  })()`);
+
+  t('правый клик в заметке открывает кольцо', r.open === true);
+  t('системное меню подавлено', r.prevented === true);
+  t('сверху буфер обмена',
+    ['copy', 'cut', 'paste'].every((a) => r.acts.includes(a)), JSON.stringify(r.acts));
+  t('справа экспорт', r.acts.includes('export'), JSON.stringify(r.acts));
+  t('слева открытие', r.acts.includes('open'), JSON.stringify(r.acts));
+  t('снизу карандаш', r.acts.includes('mode'), JSON.stringify(r.acts));
+  t('в чтении нет «Сохранить» и «Отменить»',
+    !r.acts.includes('save') && !r.acts.includes('cancel'), JSON.stringify(r.acts));
+  t('буфер обмена без выделения неактивен',
+    r.disabled[0] === 1 && r.disabled[1] === 1 && r.disabled[2] === 1,
+    JSON.stringify(r.disabled));
+  t('кнопки круглые',
+    r.round.every((w) => w === r.round[0]) && r.round[0] === 40
+    && r.radius === '50%' && r.roundH.every((h) => h === r.round[0]),
+    JSON.stringify(r.round) + ' ' + r.radius);
+  t('все кнопки на экране', r.onScreen === true);
+  t('экспорт убран из тулбара', r.exportBtnGone === true);
+  t('«Наверх» внутри заметки', r.toTopInsideNote === 'mainPane', String(r.toTopInsideNote));
+
+  // 2. Кольцо у края экрана остаётся целиком в окне
+  r = await openRing(`(async () => {
+    const c = document.getElementById('content');
+    const rad = document.getElementById('radial');
+    document.getElementById('btnNewTab').dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const box = c.getBoundingClientRect();
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + 4), clientY: Math.round(box.top + 4) }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const btns = [...rad.querySelectorAll('.radial-btn')];
+    return JSON.stringify({
+      allOnScreen: btns.every((b) => {
+        const q = b.getBoundingClientRect();
+        return q.left >= 0 && q.right <= innerWidth && q.top >= 0 && q.bottom <= innerHeight;
+      }),
+      cx: Math.round(rad.getBoundingClientRect().left),
+      cy: Math.round(rad.getBoundingClientRect().top),
+    });
+  })()`);
+  t('у самого края кольцо не уезжает за окно', r.allOnScreen === true,
+    r.cx + ',' + r.cy);
+
+  // 3. «+» в кольце открывает меню открытия
+  r = await openRing(`(async () => {
+    const rad = document.getElementById('radial');
+    rad.querySelector('[data-act="open"]').click();
+    await new Promise(r2 => setTimeout(r2, 450));
+    const m = document.querySelector('.ctxmenu');
+    return JSON.stringify({
+      ringClosed: rad.hidden,
+      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim()) : [],
+    });
+  })()`);
+  t('«+» открывает меню открытия',
+    JSON.stringify(r.labels) === JSON.stringify(['Открыть .md', 'Открыть папку']),
+    JSON.stringify(r.labels));
+
+  // 4. «Экспорт» в кольце открывает обычное меню экспорта у самой кнопки
+  r = await openRing(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 200) }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    const rad = document.getElementById('radial');
+    const btn = rad.querySelector('[data-act="export"]');
+    const br = btn.getBoundingClientRect();
+    btn.click();
+    await new Promise(r2 => setTimeout(r2, 450));
+    const m = document.querySelector('.ctxmenu');
+    const mr = m ? m.getBoundingClientRect() : { left: -1, right: -1, top: -1, bottom: -1 };
+    return JSON.stringify({
+      ringClosed: rad.hidden,
+      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim()) : [],
+      btn: [Math.round(br.left), Math.round(br.top), Math.round(br.bottom)],
+      menu: [Math.round(mr.left), Math.round(mr.top)],
+      // меню открылось рядом с кнопкой, а не в правом верхнем углу тулбара
+      nearButton: Math.abs(mr.top - br.bottom) < 120 && Math.abs(mr.left - br.left) < 160,
+    });
+  })()`);
+  t('«Экспорт» открывает меню у кнопки', r.nearButton === true,
+    'кнопка ' + r.btn + ' меню ' + r.menu);
+  t('в меню экспорта пять пунктов', (r.labels || []).length === 5, JSON.stringify(r.labels));
+  t('пункты экспорта те же',
+    ['Сохранить MD', 'Сохранить HTML', 'Печать / PDF…'].every((x) => (r.labels || []).includes(x)),
+    JSON.stringify(r.labels));
+
+  // 5. Кольцо в правке: карандаша нет, есть «Сохранить» и «Отмена»
+  r = await openRing(`(async () => {
+    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+    const M = window.__mdvTest;
+    const t = M.active();
+    t.mode = 'edit'; t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const ed = document.getElementById('editor');
+    const box = ed.getBoundingClientRect();
+    ed.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(box.left + 160), clientY: Math.round(box.top + 90) }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    const btns = [...rad.querySelectorAll('.radial-btn')];
+    return JSON.stringify({
+      acts: btns.map(b => b.dataset.act),
+      disabled: btns.map(b => (b.disabled ? 1 : 0)),
+    });
+  })()`);
+  t('в правке карандаша нет', !r.acts.includes('mode'), JSON.stringify(r.acts));
+  t('в правке есть «Сохранить» и «Отмена»',
+    r.acts.includes('save') && r.acts.includes('cancel'), JSON.stringify(r.acts));
+  t('«Отмена» активна при несохранённых правках',
+    r.disabled[r.acts.indexOf('cancel')] === 0, JSON.stringify(r.disabled));
+  t('«Сохранить» активна при несохранённых правках',
+    r.disabled[r.acts.indexOf('save')] === 0, JSON.stringify(r.disabled));
+
+  // 6. «Сохранить» из кольца уходит в режим просмотра
+  r = await openRing(`(async () => {
+    const M = window.__mdvTest;
+    const rad = document.getElementById('radial');
+    rad.querySelector('[data-act="save"]').click();
+    await new Promise(r2 => setTimeout(r2, 700));
+    return JSON.stringify({
+      mode: M.active().mode,
+      ringHidden: rad.hidden,
+      dockGone: !document.getElementById('modeDock'),
+      dirty: M.active().dirty,
+    });
+  })()`);
+  t('«Сохранить» из кольца вернула в просмотр', r.mode === 'read', r.mode);
+  t('«Сохранить» сняла флаг правок', r.dirty === false);
+  t('док режима спрятан после сохранения', r.dockGone === true);
+
+  // 7. Закрытие кольца
+  r = await openRing(`(async () => {
+    const M = window.__mdvTest;
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    const open = async () => {
+      c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+        clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 200) }));
+      await new Promise(r2 => setTimeout(r2, 350));
+      return !document.getElementById('radial').hidden;
+    };
+    const out = {};
+    out.first = await open();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterEsc = document.getElementById('radial').hidden;
+    out.second = await open();
+    document.getElementById('statusbar')
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterClickOutside = document.getElementById('radial').hidden;
+    out.third = await open();
+    c.scrollTop += 40;
+    c.dispatchEvent(new WheelEvent('wheel', { deltaY: 10, bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 300));
+    out.afterWheel = document.getElementById('radial').hidden;
+    return JSON.stringify(out);
+  })()`);
+
+  t('кольцо открывается', r.first === true);
+  t('Esc закрывает кольцо', r.afterEsc === true);
+  t('клик мимо закрывает кольцо', r.second === true && r.afterClickOutside === true);
+  t('прокрутка закрывает кольцо', r.third === true && r.afterWheel === true);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem

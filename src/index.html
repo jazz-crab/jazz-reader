@@ -92,19 +92,11 @@
       <!-- «Экспорт» — это сохранение ОТДЕЛЬНЫМ файлом, а не «Сохранить»
            заметку на диск, поэтому и иконка другая, и слово другое:
            зелёная «Сохранить» принадлежит правке, эта — выгрузке копии. -->
-      <div class="dropdown">
-        <button class="btn ico-only" id="dlBtn" title="Экспорт: сохранить копией / печать"><span class="ico" data-i="folder-output"></span></button>
-        <!-- Надпись обёрнута в span: без неё это голый текстовый узел, и
-             проверить, что иконка стоит слева от текста, а не над ним,
-             нечем. -->
-        <div class="dropdown-menu" id="dlMenu">
-          <button data-act="download-md"><span class="ico" data-i="file-down"></span><span class="dd-label">Сохранить MD</span></button>
-          <button data-act="download-html"><span class="ico" data-i="file-code"></span><span class="dd-label">Сохранить HTML</span></button>
-          <button data-act="print"><span class="ico" data-i="printer"></span><span class="dd-label">Печать / PDF&#8230;</span></button>
-          <button data-act="reveal"><span class="ico" data-i="folder-search"></span><span class="dd-label">Показать в проводнике</span></button>
-          <button data-act="copy-path"><span class="ico" data-i="copy"></span><span class="dd-label">Скопировать путь</span></button>
-        </div>
-      </div>
+      <!--
+        Кнопки экспорта в тулбаре больше нет: экспорт переехал в круговое
+        меню заметки (справа). Здесь осталось только то, что относится к
+        панели целиком. -->
+
 
       <!-- Кнопок «Оглавление» и «Проводник» здесь больше нет: то же самое
            делают иконка приложения -> Вид (галочки) и Ctrl+B / Ctrl+Shift+B.
@@ -170,39 +162,14 @@
       <main class="main" id="mainPane">
         <!-- Линия прогресса чтения: насколько заметка уже прочитана. -->
         <div class="read-progress" id="readProgress"></div>
+        <!-- Кнопка «Наверх» переехала внутрь заметки: раньше она была
+             прямым потомком .workspace и прижималась к правому краю ОКНА,
+             то есть висела поверх панели проводника — в другом краю, чем
+             то, что она листает. -->
+        <button class="to-top" id="toTop" title="Наверх" hidden><span class="ico" data-i="arrow-up"></span></button>
         <article class="content" id="content"></article>
         <textarea class="editor" id="editor" spellcheck="false" hidden></textarea>
 
-        <!-- Режим правки — по центру низа заметки, круглыми кнопками без
-             подписей.
-
-             Раньше они стояли в левом нижнем углу прямоугольными плашками с
-             текстом. Текст здесь лишний: у кнопок есть подсказки, а «Сохранить»
-             и «Отменить» занимали ширину, которой у правой кромки заметки и так
-             не хватало.
-
-             Логика та же, что и была: в чтении одна кнопка «Правка», в правке
-             вместо неё — явная пара действий. Одиночный переключатель раньше
-             молча уходил из правки и оставлял изменения в памяти: их можно было
-             потерять, ничего не спрашивая.
-
-             Порядок в DOM — «Правка», потом стопка «Отменить» над «Сохранить»,
-             и обе выровнены по низу (align-items:flex-end). Поэтому карандаш и
-             «Сохранить» стоят на одном месте, ничего не прыгает при входе в
-             правку, а «Отменить» появляется НАД «Сохранить». -->
-        <div class="mode-dock" id="modeDock">
-          <button class="rnd rnd-edit" id="btnMode" title="Режим правки (Ctrl+E)" aria-label="Режим правки">
-            <span class="ico" data-i="pencil"></span>
-          </button>
-          <div class="dock-stack">
-            <button class="rnd rnd-cancel" id="btnCancelEdit" title="Отменить правки и вернуться к чтению (Esc)" aria-label="Отменить правки" hidden>
-              <span class="ico" data-i="x"></span>
-            </button>
-            <button class="rnd rnd-save" id="btnSave" title="Сохранить на диск (Ctrl+S)" aria-label="Сохранить" hidden>
-              <span class="ico" data-i="save"></span>
-            </button>
-          </div>
-        </div>
       </main>
 
         <div class="split-divider" id="splitDivider" title="Потяни, чтобы изменить ширину" hidden></div>
@@ -226,7 +193,6 @@
         <div class="side-pane" id="paneFiles"></div>
       </aside>
 
-      <button class="to-top" id="toTop" title="Наверх" hidden><span class="ico" data-i="arrow-up"></span></button>
     </div>
 
     <!-- Нижняя панель: слева путь к файлу, справа последнее сообщение.
@@ -238,6 +204,23 @@
       <span id="statusText">Готово</span>
     </footer>
   </div>
+
+  <!--
+    Круговое меню по правому клику внутри заметки.
+
+    Собирается кодом (showRadial), а не размечается здесь: состав зависит от
+    режима — в чтении внизу карандаш, в правке «Сохранить» и «Отмена», а
+    копирование/вырезание/вставка доступны не всегда. Статичная разметка
+    означала бы либо вечно видимые нерабочие кнопки, либо разметку, которую
+    приходится переписывать на каждый случай.
+
+    Раскладка по кругу (углы CSS, 0 —право, по часовой):
+        -125 копировать   -90 вырезать   -55 вставить
+          0 экспорт (справа)
+        +55 карандаш     +90 сохранить  +125 отмена
+        180 «+» (слева): открыть файл / открыть папку
+    -->
+  <div class="radial" id="radial" hidden></div>
 
   <div class="drop-overlay" id="dropOverlay"><div>Отпусти, чтобы открыть</div></div>
 

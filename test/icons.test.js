@@ -57,9 +57,17 @@ if (fs.existsSync(iconsPath)) {
   }
 
   // 4. Каждый ICONS.icon('...') из app.js должен существовать.
+  //
+  //    Сверх того ловим `icon: '...'` в описаниях пунктов меню: экспорт из
+  //    кругового меню собирается кодом, и его иконки не проходят через
+  //    data-i в разметке. Без этой строчки они выпали бы из проверки целиком.
   const inJs = new Set();
   for (const m of app.matchAll(/ICONS\.icon\('([a-z0-9-]+)'/g)) inJs.add(m[1]);
+  for (const m of app.matchAll(/\bicon: '([a-z0-9-]+)'/g)) inJs.add(m[1]);
   t('app.js рисует иконки через ICONS.icon', inJs.size > 0, 'найдено ' + inJs.size);
+  for (const name of ['file-down', 'file-code', 'printer', 'folder-search', 'file-text', 'folder-open']) {
+    t('иконка пункта меню «' + name + '» есть в icons.js', inJs.has(name) && icons.includes(JSON.stringify(name) + ':'));
+  }
   for (const name of inJs) {
     t('иконка «' + name + '» (app.js) есть в icons.js', icons.includes(JSON.stringify(name) + ':'));
   }

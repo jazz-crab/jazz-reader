@@ -15,9 +15,7 @@ const el = {
   tabsLeft: $('tabsLeft'), tabsRight: $('tabsRight'),
   loading: $('loading'), loadingText: $('loadingText'), loadingSub: $('loadingSub'),
   btnBack: $('btnBack'), btnForward: $('btnForward'),
-  btnMode: $('btnMode'), btnSave: $('btnSave'), btnCancelEdit: $('btnCancelEdit'),
   btnZoomIn: $('btnZoomIn'), btnZoomOut: $('btnZoomOut'), zoomVal: $('zoomVal'),
-  dlBtn: $('dlBtn'), dlMenu: $('dlMenu'),
   welcome: $('welcome'), wOpenFile: $('wOpenFile'), wOpenFolder: $('wOpenFolder'),
     workspace: $('workspace'),
     tocSide: $('tocSide'), filesSide: $('filesSide'),
@@ -25,11 +23,11 @@ const el = {
     topbar: document.querySelector('.topbar'),
     split: $('split'), splitDivider: $('splitDivider'),
     readProgress: $('readProgress'),
+    radial: $('radial'),
     panel2: $('panel2'), content2: $('content2'), secondTitle: $('secondTitle'),
   paneFiles: $('paneFiles'), paneToc: $('paneToc'), treeFilter: $('treeFilter'),
   content: $('content'), editor: $('editor'), toTop: $('toTop'),
   statusbar: $('statusbar'), statusText: $('statusText'), fileName: $('fileName'),
-  modeDock: $('modeDock'),
   dropOverlay: $('dropOverlay'),
 };
 
@@ -629,6 +627,14 @@ function showContextMenu(x, y, items, opts) {
       tick.className = 'ctxmenu-check';
       tick.textContent = it.check ? '✓' : '';
       l.append(tick);
+    }
+    // Иконка слева от надписи, в одной строке с ней. Раньше контекстное меню
+    // было без значков вовсе, и экспорт из кругового меню вышел голым текстом.
+    if (it.icon) {
+      const ic = document.createElement('span');
+      ic.className = 'ico';
+      ic.innerHTML = ICONS.icon(it.icon);
+      l.append(ic);
     }
     l.append(document.createTextNode(it.label));
     const hn = document.createElement('span');
@@ -1423,13 +1429,11 @@ function renderActive() {
     el.toTop.hidden = true;
     el.statusbar.hidden = true;
     // Док режима целиком прячем: файла нет — правки негде и нечего.
-    el.modeDock.hidden = true;
     document.title = 'MDView';
     updateNavButtons();
     return;
   }
   el.statusbar.hidden = !view.statusbar;
-  el.modeDock.hidden = false;
 
   document.title = t.name + ' — MDView';
   el.fileName.textContent = t.path;
@@ -1441,10 +1445,6 @@ function renderActive() {
   // В правке — зелёная «Сохранить» и красная «Отменить» вместо одного
   // переключателя. Раньше он просто уводил из правки, оставляя изменения
   // в памяти: их можно было потерять молча, ничего не спрашивая.
-  el.btnMode.hidden = editing;
-  el.btnSave.hidden = !editing;
-  el.btnCancelEdit.hidden = !editing;
-  el.btnSave.classList.toggle('rnd-dirty', editing && t.dirty);
 
   if (editing) {
     el.editor.value = t.raw;
@@ -1503,6 +1503,7 @@ function openSecond(id) {
 
 /** Убрать правую панель. */
 function closeSecond() {
+  closeRadial();
   if (secondId === null) return;
   secondId = null;
   renderSecond();
@@ -1816,6 +1817,17 @@ function updateReadProgress() {
   const show = !editing && (max > 4 || span > 4) && (p > 0.002 || max > 4);
   el.readProgress.classList.toggle('on', show);
   el.readProgress.style.width = (p * 100).toFixed(2) + '%';
+}
+
+/** Войти в режим правки. Кнопка в тулбаре и пункт кругового меню делают
+ *  одно и то же, и обе дороги ведут сюда. */
+function toggleEditMode() {
+  const t = active();
+  if (!t || !t.path) return;
+  if (t.mode === 'edit') return;
+  t.mode = 'edit';
+  renderActive();
+  el.editor.focus();
 }
 
 function scrollToAnchor(id) {
@@ -2260,6 +2272,185 @@ el.btnNewTab.oncontextmenu = (e) => {
     { label: 'Открыть папку', hint: 'Ctrl+Shift+O', act: openFolderDialog },
   ], { width: 232, height: 80, anchorRect: r });
 };
+
+/* ------------------------------------------------- круговое меню заметки
+
+ * Правый клик внутри заметки открывает кольцо кнопок вокруг точки клика.
+ * Состав зависит от режима, поэтому меню собирается кодом, а не разметкой:
+ *   сверху   буфер обмена — копировать, вырезать, вставить;
+ *   снизу    правка — карандаш в чтении, «Сохранить» и «Отмена» в правке;
+ *   справа   экспорт: раскрывает обычное меню экспорта у этой кнопки;
+ *   слева    «+»: открыть файл или папку.
+ *
+ * Копирование и вырезание работают с текущим выделением. Вставка осмысленна
+ * только в правке: в чтении полем некуда, поэтому кнопка там неактивна — но
+ * показана, чтобы кольцо не меняло форму от заметки к заметке.
+ *
+ * Меню закрывается: кликом вне, Esc, прокруткой, переходом на другую
+ * заметку. На export и «+» не закрывается — вместо этого открывается второе
+ * меню прямо у нажатой кнопки.
+ */
+
+/* Углы по часовой стрелке от верхней кнопки. */
+const RADIAL_LAYOUT = [
+  { act: 'copy', icon: 'copy', tip: 'Копировать', angle: -125 },
+  { act: 'cut', icon: 'scissors', tip: 'Вырезать', angle: -90, cls: 'r-top' },
+  { act: 'paste', icon: 'clipboard-paste', tip: 'Вставить', angle: -55, cls: 'r-top' },
+  { act: 'export', icon: 'folder-output', tip: 'Экспорт', angle: 0, cls: 'r-export' },
+  { act: 'mode', icon: 'pencil', tip: 'Правка (Ctrl+E)', angle: 55 },
+  { act: 'save', icon: 'save', tip: 'Сохранить (Ctrl+S)', angle: 90, cls: 'r-save' },
+  { act: 'cancel', icon: 'x', tip: 'Отменить правки (Esc)', angle: 125, cls: 'r-cancel' },
+  { act: 'open', icon: 'plus', tip: 'Открыть файл или папку', angle: 180, cls: 'r-open' },
+];
+
+let radialOpen = false;
+
+/** Есть ли что копировать/вырезать. */
+function hasSelection() {
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed && sel.toString().length) return true;
+  const ed = el.editor;
+  return !!(ed && !ed.hidden && ed.selectionStart !== ed.selectionEnd);
+}
+
+function radialEnabled(act) {
+  const t = active();
+  const editing = !!(t && t.mode === 'edit');
+  if (act === 'copy') return hasSelection();
+  if (act === 'cut' || act === 'paste') return editing && (act === 'paste' || hasSelection());
+  if (act === 'mode') return !!t && !editing && !!t.path;
+  if (act === 'save') return editing && !!t.dirty;
+  if (act === 'cancel') return editing && !!t.dirty;
+  return true;
+}
+
+/** Собрать кольцо под текущее состояние заметки. */
+function buildRadial() {
+  const t = active();
+  const editing = !!(t && t.mode === 'edit');
+  el.radial.innerHTML = '';
+  const acts = [];
+  for (const item of RADIAL_LAYOUT) {
+    // В чтении снизу только карандаш, в правке — «Сохранить» и «Отмена».
+    // Иначе кольцо в чтении было бы с двумя серыми кнопками, которые всё
+    // равно ничего не делают.
+    if (item.act === 'mode' && editing) continue;
+    if ((item.act === 'save' || item.act === 'cancel') && !editing) continue;
+    acts.push(item);
+  }
+  // Карандаш в чтении один, и он встаёт напротив верхней кнопки, то есть в
+  // низ кольца. Иначе он висел бы сбоку, а низ оставался пустым, и кольцо
+  // выглядело бы перекошенным: три кнопки сверху и одна слева снизу.
+  if (!editing) {
+    for (const item of acts) {
+      if (item.act === 'mode') item.angle = 90;
+    }
+  }
+  for (const item of acts) {
+    const b = document.createElement('button');
+    b.className = 'radial-btn' + (item.cls ? ' ' + item.cls : '');
+    b.type = 'button';
+    b.dataset.act = item.act;
+    b.style.setProperty('--a', item.angle + 'deg');
+    b.title = item.tip;
+    b.innerHTML = ICONS.icon(item.icon) + '<span class="rd-tip">' + item.tip + '</span>';
+    b.disabled = !radialEnabled(item.act);
+    b.onclick = () => radialAct(item.act);
+    el.radial.append(b);
+  }
+}
+
+function radialAct(act) {
+  if (act === 'export') { radialToMenu('export'); return; }
+  if (act === 'open') { radialToMenu('open'); return; }
+  closeRadial();
+  if (act === 'mode') { toggleEditMode(); return; }
+  if (act === 'save') { save(); return; }
+  if (act === 'cancel') { exitEdit(false); return; }
+  if (act === 'copy' || act === 'cut' || act === 'paste') { radialClipboard(act); return; }
+}
+
+/*
+ * Буфер обмена.
+ *
+ * execCommand работает с текущим выделением и с фокусом в поле правки — то
+ * есть ровно так, как ведёт себя обычный правый клик в тексте. Вставку
+ * execCommand в Chromium разрешает не всегда, поэтому если она не сработала,
+ * пробуем буфер обмена и вставляем текст в редактор вручную. Если и это не
+ * вышло — говорим в статус, а не делаем вид, что получилось.
+ */
+function radialClipboard(act) {
+  const ed = el.editor;
+  const editing = ed && !ed.hidden;
+  if (editing && document.activeElement !== ed && act !== 'paste') ed.focus();
+  let ok = false;
+  try { ok = document.execCommand(act); } catch { ok = false; }
+  if (ok) { status(act === 'copy' ? 'Скопировано' : act === 'cut' ? 'Вырезано' : 'Вставлено', 'ok'); return; }
+  if (act === 'paste' && editing && navigator.clipboard && navigator.clipboard.readText) {
+    navigator.clipboard.readText().then((txt) => {
+      if (!txt) { status('Буфер обмена пуст', 'err'); return; }
+      const s = ed.selectionStart, e2 = ed.selectionEnd;
+      ed.value = ed.value.slice(0, s) + txt + ed.value.slice(e2);
+      ed.selectionStart = ed.selectionEnd = s + txt.length;
+      const t = active();
+      t.dirty = ed.value !== t._diskRaw;
+      t.raw = ed.value;
+      status('Вставлено', 'ok');
+    }).catch(() => status('Вставка запрещена системой', 'err'));
+    return;
+  }
+  status(act === 'copy' ? 'Нечего копировать' : 'Вставка недоступна', 'err');
+}
+
+/**
+ * Export и «+» не закрывают кольцо, а раскрывают обычное меню у самой
+ * кнопки. Иначе кольцо исчезло бы раньше, чем палец доедет до вложенного
+ * меню, и нажать было бы не на что.
+ */
+function radialToMenu(which) {
+  const btn = el.radial.querySelector('[data-act="' + which + '"]');
+  const r = btn ? btn.getBoundingClientRect() : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2 };
+  closeRadial();
+  if (which === 'export') {
+    showContextMenu(r.left - 4, r.bottom + 8, [
+      { label: 'Сохранить MD', icon: 'file-down', act: () => downloadMd() },
+      { label: 'Сохранить HTML', icon: 'file-code', act: () => downloadHtml() },
+      { label: 'Печать / PDF…', icon: 'printer', act: () => api.print() },
+      { sep: true },
+      { label: 'Показать в проводнике', icon: 'folder-search', act: () => revealFile() },
+      { label: 'Скопировать путь', icon: 'copy', act: () => copyPath() },
+    ], { width: 258, height: 214, anchorRect: r });
+  } else {
+    showContextMenu(r.right + 8, r.top - 6, [
+      { label: 'Открыть .md', icon: 'file-text', hint: 'Ctrl+O', act: openFileDialog },
+      { label: 'Открыть папку', icon: 'folder-open', hint: 'Ctrl+Shift+O', act: openFolderDialog },
+    ], { width: 248, height: 84, anchorRect: r });
+  }
+}
+
+function openRadial(x, y) {
+  if (!el.radial) return;
+  buildRadial();
+  // Держим кольцо целиком на экране: у края заметки часть кнопок уезжала бы
+  // за окно, и нажать на них было бы нельзя.
+  const R = 78 + 34;
+  const cx = Math.max(R, Math.min(x, innerWidth - R));
+  const cy = Math.max(R, Math.min(y, innerHeight - R));
+  el.radial.style.left = cx + 'px';
+  el.radial.style.top = cy + 'px';
+  el.radial.hidden = false;
+  radialOpen = true;
+  // Кадр без класса .on, потом добавляем: без этого переход opacity не
+  // проиграет и кольцо просто появится готовым.
+  requestAnimationFrame(() => el.radial.classList.add('on'));
+}
+
+function closeRadial() {
+  if (!el.radial) return;
+  el.radial.classList.remove('on');
+  el.radial.hidden = true;
+  radialOpen = false;
+}
 
 // ------------------------------------------------------- временный файл / папка
 
@@ -2720,7 +2911,6 @@ el.wOpenFile.onclick = openFileDialog;
 el.wOpenFolder.onclick = openFolderDialog;
 el.btnBack.onclick = () => go(-1);
 el.btnForward.onclick = () => go(1);
-el.btnSave.onclick = save;
 el.toTop.onclick = () => el.content.scrollTo({ top: 0, behavior: 'smooth' });
 
 /** Выйти из правки с явным решением: сохранить или отменить. */
@@ -2787,48 +2977,93 @@ async function exitEdit(saveIt) {
   status('Правки отменены', 'warn');
 }
 
-el.btnMode.onclick = async () => {
-  const t = active();
-  if (!t || !t.path) return;
-  t.mode = 'edit';
-  renderActive();
-  el.editor.focus();
-};
-
-el.btnCancelEdit.onclick = () => exitEdit(false);
-
 el.editor.addEventListener('input', () => {
   updateReadProgress();
   const t = active();
   if (!t) return;
   t.dirty = el.editor.value !== t._diskRaw;
   renderTabs();
-  el.btnSave.classList.toggle('rnd-dirty', t.dirty);
 });
 
 el.btnZoomIn.onclick = () => setZoom(zoom + 0.1);
 el.btnZoomOut.onclick = () => setZoom(zoom - 0.1);
 
 
-el.dlBtn.onclick = (e) => { e.stopPropagation(); el.dlBtn.parentElement.classList.toggle('open'); };
-document.addEventListener('click', () => el.dlBtn.parentElement.classList.remove('open'));
-el.dlMenu.onclick = async (e) => {
-  const act = e.target.getAttribute('data-act');
-  if (!act) return;
-  el.dlBtn.parentElement.classList.remove('open');
+
+/** Скопировать путь к открытой заметке. */
+function copyPath() {
   const t = active();
   if (!t || !t.path) return;
-  if (act === 'download-md') downloadMd();
-  else if (act === 'download-html') downloadHtml();
-  else if (act === 'print') api.print();
-  else if (act === 'reveal') api.reveal(t.path);
-  else if (act === 'copy-path') {
-    navigator.clipboard.writeText(t.path).then(
-      () => toast('Путь скопирован: ' + t.path),
-      () => status('Буфер обмена недоступен', 'err')
-    );
-  }
-};
+  navigator.clipboard.writeText(t.path).then(
+    () => toast('Путь скопирован: ' + t.path),
+    () => status('Буфер обмена недоступен', 'err')
+  );
+}
+
+/** Показать заметку в проводнике Windows. */
+function revealFile() {
+  const t = active();
+  if (!t || !t.path) return;
+  api.reveal(t.path);
+}
+
+/* Пункты экспорта нужны и кольцу заметки, и (пока) кнопке в тулбаре,
+ * поэтому живут здесь, а не внутри обработчика. */
+
+/** Скопировать путь к открытой заметке. */
+function copyPath() {
+  const t = active();
+  if (!t || !t.path) return;
+  navigator.clipboard.writeText(t.path).then(
+    () => toast('Путь скопирован: ' + t.path),
+    () => status('Буфер обмена недоступен', 'err')
+  );
+}
+
+/** Показать заметку в проводнике Windows. */
+function revealFile() {
+  const t = active();
+  if (!t || !t.path) return;
+  api.reveal(t.path);
+}
+
+/*
+ * Правый клик внутри заметки открывает круговое меню.
+ *
+ * Слушаем на самой заметке и на поле правки, но не на всей рабочей области:
+ * правый клик по пустому месту мимо текста — это всё ещё «контекстное меню
+ * вкладки» из привычки, а лишнее кольцо на пустом месте только мешает.
+ *
+ * Своё preventDefault здесь обязателен: иначе поверх кольца появится ещё и
+ * системное меню Chromium, и два меню окажутся на одном месте.
+ */
+el.content.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
+  e.preventDefault();
+  openRadial(e.clientX, e.clientY);
+});
+el.editor.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  openRadial(e.clientX, e.clientY);
+});
+
+/*
+ * Закрытие кольца: клик мимо, Esc, прокрутка (оно привязано к точке клика, и
+ * при прокрутке осталось бы висеть в другом месте), уход на другую заметку и
+ * потеря фокуса окна.
+ */
+document.addEventListener('mousedown', (e) => {
+  if (!radialOpen) return;
+  if (el.radial.contains(e.target)) return;
+  if (e.target.closest && e.target.closest('.ctxmenu')) return;
+  closeRadial();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (radialOpen && e.key === 'Escape') { e.stopPropagation(); closeRadial(); }
+}, true);
+el.content.addEventListener('wheel', () => closeRadial(), { passive: true });
+el.editor.addEventListener('wheel', () => closeRadial(), { passive: true });
+window.addEventListener('blur', () => closeRadial());
 
 // ---------------------------------------------------------- вид и панели
 
@@ -3018,7 +3253,7 @@ api.onMenu((action) => {
     case 'toggle-toc': toggleToc(); break;
     // Ctrl+E только входит в правку. Выйти из неё — явными кнопками
     // «Сохранить»/«Отменить» (или Esc), чтобы правки не терялись молча.
-    case 'toggle-mode': if (active() && active().mode !== 'edit') el.btnMode.click(); break;
+    case 'toggle-mode': toggleEditMode(); break;
     case 'cancel-edit': exitEdit(false); break;
     case 'back': go(-1); break;
     case 'forward': go(1); break;
@@ -3141,6 +3376,7 @@ window.__mdvTest = {
   setPaneFocus,
   zoom: () => zoom,
   setZoom,
+  enterEdit: toggleEditMode, exitEdit, save, saveTab,
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); },
   settings: () => currentSettings,

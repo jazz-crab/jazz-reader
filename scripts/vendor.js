@@ -53,6 +53,8 @@ const USED_ICONS = [
   'arrow-up', 'pencil', 'save', 'zoom-in', 'zoom-out', 'folder-output',
   'x', 'copy', 'eye-off', 'printer', 'folder-search',
   'search', 'file-down', 'file-code', 'check', 'list-tree', 'menu', 'plus', 'chevron-left', 'chevron-right',
+  // круговое меню заметки: буфер обмена
+  'scissors', 'clipboard-paste',
   // Чекбоксы task-list (- [x] / 1. [ ]): marked рендерит их нативными
   // <input type=checkbox>, они выглядели чужеродно в тёмной теме.
   'square-check-big', 'square',

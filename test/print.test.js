@@ -115,7 +115,11 @@ t('печать доступна из renderer', /print:/.test(preload));
 t('экспорт доступен из renderer', /exportHtml:/.test(preload));
 
 const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
-t('в меню есть пункт печати', /data-act="print"/.test(fs.readFileSync(path.join(ROOT, 'src', 'index.html'), 'utf8')));
+// Пункта печати в разметке тулбара больше нет: экспорт целиком живёт в
+// круговом меню заметки и собирается кодом. Проверяем, что он там есть.
+t('в меню экспорта есть пункт печати',
+  /label: 'Печать \/ PDF…', icon: 'printer'/.test(appJs)
+  && /api\.print\(/.test(appJs));
 t('пункт печати вызывает api.print', /api\.print\(/.test(appJs));
 
 console.log('\n== на печать отдаётся непустая страница ==');
