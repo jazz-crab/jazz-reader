@@ -2724,12 +2724,24 @@ const RADIAL_LAYOUT = [
   { act: 'mode', slot: 'top', icon: 'pencil', tip: 'Правка (Ctrl+E)' },
   { act: 'save', slot: 'top', icon: 'save', tip: 'Сохранить (Ctrl+S)', cls: 'r-save' },
   { act: 'cancel', slot: 'top', icon: 'x', tip: 'Отменить правки (Esc)', cls: 'r-cancel' },
-  { act: 'export', slot: 'right', icon: 'folder-output', tip: 'Экспорт', cls: 'r-export' },
+  // Справа — всё, что делают с файлом целиком: экспорт и путь. Слева — только
+  // открытие. Раньше «Путь» стоял слева рядом с «Открыть», и две кнопки,
+  // которые делают одно и то же — показывают файл, — делили одну дугу между
+  // собой; на открытие файла оставалось 39 градусов, столько же, сколько на
+  // один из трёх секторов буфера обмена.
+  //
+  // Границы правых секторов заданы руками, а не делением дуги пополам: шов
+  // пополам приходился бы ровно на 0 градусов, то есть на «строго вправо».
+  // Выбор по направлению и наведение целятся именно туда, и в этой точке
+  // кольцо решало бы, экспорт это или путь.
+  { act: 'export', slot: 'right', from: -39, to: 9, icon: 'folder-output',
+    tip: 'Экспорт', cls: 'r-export' },
+  { act: 'path', slot: 'right', from: 9, to: 39, icon: 'signpost',
+    tip: 'Путь к файлу', cls: 'r-path' },
   { act: 'copy', slot: 'bottom', icon: 'copy', tip: 'Копировать' },
   { act: 'cut', slot: 'bottom', icon: 'scissors', tip: 'Вырезать' },
   { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: 'Вставить' },
-  { act: 'open', slot: 'leftLow', icon: 'plus', tip: 'Открыть', cls: 'r-open' },
-  { act: 'path', slot: 'left', icon: 'signpost', tip: 'Путь к файлу', cls: 'r-path' },
+  { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть', cls: 'r-open' },
 ];
 
 let radialOpen = false;
@@ -2782,12 +2794,8 @@ const RADIAL_ARCS = {
   top: [-141, -39],
   right: [-39, 39],
   bottom: [39, 141],
-  // Левая сторона делится пополам: «Открыть» ниже горизонтали, «Путь» выше.
-  // Раньше «Путь» жил внутри списка экспорта, а менять форму кольца от
-  // выделения в тексте нельзя — значит место под новый сектор берём у
-  // соседнего, а не двигаем остальные.
-  leftLow: [141, 180],
-  left: [180, 219],
+  // Слева одна секция: открытие. Раньше её делили с «Путь»-ом.
+  left: [141, 219],
 };
 /** Насколько сдвинулся курсор, прежде чем жест признаётся перетаскиванием. */
 const DRAG_PX = 14;
@@ -2868,6 +2876,16 @@ function buildRadial() {
   }
   for (const [slot, list] of groups) {
     const [from, to] = RADIAL_ARCS[slot];
+    if (list.every((i) => i.from != null && i.to != null)) {
+      // Границы заданы вручную: делить дугу поровну нельзя, иначе шов между
+      // секторами встанет ровно туда, куда целится рука.
+      list.forEach((i) => {
+        i.a0 = i.from;
+        i.a1 = i.to;
+        i.mid = (i.a0 + i.a1) / 2;
+      });
+      continue;
+    }
     const step = (to - from) / list.length;
     list.forEach((i, k) => {
       i.a0 = from + k * step;

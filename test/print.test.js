@@ -167,11 +167,20 @@ const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
 // предпросмотр, они не помещаются в меню. Экспорт — отдельное окно, а из
 // кольца в него ведёт сектор «Экспорт».
 t('в кольцо вернулся сектор «Экспорт»',
-  /act: 'export', slot: 'right', icon: 'folder-output'/.test(appJs));
+  /act: 'export', slot: 'right',[\s\S]{0,60}icon: 'folder-output'/.test(appJs));
 t('сектор открывает окно экспорта', /act === 'export'\) \{ closeRadial\(\); exportDialog\(\)/.test(appJs));
 t('окно экспорта зовёт api.exportPdf', /api\.exportPdf\(\{/.test(appJs));
 t('окно экспорта зовёт api.exportHtml', /api\.exportHtml\(\{/.test(appJs));
-t('у кольца есть сектор «Путь»', /act: 'path', slot: 'left', icon: 'signpost'/.test(appJs));
+t('у кольца есть сектор «Путь»',
+  /act: 'path', slot: 'right',[\s\S]{0,60}icon: 'signpost'/.test(appJs));
+// Экспорт и путь — справа, открытие — слева и одно: раньше «Путь» стоял
+// слева вместе с «Открыть», и на открытие файла оставалось столько же места,
+// сколько на один из трёх секторов буфера обмена.
+t('слева в кольце только открытие',
+  /act: 'open', slot: 'left', icon: 'plus'/.test(appJs)
+  && !/slot: 'leftLow'/.test(appJs));
+t('у секторов есть квадрат под попадание мыши',
+  /<span class="rd-hit"><\/span>/.test(appJs));
 t('списка форматов в кольце больше нет', !/label: 'Сохранить PDF'/.test(appJs)
   && !/label: 'Сохранить HTML'/.test(appJs));
 t('Ctrl+P остался системным диалогом', /api\.print\(\)/.test(appJs));

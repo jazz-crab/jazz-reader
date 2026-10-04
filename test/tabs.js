@@ -3070,9 +3070,9 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
   t('в кольцо вернулось «Путь»', r.hasPath === true);
   t('«Открыть» и «Экспорт» на месте', r.hasOpen === true && r.hasExport === true);
-  t('состав кольца: правка, экспорт, буфер, открыть, путь',
+  t('состав кольца: правка, экспорт, путь, буфер, открытие',
     JSON.stringify(r.acts) === JSON.stringify(
-      ['mode', 'export', 'copy', 'cut', 'paste', 'open', 'path']),
+      ['mode', 'export', 'path', 'copy', 'cut', 'paste', 'open']),
     JSON.stringify(r.acts));
   t('меню «Путь» открывается', r.menuOpen === true);
   t('в меню «Путь» два пункта', r.count2 === 2, JSON.stringify(r.labels));
@@ -3446,20 +3446,25 @@ const SILENCE_CONFIRM = `(() => {
     out.far.up = at(q.left, q.top - 240);
     out.far.right = at(q.left + 300, q.top);
     out.far.down = at(q.left, q.top + 240);
-    // Слева теперь два сектора: «Путь» выше горизонтали, «Открыть» ниже.
-    // Ровно влево (180°) попадает на их общую границу, поэтому проверяем обе
-    // стороны отдельно — иначе проверка зависит от того, куда отнесла граница
-    // этот угол.
+    // Слева один сектор — открытие, и он занимает всю левую дугу, поэтому
+    // точки берём и выше, и ниже горизонтали: обе должны дать «Открыть».
     out.far.leftUp = at(q.left - 240, q.top - 120);
     out.far.leftLow = at(q.left - 240, q.top + 120);
+    // Справа два сектора: «Экспорт» сверху (центр -19.5°), «Путь» снизу
+    // (центр +19.5°).
+    out.far.exportUp = at(q.left + 240, q.top - 82);
+    out.far.pathDown = at(q.left + 240, q.top + 82);
     // Радиус кольца = 122, значит 240 — точно за ним
     out.outsideIsFar = 240 > 122;
     return JSON.stringify(out);
   })()`));
   t('вверх выбирается правка', r.far.up === 'mode', String(r.far.up));
   t('вправо выбирается экспорт', r.far.right === 'export', String(r.far.right));
-  t('слева снизу выбирается открытие', r.far.leftLow === 'open', String(r.far.leftLow));
-  t('слева сверху выбирается путь', r.far.leftUp === 'path', String(r.far.leftUp));
+  t('слева выбирается открытие (снизу и сверху от горизонтали)',
+    r.far.leftLow === 'open' && r.far.leftUp === 'open',
+    String(r.far.leftLow) + '/' + String(r.far.leftUp));
+  t('справа сверху выбирается экспорт', r.far.exportUp === 'export', String(r.far.exportUp));
+  t('справа снизу выбирается путь', r.far.pathDown === 'path', String(r.far.pathDown));
   t('вниз выбирается буфер обмена', /^copy$|^cut$|^paste$/.test(String(r.far.down)),
     String(r.far.down));
   t('точки проверки — за пределами кольца', r.outsideIsFar === true);
@@ -3598,9 +3603,9 @@ const SILENCE_CONFIRM = `(() => {
     const rad = document.getElementById('radial');
     const q = rad.getBoundingClientRect();
     const sec = rad.querySelector('[data-act="open"]');
-    // «Открыть» занимает дугу 141..180, середина — 160.5°, то есть ниже
-    // горизонтали: берём точку на середине его радиуса.
-    const out2 = { opened: !rad.hidden, before: M.radialPick(Math.round(q.left - 85), Math.round(q.top + 30)) };
+    // «Открыть» занимает всю левую дугу 141..219, середина — 180°, то есть
+    // ровно влево.
+    const out2 = { opened: !rad.hidden, before: M.radialPick(Math.round(q.left - 90), Math.round(q.top)) };
     out2.beforeAct = out2.before ? out2.before.dataset.act : null;
     await new Promise(r2 => setTimeout(r2, 250));
     const lab = document.getElementById('radialLabel');
@@ -3691,8 +3696,8 @@ const SILENCE_CONFIRM = `(() => {
       const s2 = e ? e.closest('.radial-sector') : null;
       return s2 ? s2.dataset.act : 'нет';
     };
-    const edgeIs = [probe(160.5, 100), probe(160.5, 90), probe(160.5, 60),
-      probe(199.5, 90), probe(-90, 90), probe(0, 90), probe(56, 90)].join('|');
+    const edgeIs = [probe(180, 100), probe(180, 90), probe(180, 60),
+      probe(-19.5, 90), probe(19.5, 90), probe(-90, 90), probe(56, 90)].join('|');
     sec.click();
     await new Promise(r2 => setTimeout(r2, 450));
     return JSON.stringify({
@@ -3701,9 +3706,9 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
   // «Открыть» держим от края, посередине и у внешней границы, дальше —
-  // «Путь», правка, экспорт и один из секторов буфера обмена.
+  // экспорт, путь, правка и один из секторов буфера обмена.
   t('секторы кликабельны по всей толщине кольца',
-    r.edgeIs === 'open|open|open|path|mode|export|copy', r.edgeIs);
+    r.edgeIs === 'open|open|open|export|path|mode|copy', r.edgeIs);
   t('клик по сектору открывает его меню', r.labels === 2, String(r.labels));
 
   await js(`(() => {
@@ -4143,10 +4148,11 @@ const SILENCE_CONFIRM = `(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
     await new Promise(r2 => setTimeout(r2, 250));
-    // Дуга «Путь» — 180..219 градусов, середина 199.5: влево и чуть вверх.
+    // Дуга «Путь» — в правой половине кольца, середина 19.5°: вправо и
+    // чуть вниз.
     right(c, x, y, 'mousedown');
     document.dispatchEvent(new MouseEvent('mousemove', {
-      bubbles: true, clientX: x - 95, clientY: y - 35, button: 2 }));
+      bubbles: true, clientX: x + 95, clientY: y + 35, button: 2 }));
     await new Promise(r2 => setTimeout(r2, 350));
     const rad = document.getElementById('radial');
     const sel = document.querySelector('#radial .radial-sector.sel');
@@ -4154,7 +4160,7 @@ const SILENCE_CONFIRM = `(() => {
     const out = { picked: sel ? sel.dataset.act : null,
       dot: [Math.round(dot.left), Math.round(dot.bottom)] };
     document.dispatchEvent(new MouseEvent('mouseup', {
-      bubbles: true, clientX: x - 95, clientY: y - 35, button: 2 }));
+      bubbles: true, clientX: x + 95, clientY: y + 35, button: 2 }));
     await new Promise(r2 => setTimeout(r2, 500));
     const m = document.querySelector('.ctxmenu');
     out.opened = !!m;
@@ -4170,7 +4176,7 @@ const SILENCE_CONFIRM = `(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     return JSON.stringify(out);
   })()`));
-  t('ведение влево выбирает «Путь»', r.picked === 'path', String(r.picked));
+  t('ведение вправо-вниз выбирает «Путь»', r.picked === 'path', String(r.picked));
   t('меню «Путь» открылось', r.opened === true);
   t('кольцо после отпускания закрыто', r.closed === true);
   t('меню открылось под иконкой, а не в углу окна',
@@ -4498,7 +4504,8 @@ const SILENCE_CONFIRM = `(() => {
     out.mode = M.active().mode;
     out.closed = document.getElementById('radial').hidden;
     // Список закольцован проверяем на втором открытии, уже без нажатия Enter:
-    // «Открыть» выбрать нельзя, откроется диалог файла.
+    // последним в обходе идёт «Открыть», а нажать его нельзя — откроется
+    // диалог файла.
     await M.exitEdit(true);
     await new Promise(r2 => setTimeout(r2, 400));
     await M.openRingIn('content', b.left + b.width / 2, b.top + 220);
@@ -4529,9 +4536,9 @@ const SILENCE_CONFIRM = `(() => {
   t('k возвращает назад', r.afterK === 'mode', String(r.afterK));
   t('Enter подтверждает выбор', r.mode === 'edit', r.mode);
   t('после Enter кольцо закрыто', r.closed === true);
-  t('список закольцован: сверху назад вниз', r.wrap === 'path', String(r.wrap));
+  t('список закольцован: сверху назад вниз', r.wrap === 'open', String(r.wrap));
   t('l работает как стрелка вперёд', r.wrapDown === 'mode', String(r.wrapDown));
-  t('h работает как стрелка назад', r.wrapBack === 'path', String(r.wrapBack));
+  t('h работает как стрелка назад', r.wrapBack === 'open', String(r.wrapBack));
   await js(`window.__mdvTest.exitEdit(true)`);
   await new Promise((x) => setTimeout(x, 300));
 
