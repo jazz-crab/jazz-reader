@@ -2327,7 +2327,7 @@ const RADIAL_LAYOUT = [
   { act: 'copy', slot: 'bottom', icon: 'copy', tip: 'Копировать' },
   { act: 'cut', slot: 'bottom', icon: 'scissors', tip: 'Вырезать' },
   { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: 'Вставить' },
-  { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть файл или папку', cls: 'r-open' },
+  { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть', cls: 'r-open' },
 ];
 
 let radialOpen = false;
@@ -2348,8 +2348,18 @@ const RADIAL_KILL_R = 44;
 const RADIAL_MID = 88;
 /** Внешний радиус кольца: дальше сектора не видно. */
 const RADIAL_OUT = 122;
-/** Отступ от края окна, чтобы кольцо и подписи не срезало. */
+/**
+ * Насколько кольцо удерживается от края окна, чтобы кольцо и подписи не срезало.
+ */
 const RADIAL_KEEP = 150;
+/**
+ * Запас, в пределах которого мышь ещё считается «у кольца».
+ *
+ * Подпись выбранного действия выходит за край кольца, и без запаса кольцо
+ * закрывалось бы, пока человек ведёт курсор к подписи. 190px покрывают диск
+ * (126px) и подпись с полями.
+ */
+const RADIAL_LEAVE = 190;
 /** Дуги секций в градусах: 0 — право, по часовой. Сумма = 360. */
 const RADIAL_ARCS = {
   top: [-141, -39],
@@ -2502,6 +2512,21 @@ function radialSetLabel(tip, x, y) {
   radialLabel.style.setProperty('--mx', x);
   radialLabel.style.setProperty('--my', y);
   radialLabel.classList.add('on');
+}
+
+/**
+ * Мышью внутри кольца (с запасом на подпись и на неточность).
+ *
+ * В обычном режиме расстояние важно: выбор идёт по попаданию в кольцо, и мышь
+ * мимо него должна означать «закрыть», как в любом меню. Запас нужен, чтобы
+ * не закрывать кольцо, пока человек ведёт курсор к подписи выбранного
+ * действия или слегка промахивается мимо края.
+ */
+function inRingBounds(x, y) {
+  const box = el.radial.getBoundingClientRect();
+  const cx = box.left + box.width / 2;
+  const cy = box.top + box.height / 2;
+  return Math.abs(x - cx) <= RADIAL_LEAVE && Math.abs(y - cy) <= RADIAL_LEAVE;
 }
 
 /** Углы в (-180, 180]. */
@@ -2720,8 +2745,10 @@ function radialMove(e) {
     return;
   }
   // Кольцо открыто и ждёт левую кнопку: подсветка появляется сразу, как только
-  // курсор вошёл в сектор, а не по клику.
-  if (radialOpen) radialPick(e.clientX, e.clientY);
+  // курсор вошёл в сектор, а не по клику. Уход за кольцо закрывает меню.
+  if (!radialOpen) return;
+  if (!inRingBounds(e.clientX, e.clientY)) { closeRadial(); return; }
+  radialPick(e.clientX, e.clientY);
 }
 
 function radialUp(e) {

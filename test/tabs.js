@@ -3216,6 +3216,69 @@ const SILENCE_CONFIRM = `(() => {
   t('в обычном режиме внутри кольца выбирается', r.near === 'export', String(r.near));
   t('в обычном режиме кольцо не «перетаскиваемое»', r.dragging === false);
 
+  // 3a. Обычный режим: мышь за кольцом закрывает меню
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const q = document.getElementById('radial').getBoundingClientRect();
+    const out = { opened: !document.getElementById('radial').hidden };
+    // Запас на подпись: подпись выходит за край кольца, и кольцо из-за неё
+    // закрываться не должно.
+    const move = async (x, y) => {
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
+      await new Promise(r2 => setTimeout(r2, 200));
+      return !document.getElementById('radial').hidden;
+    };
+    out.inside = await move(Math.round(q.left + 90), Math.round(q.top));
+    out.nearEdge = await move(Math.round(q.left + 170), Math.round(q.top));
+    out.far = await move(Math.round(q.left + 320), Math.round(q.top));
+    out.below = await move(Math.round(q.left), Math.round(q.top + 170));
+    return JSON.stringify(out);
+  })()`));
+  t('кольцо открыто', r.opened === true);
+  t('внутри кольца кольцо остаётся', r.inside === true);
+  t('у самого края с запасом кольцо остаётся', r.nearEdge === true, String(r.nearEdge));
+  t('за кольцом кольцо закрывается', r.far === false, String(r.far));
+  t('под кольцом кольцо закрывается', r.below === false, String(r.below));
+
+  // 3b. Рамки у кольца нет, фон непрозрачный
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    const q = rad.getBoundingClientRect();
+    const bg = getComputedStyle(rad, '::before');
+    const after = getComputedStyle(rad, '::after');
+    const kill = rad.querySelector('.radial-kill');
+    const alpha = (v) => {
+      const m = (v || '').match(/[0-9.]+/g);
+      return m && m.length > 3 ? +m[3] : 1;
+    };
+    return JSON.stringify({
+      opened: !rad.hidden,
+      killFound: !!kill,
+      ringAlpha: alpha(bg.backgroundColor),
+      ringBg: bg.backgroundColor,
+      // Рамки на внешнем краю нет: слой ::after убран вовсе
+      noEdgeLayer: after.content === 'none' || after.backgroundImage === 'none',
+      // Зона отмены осталась полупрозрачной
+      killAlpha: kill ? alpha(getComputedStyle(kill).backgroundColor) : -1,
+      ringSize: Math.round(q.width),
+    });
+  })()`));
+  t('фон кольца непрозрачный', r.opened === true && r.ringAlpha === 1, r.ringBg);
+  t('рамки по краю кольца нет', r.noEdgeLayer === true);
+  t('зона отмены полупрозрачная', r.killFound === true && r.killAlpha > 0
+    && r.killAlpha < 1, String(r.killAlpha));
+
   // 4. Подпись следует за выбором и ничего не обрезана
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
@@ -3637,7 +3700,6 @@ const SILENCE_CONFIRM = `(() => {
     out.opened = ringOpen();
     // отпускание в центре ничего не выбрало
     out.sel = selNow();
-    out.dragAtEnd = M.radialDragState();
     out.err = window.__err;
     out.ringLog = (window.__ringLog || []).join(' | ');
     out.mode = M.active().mode;
@@ -3767,9 +3829,7 @@ const SILENCE_CONFIRM = `(() => {
     window.addEventListener('error', (ev) => {
       window.__err = (ev.message || '') + ' @ ' + (ev.filename || '') + ':' + (ev.lineno || '');
     }, { once: true });
-    out.dragBeforeUp = M.radialDragState();
     right(document, pen[0], pen[1], 'mouseup');
-    out.dragAfterUp = M.radialDragState();
     document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
       clientX: pen[0], clientY: pen[1] }));
     await new Promise(r2 => setTimeout(r2, 600));
@@ -3777,8 +3837,6 @@ const SILENCE_CONFIRM = `(() => {
     out.closed = !ringOpen();
     out.rings = document.querySelectorAll('#radial .radial-sector').length;
     out.hidden = document.getElementById('radial').hidden;
-    out.flag = M.radialFlag();
-    out.drag = !!M.radialDragging();
     out.path = M.active().path;
     out.modal = !!document.querySelector('.modal-back');
     out.modeBefore = beforeMode;
@@ -3794,9 +3852,7 @@ const SILENCE_CONFIRM = `(() => {
   t('у выбранного значка подпись видна', r.tipShown === true && /Правка/.test(r.tipText),
     r.tipText);
   t('отпускание выбрало действие', r.mode === 'edit',
-    JSON.stringify({ mode: r.mode, flag: r.flag, drag: r.drag, hidden: r.hidden,
-      beforeUp: JSON.stringify(r.dragBeforeUp), afterUp: JSON.stringify(r.dragAfterUp),
-      atEnd: JSON.stringify(r.dragAtEnd), err: r.err, log: r.ringLog }));
+    'режим ' + r.mode + ', кольцо скрыто: ' + r.hidden + ', секторов ' + r.rings);
   // Регресс, о котором сообщили: после отпускания кольцо открывалось заново,
   // потому что следом приходил contextmenu и открывал второе кольцо.
   t('после отпускания кольцо закрыто и не открылось заново',
