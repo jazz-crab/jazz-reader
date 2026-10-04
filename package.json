@@ -1,6 +1,6 @@
 {
   "name": "mdview-desktop",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "MDView — офлайн-читалка Markdown (порт github.com/jazz-crab/jazz-reader) с поддержкой LaTeX/KaTeX",
   "main": "main.js",
   "author": "jc",
