@@ -824,7 +824,10 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('«Настройки» открывают модальное окно', r.shown === true);
-  t('в настройках 3 поля', r.rows === 3, JSON.stringify(r.labels));
+  // Полей стало четыре: добавился переключатель режима кольца.
+  t('в настройках 4 поля', r.rows === 4, JSON.stringify(r.labels));
+  t('в настройках есть режим кольца',
+    (r.labels || []).some((x) => /Кольцо/.test(x)), JSON.stringify(r.labels));
   t('есть «Размер текста»', (r.labels || []).some((l) => /Размер текста/.test(l)), JSON.stringify(r.labels));
   t('есть «Ширина колонки»', (r.labels || []).some((l) => /Ширина колонки/.test(l)));
   t('есть «Автосохранение»', (r.labels || []).some((l) => /Автосохранение/.test(l)));
@@ -3444,6 +3447,241 @@ const SILENCE_CONFIRM = `(() => {
   fs.rmSync(undoFile, { force: true });
   await js(`(async () => {
     const M = window.__mdvTest;
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    return 1;
+  })()`);
+
+  // --------------------------------------- кольцо: два режима, зажать и вести
+  console.log('\n== кольцо: два режима ==');
+
+  // Заметка нужна: без открытого файла кольцо состоит из одной кнопки
+  // «открыть файл», и проверять было бы нечего.
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])},
+      { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    return 1;
+  })()`);
+
+  // Общий кусок синтетического жеста: нажатие правой кнопкой, ведение и
+  // отпускание. Настоящий CDP-ввод тут не годится — нужно проверить само
+  // решение кольца, а не то, как Electron доставляет события.
+  const GESTURE = `
+    const right = (target, x, y, type) => target.dispatchEvent(new MouseEvent(type, {
+      bubbles: true, cancelable: true, clientX: Math.round(x), clientY: Math.round(y), button: 2,
+    }));
+    const ringOpen = () => {
+      const r = document.getElementById('radial');
+      return !r.hidden && r.classList.contains('on');
+    };
+    const centre = () => {
+      const r = document.getElementById('radial').getBoundingClientRect();
+      return [Math.round(r.left), Math.round(r.top)];
+    };
+    const midOf = (act) => {
+      const b = document.querySelector('#radial [data-act="' + act + '"]').getBoundingClientRect();
+      return [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)];
+    };
+    const selNow = () => {
+      const s = document.querySelector('#radial .radial-btn.sel');
+      return s ? s.dataset.act : null;
+    };
+  `;
+
+  // 1. Режим по умолчанию — «ПКМ, потом ЛКМ»
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setRadialMode('click');
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true,
+      clientX: x, clientY: y, button: 2 }));
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x + 120, clientY: y, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    const out = { mode: M.radialMode(), openedByDrag: !document.getElementById('radial').hidden };
+    // обычный правый клик открывает кольцо
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: x, clientY: y }));
+    await new Promise(r2 => setTimeout(r2, 300));
+    out.openedByClick = !document.getElementById('radial').hidden;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    return JSON.stringify(out);
+  })()`));
+  t('режим по умолчанию — «ПКМ, потом ЛКМ»', r.mode === 'click', r.mode);
+  t('в этом режиме перетаскивание кольцо не открывает', r.openedByDrag === false);
+  t('правый клик открывает кольцо', r.openedByClick === true);
+
+  // 2. Режим «зажать и вести»: кольцо открывается само и выбирается мышью
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    M.setRadialMode('drag');
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    const out = {};
+
+    right(c, x, y, 'mousedown');
+    out.afterDown = ringOpen();
+    // чуть-чуть сдвинули — ещё не перетаскивание
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x + 5, clientY: y + 5, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.afterTinyMove = ringOpen();
+    // а вот это уже перетаскивание
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterDrag = ringOpen();
+    out.draggingClass = document.getElementById('radial').classList.contains('dragging');
+    out.selInCentre = selNow();
+
+    const pen = midOf('mode');
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: pen[0], clientY: pen[1], button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    out.selOnPencil = selNow();
+    const pb = document.querySelector('#radial [data-act="mode"]');
+    const cs = getComputedStyle(pb);
+    out.selTransform = cs.transform !== 'none';
+    out.selBorder = cs.borderTopColor;
+    out.tipShown = getComputedStyle(pb.querySelector('.rd-tip')).opacity === '1';
+
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, clientX: pen[0], clientY: pen[1], button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 500));
+    out.mode = M.active().mode;
+    out.closed = !ringOpen();
+    return JSON.stringify(out);
+  })()`));
+  t('при нажатии кольца ещё нет', r.afterDown === false);
+  t('малый сдвиг — ещё не перетаскивание', r.afterTinyMove === false);
+  t('перетаскивание открывает кольцо само', r.afterDrag === true);
+  t('кольцо помечено как перетаскиваемое', r.draggingClass === true);
+  t('в центре ничего не выбрано', r.selInCentre === null, String(r.selInCentre));
+  t('над карандашом выбран карандаш', r.selOnPencil === 'mode', String(r.selOnPencil));
+  t('выбранный значок увеличен', r.selTransform === true);
+  t('у выбранного значка подпись видна', r.tipShown === true);
+  t('отпускание выбрало действие', r.mode === 'edit', r.mode);
+  t('после отпускания кольцо закрыто', r.closed === true);
+
+  // 2a. «Сохранить» без изменений всё равно выводит в чтение.
+  // Раньше save() честно отвечал «Изменений нет» и выходил раньше, чем
+  // переводил заметку в просмотр, — человек оставался в редакторе.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.setRadialMode('click');
+    M.exitEdit(true);
+    await new Promise(r2 => setTimeout(r2, 500));
+    const before = M.active().mode;
+    M.enterEdit();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(b.left + b.width / 2), clientY: Math.round(b.top + 220) }));
+    await new Promise(r2 => setTimeout(r2, 350));
+    document.getElementById('radial').querySelector('[data-act="save"]').click();
+    await new Promise(r2 => setTimeout(r2, 600));
+    return JSON.stringify({ before, after: M.active().mode });
+  })()`));
+  t('выход без правок уводит в чтение', r.before === 'read', r.before);
+  t('«Сохранить» без правок выводит в чтение', r.after === 'read', r.after);
+
+  // 3. Отпускание в центре кольца — отмена
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    M.setRadialMode('drag');
+    M.exitEdit(true);
+    await new Promise(r2 => setTimeout(r2, 500));
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    right(c, x, y, 'mousedown');
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const mid = centre();
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, clientX: mid[0], clientY: mid[1], button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ closed: !ringOpen(), mode: M.active().mode });
+  })()`));
+  t('отпускание в центре кольца закрывает без действия',
+    r.closed === true && r.mode === 'read', r.mode);
+
+  // 4. Отпускание мимо кольца — тоже отмена
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    M.setRadialMode('drag');
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    right(c, x, y, 'mousedown');
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, clientX: 4, clientY: 4, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ closed: !ringOpen(), mode: M.active().mode });
+  })()`));
+  t('отпускание мимо кольца закрывает без действия',
+    r.closed === true && r.mode === 'read', r.mode);
+
+  // 5. Esc во время перетаскивания — отмена
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    M.setRadialMode('drag');
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    right(c, x, y, 'mousedown');
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const opened = ringOpen();
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true, cancelable: true }));
+    await new Promise(r2 => setTimeout(r2, 300));
+    return JSON.stringify({
+      opened, closed: !ringOpen(), dragging: !!M.radialDragging(), mode: M.active().mode,
+    });
+  })()`));
+  t('кольцо успело открыться', r.opened === true);
+  t('Esc во время перетаскивания закрывает кольцо',
+    r.closed === true && r.dragging === false);
+  t('Esc ничего не выбрал', r.mode === 'read', r.mode);
+
+  // 6. Простой правый клик в режиме «зажать и вести» всё равно открывает кольцо
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    M.setRadialMode('drag');
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    right(c, x, y, 'mousedown');
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, clientX: x, clientY: y, button: 2 }));
+    c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: x, clientY: y }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ opened: ringOpen() });
+  })()`));
+  t('правый клик без ведения всё равно открывает кольцо', r.opened === true);
+
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    M.setRadialMode('click');
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
     return 1;
   })()`);

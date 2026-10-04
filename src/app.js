@@ -2327,6 +2327,8 @@ const RADIAL_LAYOUT = [
 ];
 
 let radialOpen = false;
+/** Идёт ли «зажать и вести»: точка нажатия и признак, что кольцо уже открыто. */
+let radialDrag = null;
 
 /** Радиус кольца в пикселях: столько от центра кнопки. */
 const RADIAL_R = 78;
@@ -2407,7 +2409,10 @@ function radialAct(act) {
   if (act === 'open') { radialToMenu('open'); return; }
   closeRadial();
   if (act === 'mode') { toggleEditMode(); return; }
-  if (act === 'save') { save(); return; }
+  // Именно exitEdit(true), а не save(): кнопка в кольце — это «покинуть
+  // правку», и выйти надо даже когда сохранять нечего. Ctrl+S остаётся
+  // save(): там «Изменений нет» — правильный ответ, и выходить незачем.
+  if (act === 'save') { exitEdit(true); return; }
   if (act === 'cancel') { exitEdit(false); return; }
   if (act === 'copy' || act === 'cut' || act === 'paste') { radialClipboard(act); return; }
 }
@@ -2470,6 +2475,37 @@ function radialToMenu(which) {
   }
 }
 
+/* ------------------------------------------------ режим «зажать и вести»
+
+ * Второй режим кольца: правую кнопку не отпускают, а ведут к нужному
+ * значку и отпускают над ним. Выбор происходит по наведению, поэтому
+ * выбранный значок подсвечивается сразу — иначе при быстром движении не
+ * видно, что именно сейчас выбрано.
+ *
+ * Порог в DRAG_PX нужен, чтобы обычный правый клик без перемещения (он и в
+ * этом режиме должен открывать кольцо) не считался перетаскиванием.
+ *
+ * Отпускание в центре кольца и вне его — отмена: выбирать там нечего, и
+ * закрытие честнее, чем срабатывание наугад.
+ */
+const DRAG_PX = 14;
+
+/** Значок под точкой (x, y) или null. Подсветку обновляем на месте. */
+function radialPick(x, y) {
+  const btns = el.radial.querySelectorAll('.radial-btn');
+  let hit = null;
+  for (const b of btns) {
+    const r = b.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) { hit = b; break; }
+  }
+  for (const b of btns) b.classList.toggle('sel', b === hit);
+  return hit;
+}
+
+function radialClearPick() {
+  for (const b of el.radial.querySelectorAll('.radial-btn')) b.classList.remove('sel');
+}
+
 function openRadial(x, y) {
   if (!el.radial) return;
   buildRadial();
@@ -2489,8 +2525,11 @@ function openRadial(x, y) {
 function closeRadial() {
   if (!el.radial) return;
   el.radial.classList.remove('on');
+  el.radial.classList.remove('dragging');
+  radialClearPick();
   el.radial.hidden = true;
   radialOpen = false;
+  radialDrag = null;
 }
 
 // ------------------------------------------------------- временный файл / папка
@@ -2716,6 +2755,9 @@ const SETTINGS_DEFAULT = {
   zoom: 1,
   columnWidth: 900,
   autosave: false,
+  // Как открывается круговое меню: 'click' — правый клик, потом левый;
+  // 'drag' — зажать правую кнопку, вести к нужному значку и отпустить.
+  radialMode: 'click',
 };
 
 // updateZoom считает размер от 15px при 100%. Настройка «Размер текста»
@@ -2869,6 +2911,27 @@ function settingsDialog() {
   syncWidth();
   addCard('Ширина колонки', widthOut, 'Узкая колонка читается спокойнее.').addControl(width);
 
+  // Режим кольца. Настоящий <input type=checkbox> прячем, а рисуем
+  // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
+  //
+  // Слева — «ПКМ, потом ЛКМ», справа — «зажать ПКМ и вести». Подпись
+  // переключателя читается слева направо и совпадает с порядком: включён
+  // тумблер — работает правая подпись.
+  const dragIn = document.createElement('input');
+  dragIn.type = 'checkbox';
+  dragIn.className = 'set-switch-input';
+  dragIn.checked = next.radialMode === 'drag';
+  const drag = document.createElement('label');
+  drag.className = 'set-switch';
+  const dragKnob = document.createElement('span');
+  dragKnob.className = 'knob';
+  drag.append(dragIn, dragKnob);
+  dragIn.onchange = () => previewSettings({ radialMode: dragIn.checked ? 'drag' : 'click' });
+  addCard('Кольцо: ПКМ → ЛКМ', null,
+    'Выключено — правый клик открывает кольцо, потом выбираешь левой кнопкой. '
+    + 'Включено — держишь правую кнопку, ведёшь к значку и отпускаешь: '
+    + 'кольцо открывается само и выбранный значок подсвечивается.').addControl(drag);
+
   // Автосохранение. Настоящий <input type=checkbox> прячем, а рисуем
   // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
   const autoIn = document.createElement('input');
@@ -2904,6 +2967,7 @@ function settingsDialog() {
     font.value = String(zoomToPx(d.zoom));
     width.value = String(d.columnWidth);
     autoIn.checked = d.autosave;
+    dragIn.checked = d.radialMode === 'drag';
     syncFont();
     syncWidth();
     previewSettings(Object.assign({}, d));
@@ -2916,6 +2980,7 @@ function settingsDialog() {
       zoom: pxToZoom(+font.value),
       columnWidth: +width.value,
       autosave: autoIn.checked,
+      radialMode: dragIn.checked ? 'drag' : 'click',
     };
     currentSettings = val;
     applySettings(val);
@@ -2955,6 +3020,23 @@ el.btnForward.onclick = () => go(1);
 el.toTop.onclick = () => el.content.scrollTo({ top: 0, behavior: 'smooth' });
 
 /** Выйти из правки с явным решением: сохранить или отменить. */
+/*
+ * Выйти из правки в чтение.
+ *
+ * Отдельная функция потому, что save() выходит раньше, если изменений не
+ * было: он честно говорит «Изменений нет» и файл не пишет. Но выйти из
+ * правки всё равно надо — иначе «Сохранить» без правок оставлял человека в
+ * редакторе, и кольцо не помогало: нажать было не на что.
+ */
+function endEdit(t) {
+  if (!t || t.mode !== 'edit') return;
+  t.mode = 'read';
+  t.dirty = false;
+  t.html = null;
+  renderTabs();
+  renderActive();
+}
+
 async function exitEdit(saveIt) {
   const t = active();
   if (!t || !t.path || t.mode !== 'edit') return;
@@ -2966,10 +3048,7 @@ async function exitEdit(saveIt) {
     await save();
     // save() намеренно оставляет правку включённой (Ctrl+S не должен
     // выбрасывать в чтение), а тут мы именно выходим — доводим до конца.
-    t.mode = 'read';
-    t.html = null;
-    renderTabs();
-    renderActive();
+    endEdit(t);
     status('Автосохранено: ' + t.name, 'ok');
     return;
   }
@@ -2999,12 +3078,14 @@ async function exitEdit(saveIt) {
     if (answer === null) return;
     if (answer === true) {
       await save();
+      endEdit(t);
       return;
     }
   }
 
   if (saveIt) {
     await save();
+    endEdit(t);
     return;
   }
 
@@ -3188,6 +3269,60 @@ function revealFile() {
  * Своё preventDefault здесь обязателен: иначе поверх кольца появится ещё и
  * системное меню Chromium, и два меню окажутся на одном месте.
  */
+/*
+ * Режим «зажать и вести»: правую кнопку не отпускают, а ведут к значку.
+ * Слушаем на заметке и на поле правки, но не на всей рабочей области: правый
+ * клик мимо текста — это всё ещё привычное «контекстное меню вкладки».
+ */
+function radialDown(e) {
+  if (e.button !== 2) return;
+  if (currentSettings.radialMode !== 'drag') return;
+  if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
+  // Гасим и стандартное выделение мышью, и системное меню: и то и другое
+  // мешает вести курсор по кольцу.
+  e.preventDefault();
+  radialDrag = { x: e.clientX, y: e.clientY, opened: false };
+}
+
+function radialMove(e) {
+  if (!radialDrag) return;
+  const far = Math.abs(e.clientX - radialDrag.x) > DRAG_PX
+    || Math.abs(e.clientY - radialDrag.y) > DRAG_PX;
+  if (!far && !radialDrag.opened) return;
+  if (!radialDrag.opened) {
+    radialDrag.opened = true;
+    openRadial(radialDrag.x, radialDrag.y);
+    el.radial.classList.add('dragging');
+    // Chromium открывает системное меню сразу после отпускания. Оно
+    // появилось бы поверх кольца, поэтому гасим один раз.
+    const kill = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+    document.addEventListener('contextmenu', kill, true);
+    setTimeout(() => document.removeEventListener('contextmenu', kill, true), 400);
+  }
+  radialPick(e.clientX, e.clientY);
+}
+
+function radialUp(e) {
+  if (!radialDrag) return;
+  const d = radialDrag;
+  radialDrag = null;
+  // Просто правый клик без перемещения кольцо не открывал: его откроет
+  // contextmenu, пришедший следом.
+  if (!d.opened) return;
+  const hit = radialPick(e.clientX, e.clientY);
+  if (hit) {
+    closeRadial();
+    radialAct(hit.dataset.act);
+  } else {
+    // Отпустили в центре или мимо кольца — выбора нет, значит закрытие.
+    closeRadial();
+  }
+}
+
+el.content.addEventListener('mousedown', radialDown);
+el.editor.addEventListener('mousedown', radialDown);
+document.addEventListener('mousemove', radialMove);
+document.addEventListener('mouseup', radialUp);
 el.content.addEventListener('contextmenu', (e) => {
   if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
   e.preventDefault();
@@ -3210,7 +3345,8 @@ document.addEventListener('mousedown', (e) => {
   closeRadial();
 }, true);
 document.addEventListener('keydown', (e) => {
-  if (radialOpen && e.key === 'Escape') { e.stopPropagation(); closeRadial(); }
+  if (e.key !== 'Escape') return;
+  if (radialOpen || radialDrag) { e.stopPropagation(); closeRadial(); }
 }, true);
 el.content.addEventListener('wheel', () => closeRadial(), { passive: true });
 el.editor.addEventListener('wheel', () => closeRadial(), { passive: true });
@@ -3539,6 +3675,8 @@ window.__mdvTest = {
   zoom: () => zoom,
   setZoom,
   enterEdit: toggleEditMode, exitEdit, save, saveTab, undoEdit, redoEdit, resetUndo,
+  radialPick, radialDragging: () => radialDrag,
+  setRadialMode: (m) => previewSettings({ radialMode: m }), radialMode: () => currentSettings.radialMode,
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); },
   settings: () => currentSettings,
