@@ -84,7 +84,10 @@ function captionButtonWidth(win) {
 let logPath = null;
 let fatalShown = false;
 /** Захваченные системные хоткеи (см. registerTabShortcuts). */
-const shortcuts = [];
+// let, а не const: releaseTabShortcuts() присваивает ему пустой массив, и
+// на const приложение падало с «Assignment to constant variable» прямо в
+// will-quit — то есть вместо закрытия на экране появлялось окно ошибки.
+let shortcuts = [];
 
 function resolveLogPath() {
   // Portable: рядом с .exe. Установленная: Program Files не writable — берём userData.
