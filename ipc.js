@@ -353,11 +353,30 @@ function register() {
   // Значения по умолчанию дублируются в renderer (applySettings): он знает,
   // что означает каждое поле, и применяет их сам.
   ipcMain.handle('mdv:settingsGet', () => readStore('settings.json', {}));
-  ipcMain.handle('mdv:settingsSet', async (_e, patch) => {
-    const cur = await readStore('settings.json', {});
-    const next = Object.assign({}, cur, patch || {});
-    await writeStore('settings.json', next);
-    return next;
+
+  /*
+   * Записи настроек выстраиваются в очередь.
+   *
+   * Настройки пишутся на каждое движение ползунка, то есть десятки раз в
+   * секунду. Каждая запись — чтение, объединение, запись, и без очереди эти
+   * циклы накладывались: файл успевал переписаться наполовину, и следующее
+   * чтение видело битый JSON, а readStore молча отдавал пустой объект. Со
+   * стороны это выглядело как «настройки не сохранились».
+   */
+  let settingsChain = Promise.resolve();
+  ipcMain.handle('mdv:settingsSet', (_e, patch) => {
+    settingsChain = settingsChain.then(async () => {
+      const cur = await readStore('settings.json', {});
+      const next = Object.assign({}, cur, patch || {});
+      await writeStore('settings.json', next);
+      return next;
+    }).catch((e) => {
+      // Ошибку одной записи не даём уронить очередь: иначе все следующие
+      // настройки молча перестали бы сохраняться.
+      console.error('settingsSet:', e && e.message);
+      return null;
+    });
+    return settingsChain;
   });
 
   /*

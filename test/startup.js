@@ -256,7 +256,14 @@ function evaluate(wsUrl, expression) {
         ml: s.marginLeft,
       };
     });
-    return { contentW: c.clientWidth, rows };
+    // Ширина колонки берётся из настройки, а не из дефолта: проверка живёт
+    // на настоящем settings.json, где у человека может стоять своё значение.
+    return {
+      contentW: c.clientWidth,
+      rows,
+      colW: parseFloat(getComputedStyle(document.documentElement)
+        .getPropertyValue('--content-max-width')) || 0,
+    };
   })())`));
   client.close();
 
@@ -268,8 +275,12 @@ function evaluate(wsUrl, expression) {
 
   const wide = layout.rows.filter((r) => r.w > 0);
   const maxW = wide.length ? Math.max(...wide.map((r) => r.w)) : 0;
-  t('колонка чтения ограничена по ширине (max-width работает)', maxW <= 900,
-    'максимальная ширина блока: ' + maxW + 'px');
+  // Проверяем сам инвариант «блоки не шире заданной колонки», а не дефолтное
+  // число: настройка ширины колонки принадлежит пользователю, и проверка
+  // падала всякий раз, когда он её менял.
+  t('колонка чтения ограничена по ширине (max-width работает)',
+    layout.colW > 0 && maxW <= layout.colW,
+    'блок ' + maxW + 'px, колонка ' + layout.colW + 'px');
 
   // Главное: окно не просто существует, а видимо. show:false + регресс
   // titleBarOverlay как раз давали «процесс жив, окна нет».

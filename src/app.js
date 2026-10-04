@@ -2763,9 +2763,6 @@ const SETTINGS_DEFAULT = {
   zoom: 1,
   columnWidth: 900,
   autosave: false,
-  // Как открывается круговое меню: 'click' — правый клик, потом левый;
-  // 'drag' — зажать правую кнопку, вести к нужному значку и отпустить.
-  radialMode: 'click',
 };
 
 // updateZoom считает размер от 15px при 100%. Настройка «Размер текста»
@@ -2922,27 +2919,6 @@ function settingsDialog() {
   syncWidth();
   addCard('Ширина колонки', widthOut, 'Узкая колонка читается спокойнее.').addControl(width);
 
-  // Режим кольца. Настоящий <input type=checkbox> прячем, а рисуем
-  // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
-  //
-  // Слева — «ПКМ, потом ЛКМ», справа — «зажать ПКМ и вести». Подпись
-  // переключателя читается слева направо и совпадает с порядком: включён
-  // тумблер — работает правая подпись.
-  const dragIn = document.createElement('input');
-  dragIn.type = 'checkbox';
-  dragIn.className = 'set-switch-input';
-  dragIn.checked = next.radialMode === 'drag';
-  const drag = document.createElement('label');
-  drag.className = 'set-switch';
-  const dragKnob = document.createElement('span');
-  dragKnob.className = 'knob';
-  drag.append(dragIn, dragKnob);
-  dragIn.onchange = () => previewSettings({ radialMode: dragIn.checked ? 'drag' : 'click' });
-  addCard('Кольцо: ПКМ → ЛКМ', null,
-    'Выключено — правый клик открывает кольцо, потом выбираешь левой кнопкой. '
-    + 'Включено — держишь правую кнопку, ведёшь к значку и отпускаешь: '
-    + 'кольцо открывается само и выбранный значок подсвечивается.').addControl(drag);
-
   // Автосохранение. Настоящий <input type=checkbox> прячем, а рисуем
   // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
   const autoIn = document.createElement('input');
@@ -2977,7 +2953,6 @@ function settingsDialog() {
     font.value = String(zoomToPx(d.zoom));
     width.value = String(d.columnWidth);
     autoIn.checked = d.autosave;
-    dragIn.checked = d.radialMode === 'drag';
     syncFont();
     syncWidth();
     previewSettings(Object.assign({}, currentSettings, d));
@@ -2993,7 +2968,6 @@ function settingsDialog() {
       zoom: pxToZoom(+font.value),
       columnWidth: +width.value,
       autosave: autoIn.checked,
-      radialMode: dragIn.checked ? 'drag' : 'click',
     });
     closeModal(false);
   };
@@ -3290,35 +3264,48 @@ function revealFile() {
  * системное меню Chromium, и два меню окажутся на одном месте.
  */
 /*
- * Режим «зажать и вести»: правую кнопку не отпускают, а ведут к значку.
- * Слушаем на заметке и на поле правки, но не на всей рабочей области: правый
- * клик мимо текста — это всё ещё привычное «контекстное меню вкладки».
+ * Правый клик в заметке: кольцо без переключателя, режим определяется самим
+ * жестом.
+ *
+ * Решает не настройка, а то, что человек сделал с кнопкой:
+ *   ПКМ → открыть меню, ЛКМ → выбрать действие;
+ *   зажать ПКМ → открыть меню, отпустить ПКМ → выбрать действие.
+ *
+ * Порядок событий в Chromium на Windows для правой кнопки:
+ *   mousedown → contextmenu → mouseup.
+ * Поэтому решение принимается на mouseup, а не на contextmenu:
+ *   - если курсор за это время отошёл дальше DRAG_PX, человек ВЁЛ кольцо —
+ *     выбираем тем, над чем отпустил;
+ *   - если не двигался — это обычный правый клик, открываем кольцо и ждём
+ *     левой кнопки.
+ *
+ * Почему не так, как было: кольцо открывалось прямо в обработчике
+ * contextmenu, то есть сразу при нажатии. Тогда «зажать и вести» работало
+ * через запоздалый mouseup, а после действия кольцо открывалось заново —
+ * contextmenu приходил следом и открывал второе кольцо поверх закрытого.
+ * Теперь contextmenu на заметке просто подавлен, и кольцо появляется
+ * ровно одно и только по решению mouseup.
  */
 function radialDown(e) {
   if (e.button !== 2) return;
-  if (currentSettings.radialMode !== 'drag') return;
   if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
-  // Гасим и стандартное выделение мышью, и системное меню: и то и другое
-  // мешает вести курсор по кольцу.
+  // Гасим стандартное выделение мышью: пока человек ведёт курсор к кольцу,
+  // он не должен выделять текст под ним.
   e.preventDefault();
   radialDrag = { x: e.clientX, y: e.clientY, opened: false };
 }
 
 function radialMove(e) {
-  if (!radialDrag) return;
+  if (!radialDrag || radialDrag.opened) {
+    if (radialDrag && radialDrag.opened) radialPick(e.clientX, e.clientY);
+    return;
+  }
   const far = Math.abs(e.clientX - radialDrag.x) > DRAG_PX
     || Math.abs(e.clientY - radialDrag.y) > DRAG_PX;
-  if (!far && !radialDrag.opened) return;
-  if (!radialDrag.opened) {
-    radialDrag.opened = true;
-    openRadial(radialDrag.x, radialDrag.y);
-    el.radial.classList.add('dragging');
-    // Chromium открывает системное меню сразу после отпускания. Оно
-    // появилось бы поверх кольца, поэтому гасим один раз.
-    const kill = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
-    document.addEventListener('contextmenu', kill, true);
-    setTimeout(() => document.removeEventListener('contextmenu', kill, true), 400);
-  }
+  if (!far) return;
+  radialDrag.opened = true;
+  openRadial(radialDrag.x, radialDrag.y);
+  el.radial.classList.add('dragging');
   radialPick(e.clientX, e.clientY);
 }
 
@@ -3326,32 +3313,30 @@ function radialUp(e) {
   if (!radialDrag) return;
   const d = radialDrag;
   radialDrag = null;
-  // Просто правый клик без перемещения кольцо не открывал: его откроет
-  // contextmenu, пришедший следом.
-  if (!d.opened) return;
-  const hit = radialPick(e.clientX, e.clientY);
-  if (hit) {
-    closeRadial();
-    radialAct(hit.dataset.act);
-  } else {
-    // Отпустили в центре или мимо кольца — выбора нет, значит закрытие.
-    closeRadial();
+  // Отпустили в центре кольца или мимо него: выбора нет, значит закрытие.
+  if (!d.opened) {
+    openRadial(d.x, d.y);
+    return;
   }
+  const hit = radialPick(e.clientX, e.clientY);
+  closeRadial();
+  if (hit) radialAct(hit.dataset.act);
 }
 
 el.content.addEventListener('mousedown', radialDown);
 el.editor.addEventListener('mousedown', radialDown);
 document.addEventListener('mousemove', radialMove);
 document.addEventListener('mouseup', radialUp);
+/*
+ * Системное меню на заметке подавлено: решение о кольце принимает radialUp.
+ * Здесь только preventDefault — иначе поверх кольца появилось бы ещё и меню
+ * Chromium.
+ */
 el.content.addEventListener('contextmenu', (e) => {
   if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
   e.preventDefault();
-  openRadial(e.clientX, e.clientY);
 });
-el.editor.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  openRadial(e.clientX, e.clientY);
-});
+el.editor.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /*
  * Закрытие кольца: клик мимо, Esc, прокрутка (оно привязано к точке клика, и
@@ -3696,7 +3681,26 @@ window.__mdvTest = {
   setZoom,
   enterEdit: toggleEditMode, exitEdit, save, saveTab, undoEdit, redoEdit, resetUndo,
   radialPick, radialDragging: () => radialDrag,
-  setRadialMode: (m) => previewSettings({ radialMode: m }), radialMode: () => currentSettings.radialMode,
+  /*
+   * Настоящий правый клик для проверок кольца.
+   *
+   * Кольцо открывается по решению mouseup, а не по событию contextmenu,
+   * поэтому проверка обязана слать весь жест: mousedown → mouseup →
+   * contextmenu, ровно как Chromium. Одного contextmenu мало — он теперь
+   * только подавляет системное меню.
+   */
+  openRingIn: (elId, x, y) => {
+    const target = document.getElementById(elId);
+    if (!target) return Promise.resolve(false);
+    for (const type of ['mousedown', 'mouseup', 'contextmenu']) {
+      target.dispatchEvent(new MouseEvent(type, {
+        bubbles: true, cancelable: true, clientX: Math.round(x), clientY: Math.round(y),
+        button: type === 'contextmenu' ? 0 : 2,
+      }));
+    }
+    return new Promise((r) => setTimeout(r, 60));
+  },
+
   settings: () => currentSettings, previewSettings, settingsDialog,
   /* Что реально лежит в settings.json: проверка «сохранилось ли». */
   savedSettings: () => api.settingsGet().catch(() => null),
