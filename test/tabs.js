@@ -3277,6 +3277,177 @@ const SILENCE_CONFIRM = `(() => {
   t('клик по центру кольца закрывает его', r.opened === true && r.afterCentreClick === true);
   t('после этого кольцо открывается снова', r.reopened === true);
 
+  // --------------------------------------------------- отмена и повтор
+  console.log('\n== отмена и повтор ==');
+
+  const undoFile = path.join(tabsDir, 'undo.md');
+  fs.writeFileSync(undoFile, '# Отмена\n\nпервая\n\nвторая\n', 'utf8');
+
+  // Печатаем в поле по-настоящему: событие input с корректным inputType.
+  // Иначе склейка шагов и история проверялись бы вхолостую.
+
+  // 1. Ctrl+Z отменяет правку
+  let u1;
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR.replace(/\\/g, '/'))};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/undo.md', { newTab: true });
+    await new Promise(r3 => setTimeout(r3, 600));
+    M.enterEdit();
+    await new Promise(r3 => setTimeout(r3, 300));
+    const ed = document.getElementById('editor');
+    const before = ed.value;
+    ed.focus();
+    ed.setSelectionRange(ed.value.length, ed.value.length);
+    await new Promise(r3 => setTimeout(r3, 800));
+    ed.value = ed.value + '\\n\\nтретья';
+    ed.dispatchEvent(new InputEvent('input', {
+      bubbles: true, inputType: 'insertText', data: '\\n\\nтретья' }));
+    await new Promise(r3 => setTimeout(r3, 150));
+    return JSON.stringify({
+      before, typed: ed.value, dirtyAfterType: M.active().dirty,
+      undoLen: M.active().undo.length,
+    });
+  })()`));
+  // Текст ДО и ПОСЛЕ набора нужен обеим следующим пробам, поэтому держим его
+  // в отдельных константах: u1 перезаписывается каждой пробой.
+  const uBefore = u1.before;
+  const uTyped = u1.typed;
+  t('в правке отменять есть что', u1.undoLen >= 1, String(u1.undoLen));
+  t('правка помечает вкладку', u1.dirtyAfterType === true);
+
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r3 => setTimeout(r3, 250));
+    const ed = document.getElementById('editor');
+    return JSON.stringify({
+      v: ed.value, dirty: M.active().dirty,
+      redoLen: M.active().redo.length, undoLen: M.active().undo.length,
+    });
+  })()`));
+  t('Ctrl+Z вернул исходный текст', u1.v === uBefore,
+    'длина ' + u1.v.length + ' против ' + uBefore.length);
+  t('Ctrl+Z снял флаг правок', u1.dirty === false);
+  t('после отмены есть что повторить', u1.redoLen >= 1, String(u1.redoLen));
+
+  // 2. Ctrl+Y возвращает
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'y', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r3 => setTimeout(r3, 250));
+    const ed = document.getElementById('editor');
+    const a = { v: ed.value, dirty: M.active().dirty, redoLeft: M.active().redo.length };
+    // и Ctrl+Shift+Z — то же самое
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'z', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r3 => setTimeout(r3, 250));
+    return JSON.stringify(Object.assign(a, {
+      afterShift: document.getElementById('editor').value,
+      dirty2: M.active().dirty,
+    }));
+  })()`));
+  t('Ctrl+Y вернул правку', u1.v === uTyped && u1.dirty === true,
+    'длина ' + u1.v.length + ' против ' + uTyped.length);
+  t('Ctrl+Shift+Z тоже повторяет',
+    u1.afterShift === uTyped && u1.dirty2 === true,
+    'длина ' + u1.afterShift.length + ' против ' + uTyped.length);
+
+  // 3. Правка после отмены стирает redo
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r3 => setTimeout(r3, 200));
+    const ed = document.getElementById('editor');
+    ed.focus();
+    ed.setSelectionRange(ed.value.length, ed.value.length);
+    await new Promise(r3 => setTimeout(r3, 800));
+    ed.value = ed.value + '!';
+    ed.dispatchEvent(new InputEvent('input', {
+      bubbles: true, inputType: 'insertText', data: '!' }));
+    await new Promise(r3 => setTimeout(r3, 150));
+    return JSON.stringify({ redo: M.active().redo.length, v: ed.value });
+  })()`));
+  t('новая правка стирает повтор', u1.redo === 0, String(u1.redo));
+
+  // 4. Отмена в началу говорит об этом
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.resetUndo(M.active());
+    M.active().undoTag = '';
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r3 => setTimeout(r3, 200));
+    return JSON.stringify({
+      text: document.getElementById('statusText').textContent,
+    });
+  })()`));
+  t('отменять в пустоте не молчит', /Отменять нечего/.test(u1.text), u1.text);
+
+  // 5. В просмотре Ctrl+Z не съедается и не ломает текст
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    M.exitEdit(true);
+    await new Promise(r3 => setTimeout(r3, 500));
+    const ed = document.getElementById('editor');
+    const saved = ed.value;
+    const ev = new KeyboardEvent('keydown', {
+      key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    await new Promise(r3 => setTimeout(r3, 200));
+    return JSON.stringify({
+      mode: M.active().mode,
+      untouched: ed.value === saved,
+      notPrevented: !ev.defaultPrevented,
+    });
+  })()`));
+  t('в просмотре Ctrl+Z не мешает', u1.mode === 'read' && u1.untouched === true);
+  t('в просмотре Ctrl+Z не перехватывается', u1.notPrevented === true);
+
+  // 6. Набор текста — один шаг, а не по букве
+  u1 = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR.replace(/\\/g, '/'))};
+    await M.openPath(D + '/undo.md', { newTab: true });
+    await new Promise(r3 => setTimeout(r3, 500));
+    M.enterEdit();
+    await new Promise(r3 => setTimeout(r3, 300));
+    const ed = document.getElementById('editor');
+    const before = ed.value;
+    M.resetUndo(M.active());
+    ed.focus();
+    ed.setSelectionRange(ed.value.length, ed.value.length);
+    await new Promise(r3 => setTimeout(r3, 800));
+    ed.value = ed.value + 'привет';
+    // пять букв — пять событий, как от настоящей клавиатуры
+    for (let i = 0; i < 5; i += 1) {
+      ed.value = before + 'привет'.slice(0, i + 1);
+      ed.dispatchEvent(new InputEvent('input', {
+        bubbles: true, inputType: 'insertText', data: 'привет'[i] }));
+    }
+    await new Promise(r3 => setTimeout(r3, 150));
+    const steps = M.active().undo.length;
+    M.undoEdit();
+    await new Promise(r3 => setTimeout(r3, 200));
+    return JSON.stringify({
+      steps, after: document.getElementById('editor').value, before,
+    });
+  })()`));
+  t('набор текста — один шаг, а не пять', u1.steps === 1, String(u1.steps));
+  t('отмена набора убирает всё слово', u1.after === u1.before,
+    'длина ' + u1.after.length + ' против ' + u1.before.length);
+
+  fs.rmSync(undoFile, { force: true });
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    return 1;
+  })()`);
+
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
   // через IPC. Отмену тоже проверяем — файл должен остаться на месте.

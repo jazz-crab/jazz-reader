@@ -1447,7 +1447,16 @@ function renderActive() {
   // в памяти: их можно было потерять молча, ничего не спрашивая.
 
   if (editing) {
-    el.editor.value = t.raw;
+    // Присваиваем только если текст действительно другой: любая перерисовка
+    // заметки перезаписывала бы поле и обнуляла историю отмены.
+    if (el.editor.value !== t.raw) {
+      el.editor.value = t.raw;
+      resetUndo(t);
+    }
+    // Точка отсчёта истории — текст, который в поле СЕЙЧАС. Задавать её надо
+    // здесь: если отложить до первого нажатия, «до правки» окажется уже
+    // исправленным текстом и отменять будет нечего.
+    t.undoLast = t.raw;
   } else {
     if (t.html === null) {
       try {
@@ -1827,6 +1836,7 @@ function toggleEditMode() {
   if (t.mode === 'edit') return;
   t.mode = 'edit';
   renderActive();
+  resetUndo(t);
   el.editor.focus();
 }
 
@@ -3008,11 +3018,138 @@ async function exitEdit(saveIt) {
   status('Правки отменены', 'warn');
 }
 
-el.editor.addEventListener('input', () => {
+/* ------------------------------------------------------- отмена и повтор
+
+ * Своя история, а не Ctrl+Z самого браузера.
+ *
+ * Встроенная отмена работает с полем, значение которого никто не трогает
+ * извне. Здесь значение поля переписывается при переходах между вкладками и
+ * при выходе из правки, и этого достаточно, чтобы история Chromium
+ * обнулялась: Ctrl+Z не делал ничего, и человек справедливо считал кнопку
+ * сломанной.
+ *
+ * История живёт в вкладке (t.undo/t.redo), а не глобально: переключение
+ * вкладок не должно путать правки разных заметок.
+ *
+ * Шаги склеиваются. Набор текста даёт по событию на букву, и Ctrl+Z,
+ * отменяющий одну букву, бесполезен. Поэтому подряд идущие правки одного
+ * рода (тот же inputType, без паузы) записываются как один шаг.
+ *
+ * Шаг хранит текст ДО правки, поэтому отмена — это просто возврат
+ * предыдущего значения; redo-стек при этом пополняется текущим текстом.
+ */
+const UNDO_COALESCE_MS = 700;
+const UNDO_MAX = 300;
+
+function undoState(t) {
+  if (!t) return null;
+  if (!t.undo) t.undo = [];
+  if (!t.redo) t.redo = [];
+  return t;
+}
+
+/**
+ * Запомнить состояние перед правкой.
+ *
+ * @param {object} t   вкладка
+ * @param {string} tag вид правки; одинаковые подряд склеиваются в один шаг
+ */
+function pushUndo(t, tag) {
+  if (!t || t.mode !== 'edit') return;
+  const now = Date.now();
+  if (t.undoLast === undefined) t.undoLast = el.editor.value;  // страховка
+  const merge = t.undoTag === tag && now - t.undoAt < UNDO_COALESCE_MS;
+  if (!merge && t.undoLast !== el.editor.value) {
+    t.undo.push(t.undoLast);
+    if (t.undo.length > UNDO_MAX) t.undo.shift();
+  }
+  t.redo.length = 0;
+  t.undoTag = tag;
+  t.undoAt = now;
+  t.undoLast = el.editor.value;
+}
+
+/** Войти в правку с чистой историей: отменять нечего, правок ещё не было.
+ *  Точка отсчёта — то, что сейчас в поле: первый же шаг должен знать, к
+ *  чему возвращаться. */
+function resetUndo(t) {
+  if (!t) return;
+  t.undo = [];
+  t.redo = [];
+  t.undoTag = '';
+  t.undoAt = 0;
+  t.undoPaste = '';
+  t.undoLast = el.editor.value;
+}
+
+function applyEditorText(text) {
+  const t = active();
+  if (!t) return;
+  const ed = el.editor;
+  // Курсор на прежнее место, обрезанный по длине нового текста: иначе отмена
+  // прыгала бы в начало заметки и теряла позицию, от которой человек отменял.
+  const at = Math.min(ed.selectionStart || 0, text.length);
+  ed.value = text;
+  try { ed.setSelectionRange(at, at); } catch { /* поле могло быть скрыто */ }
+  t.raw = text;
+  t.undoLast = text;
+  t.dirty = text !== t._diskRaw;
+  renderTabs();
+  updateReadProgress();
+}
+
+function undoEdit() {
+  const t = undoState(active());
+  if (!t || t.mode !== 'edit') return;
+  if (!t.undo.length) { status('Отменять нечего', 'warn'); return; }
+  t.redo.push(el.editor.value);
+  applyEditorText(t.undo.pop());
+  t.undoTag = '';                 // следующий набор начнёт новый шаг
+  status('Отменено', 'ok');
+}
+
+function redoEdit() {
+  const t = undoState(active());
+  if (!t || t.mode !== 'edit') return;
+  if (!t.redo.length) { status('Повторять нечего', 'warn'); return; }
+  t.undo.push(el.editor.value);
+  applyEditorText(t.redo.pop());
+  t.undoTag = '';
+  status('Повторено', 'ok');
+}
+
+/*
+ * Вид правки для склейки шагов. «Вставить» — один шаг целиком, поэтому
+ * запоминаем вставленный кусок: пока он совпадает с хвостом текста,
+ * следующий input — продолжение той же вставки. Набор строки обратно
+ * склеивать не надо: это просто ввод текста.
+ */
+el.editor.addEventListener('paste', (e) => {
+  const t = undoState(active());
+  const cd = e.clipboardData || window.clipboardData;
+  const txt = cd && cd.getData ? cd.getData('text') : '';
+  if (t && txt) t.undoPaste = txt;
+});
+
+el.editor.addEventListener('input', (e) => {
   updateReadProgress();
   const t = active();
   if (!t) return;
-  t.dirty = el.editor.value !== t._diskRaw;
+  let tag = 'type';
+  const it = e.inputType || '';
+  if (t.undoPaste) {
+    tag = el.editor.value.endsWith(t.undoPaste) ? 'paste' : 'type';
+    t.undoPaste = '';
+  } else if (it === 'insertLineBreak' || it === 'insertParagraph') {
+    tag = 'newline';
+  } else if (it.indexOf('delete') === 0) {
+    tag = 'delete';
+  }
+  pushUndo(t, tag);
+  // t.raw обязан идти в ногу с полем: renderActive перерисовывает заметку и
+  // присваивает полю t.raw, а несвежий t.raw затирал бы напечатанное.
+  t.raw = el.editor.value;
+  t.dirty = t.raw !== t._diskRaw;
   renderTabs();
 });
 
@@ -3021,25 +3158,8 @@ el.btnZoomOut.onclick = () => setZoom(zoom - 0.1);
 
 
 
-/** Скопировать путь к открытой заметке. */
-function copyPath() {
-  const t = active();
-  if (!t || !t.path) return;
-  navigator.clipboard.writeText(t.path).then(
-    () => toast('Путь скопирован: ' + t.path),
-    () => status('Буфер обмена недоступен', 'err')
-  );
-}
-
-/** Показать заметку в проводнике Windows. */
-function revealFile() {
-  const t = active();
-  if (!t || !t.path) return;
-  api.reveal(t.path);
-}
-
-/* Пункты экспорта нужны и кольцу заметки, и (пока) кнопке в тулбаре,
- * поэтому живут здесь, а не внутри обработчика. */
+/* Пункты экспорта нужны и кольцу заметки, и меню приложения, поэтому живут
+ * здесь, а не внутри обработчика. */
 
 /** Скопировать путь к открытой заметке. */
 function copyPath() {
@@ -3311,6 +3431,17 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'F5' || !e.shiftKey) { e.preventDefault(); reload(); }
     return;
   }
+  // Отмена и повтор. Ловим на document, а не на поле: сочетание должно
+  // работать и когда фосис ушёл мимо редактора (после правки кольца, после
+  // клика по заголовку). В просмотре отменять нечего — там пропускаем,
+  // чтобы браузер не съел сочетание напрасно.
+  if (e.ctrlKey || e.metaKey) {
+    const k = e.key.toLowerCase();
+    const t = active();
+    const editing = !!(t && t.mode === 'edit');
+    if (k === 'z' && !e.shiftKey && editing) { e.preventDefault(); undoEdit(); return; }
+    if ((k === 'y' || (k === 'z' && e.shiftKey)) && editing) { e.preventDefault(); redoEdit(); return; }
+  }
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); go(-1); return; }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); go(1); return; }
   // Ctrl+Tab / Ctrl+Shift+Tab — по порядку вкладок, по кругу.
@@ -3407,7 +3538,7 @@ window.__mdvTest = {
   setPaneFocus,
   zoom: () => zoom,
   setZoom,
-  enterEdit: toggleEditMode, exitEdit, save, saveTab,
+  enterEdit: toggleEditMode, exitEdit, save, saveTab, undoEdit, redoEdit, resetUndo,
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); },
   settings: () => currentSettings,
