@@ -2330,10 +2330,18 @@ let radialOpen = false;
 /** Идёт ли «зажать и вести»: точка нажатия и признак, что кольцо уже открыто. */
 let radialDrag = null;
 
-/** Радиус кольца в пикселях: столько от центра кнопки. */
-const RADIAL_R = 78;
+/**
+ * Радиус кольца в пикселях: столько от центра до кнопки.
+ *
+ * 92px, а не 78: при меньшем радиусе и разбросе 27° кнопки верхней и нижней
+ * секций вставали в 37px друг от друга при собственной ширине 42px и
+ * налезали друг на друга.
+ */
+const RADIAL_R = 92;
+/** Разброс соседей по секции в градусах. */
+const RADIAL_GAP = 34;
 /** Насколько кольцо удерживается от края окна, чтобы подписи не срезало. */
-const RADIAL_KEEP = 112;
+const RADIAL_KEEP = 136;
 
 /** Есть ли что копировать или вырезать. */
 function hasSelection() {
@@ -2377,7 +2385,7 @@ function buildRadial() {
   const spread = (slot, base) => {
     const list = acts.filter((i) => i.slot === slot);
     list.forEach((i, k) => {
-      i.angle = list.length === 1 ? base : base + (k - (list.length - 1) / 2) * 27;
+      i.angle = list.length === 1 ? base : base + (k - (list.length - 1) / 2) * RADIAL_GAP;
     });
   };
   spread('top', -90);

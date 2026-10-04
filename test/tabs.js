@@ -2824,6 +2824,9 @@ const SILENCE_CONFIRM = `(() => {
       bgAlpha: bg.length > 3 ? bg[3] : 1,
       bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
       borderAlpha: bgc.length > 3 ? bgc[3] : 1,
+      // Подложка кольца тёмная, и полупрозрачная подсветка лишь подмешивала
+      // цвет к ней — кнопка на глаз бледнела, а не становилась заметнее.
+      bgSolid: bg.length <= 3 || bg[3] === 1,
       icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
     });
   })()`);
@@ -2850,14 +2853,14 @@ const SILENCE_CONFIRM = `(() => {
   const ch = JSON.parse(cancelHover);
 
   t('курсор действительно наведён на «Сохранить»', sh.hovered === true);
-  t('фон «Сохранить» при наведении не полупрозрачный', sh.bgAlpha >= 0.25,
-    'alpha=' + sh.bgAlpha);
+  t('фон «Сохранить» при наведении непрозрачный',
+    sh.bgSolid === true && sh.bgAlpha >= 0.25, 'alpha=' + sh.bgAlpha);
   t('фон «Сохранить» при наведении светлеет', sh.bgLum >= 45, 'lum=' + Math.round(sh.bgLum));
   t('рамка «Сохранить» заметная', sh.borderAlpha >= 0.5, 'alpha=' + sh.borderAlpha);
   t('иконка «Сохранить» остаётся зелёной', /158,\s*206,\s*106/.test(sh.icon), sh.icon);
   t('курсор действительно наведён на «Отменить»', ch.hovered === true);
-  t('фон «Отменить» при наведении не полупрозрачный', ch.bgAlpha >= 0.25,
-    'alpha=' + ch.bgAlpha);
+  t('фон «Отменить» при наведении непрозрачный',
+    ch.bgSolid === true && ch.bgAlpha >= 0.25, 'alpha=' + ch.bgAlpha);
   t('фон «Отменить» при наведении светлеет', ch.bgLum >= 40, 'lum=' + Math.round(ch.bgLum));
   t('рамка «Отменить» заметная', ch.borderAlpha >= 0.5, 'alpha=' + ch.borderAlpha);
   t('иконка «Отменить» остаётся красной', /247,\s*118,\s*142/.test(ch.icon), ch.icon);
@@ -3050,6 +3053,22 @@ const SILENCE_CONFIRM = `(() => {
         return Math.abs(s.width - s.height);
       }),
       ringH: parseFloat(getComputedStyle(rad, '::before').height),
+      // Соседи внутри одной секции: кнопка 42px, а при старом радиусе 78px и
+      // разбросе 27° центры стояли в 37px — налезали друг на друга.
+      sectionGap: (() => {
+        const xs = btns.map((b) => ({
+          act: b.dataset.act, x: b.offsetLeft, y: b.offsetTop, w: b.offsetWidth,
+        })).filter((p) => ['copy', 'cut', 'paste', 'save', 'cancel'].includes(p.act));
+        let worst = Infinity;
+        for (let i = 0; i < xs.length; i += 1) {
+          for (let j = i + 1; j < xs.length; j += 1) {
+            const d = Math.hypot(xs[i].x - xs[j].x, xs[i].y - xs[j].y);
+            if (d < worst) worst = d;
+          }
+        }
+        return xs.length > 1 ? Math.round(worst) : -1;
+      })(),
+      btnW: btns[0] ? btns[0].offsetWidth : 0,
       dockGone: !document.getElementById('modeDock'),
       exportBtnGone: !document.getElementById('dlBtn'),
       toTopInsideNote: (document.getElementById('toTop') || {}).parentElement
@@ -3090,6 +3109,11 @@ const SILENCE_CONFIRM = `(() => {
     JSON.stringify(r.tips.map((x) => x.gap)));
   t('подпись в одну строку и не повёрнута',
     r.tips.every((x) => x.oneLine && x.axisAligned), JSON.stringify(r.tips));
+  // Соседи в секции не налезают: расстояние между центрами заметно больше
+  // ширины кнопки.
+  t('кнопки в секции не налезают друг на друга',
+    r.sectionGap === -1 || r.sectionGap >= r.btnW + 8,
+    r.sectionGap + 'px при кнопке ' + r.btnW + 'px');
   t('иконки стоят ровно, без поворота',
     r.icoLevel.every((d) => d < 1), JSON.stringify(r.icoLevel));
   t('экспорт убран из тулбара', r.exportBtnGone === true);

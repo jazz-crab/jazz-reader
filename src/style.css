@@ -1209,9 +1209,14 @@ kbd {
  * кнопки. Кружок в середине выглядел пустым пятном и занимал место,
  * которого нет. Размер задан по радиусу кнопок плюс запас под их край.
  */
+/*
+ * Размер подложки — по радиусу кнопок плюс их половина и запас. Радиус
+ * вырос до 92px: при 78px и разбросе 27° соседи в верхней секции стояли в
+ * 37px друг от друга при кнопке в 42px, то есть налезали друг на друга.
+ */
 .radial::before {
-    content: ''; position: absolute; left: -104px; top: -104px;
-    width: 208px; height: 208px; border-radius: 50%;
+    content: ''; position: absolute; left: -126px; top: -126px;
+    width: 252px; height: 252px; border-radius: 50%;
     background: rgba(22, 22, 30, .72);
     border: 1px solid var(--border);
     box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
@@ -1251,12 +1256,31 @@ kbd {
 
 /* Цветовые семейства: правка — зелёная и красная, экспорт и открытие —
    синие акценты при наведении. */
-.radial-btn.r-save { background: #1d2a1c; border-color: rgba(158, 206, 106, .5); color: var(--green); }
+/*
+ * Подложки здесь плотные, без альфы.
+ *
+ * Наведение на «Сохранить» и «Отменить» делало фон rgba(158,206,106,.3).
+ * На тёмной подложке кольца это читалось как «кнопка стала прозрачной»:
+ * подсветка лишь подмешивала зелёный к тёмному, и кнопка на глаз не
+ * становилась заметнее — ровно наоборот. Все остальные состояния кольца
+ * (обычное, наведение, выбранное) уже непрозрачные, и эти были исключением.
+ */
+.radial-btn.r-save {
+    background: #1d2a1c; border-color: rgba(158, 206, 106, .5); color: var(--green);
+}
 .radial-btn.r-save .ico-svg { stroke: var(--green); }
-.radial-btn.r-save:hover:not(:disabled) { background: rgba(158, 206, 106, .3); border-color: var(--green); }
-.radial-btn.r-cancel { background: #2a1b21; border-color: rgba(247, 118, 142, .45); color: var(--red); }
+.radial-btn.r-save:hover:not(:disabled) {
+    background: #2f452c; border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(158, 206, 106, .22), 0 4px 14px rgba(0, 0, 0, .5);
+}
+.radial-btn.r-cancel {
+    background: #2a1b21; border-color: rgba(247, 118, 142, .45); color: var(--red);
+}
 .radial-btn.r-cancel .ico-svg { stroke: var(--red); }
-.radial-btn.r-cancel:hover:not(:disabled) { background: rgba(247, 118, 142, .3); border-color: var(--red); }
+.radial-btn.r-cancel:hover:not(:disabled) {
+    background: #452a32; border-color: var(--red);
+    box-shadow: 0 0 0 3px rgba(247, 118, 142, .22), 0 4px 14px rgba(0, 0, 0, .5);
+}
 .radial-btn.r-export:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
 .radial-btn.r-open:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); }
 
