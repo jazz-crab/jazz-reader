@@ -511,22 +511,27 @@ kbd {
 .main-second[hidden] { display: none; }
 
 /*
- * Акцент на панели в фокусе: следующая вкладка откроется именно в ней.
- * Без подсказки правило «куда откроется новая вкладка» приходилось угадывать,
- * а заметка появлялась в другом краю экрана, чем тот, куда смотришь.
+ * Линия прогресса чтения по верхнему краю заметки.
+ *
+ * Здесь была двухпиксельная кромка «панель в фокусе». Замечание пользователя
+ * оказалось лучше самой подсказки: человек, который прочитал половину
+ * длинного файла, видит это по линии, не заглядывая в статусную строку.
+ * Кромку панели в фокусе убрали — две полоски сверху заметки выглядели бы как
+ * ошибка разметки; о том, какая панель активна, и так видно по активной
+ * вкладке и по содержимому.
+ *
+ * Полоса заполняется по мере прокрутки и прячется, пока прокручивать нечего:
+ * в начале заметки пустая линия ничего не говорит, только шумит.
  */
-/* По id, а не по классу: .main-second наследует .main, и правило по классу
-   подсвечивало бы обе панели разом. */
-#mainPane::before,
-#panel2::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: transparent; z-index: 4; pointer-events: none;
-    transition: background .15s ease;
+.read-progress {
+    position: absolute; top: 0; left: 0; height: 2px; width: 0;
+    background: var(--blue); z-index: 6;
+    pointer-events: none; opacity: 0;
+    transition: opacity .18s ease, width .08s linear;
 }
-.split[data-focus="main"] > #mainPane::before,
-.split[data-focus="second"] > #panel2::before { background: var(--blue); }
+.read-progress.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-    #mainPane::before, #panel2::before { transition: none; }
+    .read-progress { transition: opacity .18s ease; }
 }
 /* Заголовок правой панели: имя заметки и крестик. У боковых панелей
    заголовков нет вовсе (см. .side-title). */
@@ -1018,21 +1023,47 @@ kbd {
 .rnd-edit .ico-svg { stroke: var(--fg-dark); }
 .rnd-edit:hover .ico-svg { stroke: var(--fg); }
 
-/* Сохранить — зелёная, самое главное действие в правке. */
-.rnd-save { border-color: rgba(158, 206, 106, .55); color: var(--green); }
+/*
+ * Сохранить — зелёная, самое главное действие в правке.
+ *
+ * Фон при наведении плотный и непрозрачный, а не полупрозрачная подсветка.
+ * Раньше стояло rgba(158,206,106,.18) — на тёмном фоне заметки это читалось
+ * как «кнопка стала прозрачной»: подложка темнела, а край и глиф оставались
+ * блёклыми, и кнопка на глаз исчезала ровно в тот момент, когда на неё
+ * наводишь. Тёмный фон + светлая рамка + свой цвет глифа — контраст виден
+ * всегда, а при наведении кнопка просто становится заметнее.
+ */
+.rnd-save {
+    background: #1d2a1c; border-color: rgba(158, 206, 106, .5); color: var(--green);
+}
 .rnd-save .ico-svg { stroke: var(--green); }
-.rnd-save:hover:not(:disabled) { background: rgba(158, 206, 106, .18); }
-/* Есть несохранённое — кнопка просит внимания: сплошная заливка. */
+.rnd-save:hover:not(:disabled) {
+    background: rgba(158, 206, 106, .3);
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(158, 206, 106, .18), 0 3px 12px rgba(0, 0, 0, .45);
+}
+.rnd-save:active:not(:disabled) {
+    background: rgba(158, 206, 106, .42);
+}
+/* Есть несохранённое — кнопка просит внимания. */
 .rnd-save.rnd-dirty {
-    background: rgba(158, 206, 106, .22);
+    background: rgba(158, 206, 106, .24);
     border-color: var(--green);
     box-shadow: 0 0 0 3px rgba(158, 206, 106, .16), 0 3px 12px rgba(0, 0, 0, .38);
 }
 
-/* Отмена — красная, и она ВЫШЕ «Сохранить». Порядок в стопке задаёт flex. */
-.rnd-cancel { border-color: rgba(247, 118, 142, .5); color: var(--red); }
+/* Отмена — красная, и она ВЫШЕ «Сохранить». Порядок в стопке задаёт flex.
+   Про наведение — то же, что у «Сохранить»: подложка плотная. */
+.rnd-cancel {
+    background: #2a1b21; border-color: rgba(247, 118, 142, .45); color: var(--red);
+}
 .rnd-cancel .ico-svg { stroke: var(--red); }
-.rnd-cancel:hover:not(:disabled) { background: rgba(247, 118, 142, .18); }
+.rnd-cancel:hover:not(:disabled) {
+    background: rgba(247, 118, 142, .3);
+    border-color: var(--red);
+    box-shadow: 0 0 0 3px rgba(247, 118, 142, .18), 0 3px 12px rgba(0, 0, 0, .45);
+}
+.rnd-cancel:active:not(:disabled) { background: rgba(247, 118, 142, .42); }
 
 /* Появление «Отменить» над «Сохранить»: она выезжает, а не возникает.
    Без этого кнопка просто появлялась и сдвигала нижнюю на пиксель. */

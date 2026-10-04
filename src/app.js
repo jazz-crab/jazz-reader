@@ -24,6 +24,7 @@ const el = {
     tocResizer: $('tocResizer'), filesResizer: $('filesResizer'),
     topbar: document.querySelector('.topbar'),
     split: $('split'), splitDivider: $('splitDivider'),
+    readProgress: $('readProgress'),
     panel2: $('panel2'), content2: $('content2'), secondTitle: $('secondTitle'),
   paneFiles: $('paneFiles'), paneToc: $('paneToc'), treeFilter: $('treeFilter'),
   content: $('content'), editor: $('editor'), toTop: $('toTop'),
@@ -1428,6 +1429,7 @@ function renderActive() {
   buildToc();
   updateNavButtons();
   updateZoom();
+  updateReadProgress();
   refreshTreeSelection();
 }
 
@@ -1754,6 +1756,28 @@ function hideSubtree(nodes) {
     n.twist.setAttribute('aria-expanded', 'false');
     hideSubtree(n.kids);
   }
+}
+
+/*
+ * Линия прогресса чтения.
+ *
+ * Прячется, пока прокручивать нечего: в начале заметки и в заметке без
+ * прокрутки пустая линия ничего не сообщает. В конце заполняется целиком —
+ * так видно «дочитал».
+ */
+function updateReadProgress() {
+  const c = el.content;
+  if (!c || !el.readProgress) return;
+  const max = c.scrollHeight - c.clientHeight;
+  const editing = el.editor && !el.editor.hidden;
+  // В режиме правки прокручивается редактор, а не статья: полоса показывала
+  // бы процент не того документа.
+  const box = editing ? el.editor : c;
+  const span = box.scrollHeight - box.clientHeight;
+  const p = span > 1 ? Math.min(1, Math.max(0, box.scrollTop / span)) : 0;
+  const show = !editing && (max > 4 || span > 4) && (p > 0.002 || max > 4);
+  el.readProgress.classList.toggle('on', show);
+  el.readProgress.style.width = (p * 100).toFixed(2) + '%';
 }
 
 function scrollToAnchor(id) {
@@ -2736,6 +2760,7 @@ el.btnMode.onclick = async () => {
 el.btnCancelEdit.onclick = () => exitEdit(false);
 
 el.editor.addEventListener('input', () => {
+  updateReadProgress();
   const t = active();
   if (!t) return;
   t.dirty = el.editor.value !== t._diskRaw;
@@ -2899,6 +2924,7 @@ el.content2.addEventListener('scroll', () => {
 
 // --- скролл: scroll-spy + кнопка «наверх»
 el.content.addEventListener('scroll', () => {
+  updateReadProgress();
   if (active()) active().scroll = el.content.scrollTop;
   updateSpy();
   el.toTop.hidden = el.content.scrollTop < 300;

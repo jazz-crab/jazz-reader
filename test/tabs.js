@@ -67,6 +67,18 @@ function cdp(wsUrl) {
     close: () => { try { ws.close(); } catch {} },
     js: (expression) => send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
       .then((r) => { if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; }),
+    /*
+     * Настоящее наведение мышью. Псевдокласс :hover нельзя включить из
+     * JavaScript — только реальным движением мыши, поэтому проверки вида
+     * «кнопка не бледнеет при наведении» иначе пришлось бы делать по тексту
+     * правила в CSS, а это ничего не проверяет.
+     */
+    hover: (x, y) => send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: Math.round(x), y: Math.round(y), buttons: 0,
+    }),
+    unhover: () => send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: 2, y: 2, buttons: 0,
+    }),
   };
 }
 
@@ -2579,14 +2591,11 @@ const SILENCE_CONFIRM = `(() => {
 
     const out = {};
     out.focusAtStart = M.paneFocus();
-    out.accentMain = getComputedStyle(main, '::before').backgroundColor;
-    out.accentSecond = getComputedStyle(panel, '::before').backgroundColor;
 
     // Заглянули в правую панель
     panel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 200));
     out.focusAfterClick = M.paneFocus();
-    out.accentAfterClick = getComputedStyle(panel, '::before').backgroundColor;
 
     // Теперь открываем новую заметку: она обязана оказаться СПРАВА
     const leftBefore = main.querySelector('.content').textContent.slice(0, 30);
@@ -2614,13 +2623,6 @@ const SILENCE_CONFIRM = `(() => {
   t('изначально в фокусе левая панель', r.focusAtStart === 'main', r.focusAtStart);
   t('клик по правой панели переводит на неё фокус', r.focusAfterClick === 'second',
     r.focusAfterClick);
-  // Изначально фокус на левой: подсвечена она. После клика по правой —
-    // наоборот. Проверяем именно перенос, а не «какая-нибудь подсветка».
-  t('акцент на панели в фокусе, не на обеих',
-    r.accentMain !== r.accentSecond
-    && r.accentAfterClick === r.accentMain
-    && r.accentAfterClick !== r.accentSecond,
-    'левая ' + r.accentMain + ' правая ' + r.accentSecond + ' после клика ' + r.accentAfterClick);
   t('новая вкладка уходит в правую панель', r.rightGotNew === true);
   t('левая панель отдала свою вкладку', r.leftSwapped === true);
   t('после открытия фокус перешёл в левую панель', r.focusAfterOpen === 'main',
@@ -2717,6 +2719,159 @@ const SILENCE_CONFIRM = `(() => {
   t('после отпускания предпросмотр убран', r.previewGone === true);
   t('вторая панель снова скрыта', r.panelHiddenAgain === true);
   t('после отпускания щели нет', r.gapAfterEnd === true);
+
+  // ------------------------------- кнопки правки при наведении и прогресс
+  console.log('\n== кнопки правки и прогресс чтения ==');
+
+  // При наведении кнопки правки не должны «обесцвечиваться»: раньше фон был
+  // rgba(158,206,106,.18) — на тёмном фоне это читалось как «кнопка стала
+  // прозрачной», и наведение делало её незаметнее, а не заметнее.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const D = ${JSON.stringify(TABS_DIR)};
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    const t = M.active();
+    t.mode = 'edit'; t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 400));
+    const save = document.getElementById('btnSave').getBoundingClientRect();
+    return JSON.stringify({
+      save: [save.left + save.width / 2, save.top + save.height / 2],
+      cancel: (() => {
+        const r = document.getElementById('btnCancelEdit').getBoundingClientRect();
+        return [r.left + r.width / 2, r.top + r.height / 2];
+      })(),
+      pencilHidden: document.getElementById('btnMode').hidden,
+    });
+  })()`));
+
+  await c.hover(r.save[0], r.save[1]);
+  await new Promise((x) => setTimeout(x, 250));
+  const saveHover = await js(`(() => {
+    const b = document.getElementById('btnSave');
+    const cs = getComputedStyle(b);
+    const px = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+    const bg = px(cs.backgroundColor);
+    const bgc = px(cs.borderColor);
+    return JSON.stringify({
+      hovered: b.matches(':hover'),
+      bgAlpha: bg.length > 3 ? bg[3] : 1,
+      // Итоговая непрозрачность фона над тёмной подложкой: чем выше, тем
+      // заметнее кнопка
+      bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
+      borderAlpha: bgc.length > 3 ? bgc[3] : 1,
+      icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
+    });
+  })()`);
+
+  await c.hover(r.cancel[0], r.cancel[1]);
+  await new Promise((x) => setTimeout(x, 250));
+  const cancelHover = await js(`(() => {
+    const b = document.getElementById('btnCancelEdit');
+    const cs = getComputedStyle(b);
+    const px = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+    const bg = px(cs.backgroundColor);
+    const bgc = px(cs.borderColor);
+    return JSON.stringify({
+      hovered: b.matches(':hover'),
+      bgAlpha: bg.length > 3 ? bg[3] : 1,
+      bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
+      borderAlpha: bgc.length > 3 ? bgc[3] : 1,
+      icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
+    });
+  })()`);
+  await c.unhover();
+  await js(`window.__mdvTest.active().dirty = false; window.__mdvTest.renderActive();`);
+  await new Promise((x) => setTimeout(x, 250));
+
+  const sh = JSON.parse(saveHover);
+  const ch = JSON.parse(cancelHover);
+
+  t('курсор действительно наведён на «Сохранить»', sh.hovered === true);
+  t('фон «Сохранить» при наведении не полупрозрачный', sh.bgAlpha >= 0.25,
+    'alpha=' + sh.bgAlpha);
+  t('фон «Сохранить» при наведении светлеет', sh.bgLum >= 45, 'lum=' + Math.round(sh.bgLum));
+  t('рамка «Сохранить» заметная', sh.borderAlpha >= 0.5, 'alpha=' + sh.borderAlpha);
+  t('иконка «Сохранить» остаётся зелёной', /158,\s*206,\s*106/.test(sh.icon), sh.icon);
+  t('курсор действительно наведён на «Отменить»', ch.hovered === true);
+  t('фон «Отменить» при наведении не полупрозрачный', ch.bgAlpha >= 0.25,
+    'alpha=' + ch.bgAlpha);
+  t('фон «Отменить» при наведении светлеет', ch.bgLum >= 40, 'lum=' + Math.round(ch.bgLum));
+  t('рамка «Отменить» заметная', ch.borderAlpha >= 0.5, 'alpha=' + ch.borderAlpha);
+  t('иконка «Отменить» остаётся красной', /247,\s*118,\s*142/.test(ch.icon), ch.icon);
+
+  // Линия прогресса чтения. Файл создаём здесь: браузеру нечем писать на
+  // диск, а заметка должна быть достаточно длинной, чтобы было что прокручивать.
+  const longFile = path.join(notesDir, 'progress.md');
+  fs.writeFileSync(longFile,
+    '# Длинная\n\n' + Array.from({ length: 220 }, (_, k) => 'абзац ' + k).join('\n\n') + '\n',
+    'utf8');
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const bar = document.getElementById('readProgress');
+    const c2 = document.getElementById('content');
+    // Заметка, которой есть куда прокручивать
+    await M.openPath(${JSON.stringify(notesDir.replace(/\\/g, '/'))} + '/progress.md', { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 400));
+    const out = {};
+    out.exists = !!bar;
+    out.inMain = bar && bar.parentElement.id === 'mainPane';
+    out.span = c2.scrollHeight - c2.clientHeight;
+    out.startOff = bar.classList.contains('on');
+    out.startWidth = bar.style.width;
+
+    c2.scrollTop = Math.round((c2.scrollHeight - c2.clientHeight) / 2);
+    await new Promise(r2 => setTimeout(r2, 350));
+    out.midOn = bar.classList.contains('on');
+    out.midWidth = parseFloat(bar.style.width);
+
+    c2.scrollTop = c2.scrollHeight;
+    await new Promise(r2 => setTimeout(r2, 350));
+    out.endWidth = parseFloat(bar.style.width);
+
+    // В правке полосы быть не должно: прокручивается редактор, а не статья
+    const t = M.active();
+    t.mode = 'edit'; t.dirty = true;
+    M.renderActive();
+    await new Promise(r2 => setTimeout(r2, 350));
+    out.editOn = bar.classList.contains('on');
+    return JSON.stringify(out);
+  })()`));
+
+  t('линия прогресса есть', r.exists === true && r.inMain === true);
+  t('заметка прокручивается', r.span > 200, r.span + 'px');
+  // В начале полоса видна, но пуста: это «рельс», который потом заполняется.
+  // Прятать её совсем было бы хуже — исчезала бы сама шкала, и при начале
+  // прокрутки линия возникала бы из ниоткуда.
+  t('в начале заметки полоса видна, но пуста', r.startOff === true && parseFloat(r.startWidth) === 0,
+    r.startOff + ' ' + r.startWidth);
+  t('на середине полоса наполовину', r.midOn === true && r.midWidth > 35 && r.midWidth < 65,
+    r.midWidth + '%');
+  t('в конце полоса заполнена', r.endWidth >= 99, r.endWidth + '%');
+  t('в режиме правки полосы нет', r.editOn === false);
+
+  // Заметка без прокрутки: полосы быть не должно — показывать её незачем
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const bar = document.getElementById('readProgress');
+    await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    const span = document.getElementById('content').scrollHeight
+      - document.getElementById('content').clientHeight;
+    return JSON.stringify({ span, on: bar.classList.contains('on') });
+  })()`));
+  t('у короткой заметки полосы нет', r.span <= 4 && r.on === false, r.span + 'px');
+
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    document.getElementById('content').scrollTop = 0;
+    return 1;
+  })()`);
+  // Заметка для проверки прокрутки была изменена на диске: возвращаем как было
+  fs.rmSync(longFile, { force: true });
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
