@@ -119,6 +119,46 @@ async function inlineLocalFonts(css, baseDir) {
   return { css: out, inlined };
 }
 
+/*
+ * Недавние файлы и настройки — маленькие json рядом с настройками
+ * пользователя. Пишем атомарно (через tmp + rename), иначе падение
+ * посреди записи оставляет битый файл и приложение падает на старте.
+ *
+ * Живут на уровне модуля, а не внутри register(): окно подтверждения выхода
+ * показывает главный процесс, и ему тоже нужно прочитать и записать
+ * настройку «не спрашивать больше» — не через renderer, потому что вопрос
+ * возникает как раз когда renderer уже закрывается.
+ */
+const storeFile = (name) => path.join(app.getPath('userData'), name);
+
+async function readStore(name, fallback) {
+  try {
+    const raw = await fsp.readFile(storeFile(name), 'utf8');
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? v : fallback;
+  } catch {
+    return fallback;   // нет файла или битый — начинаем с пустого
+  }
+}
+
+async function writeStore(name, value) {
+  const file = storeFile(name);
+  const tmp = file + '.tmp';
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  await fsp.writeFile(tmp, JSON.stringify(value, null, 2), 'utf8');
+  await fsp.rename(tmp, file);
+  return true;
+}
+
+/** Одно поле настроек: прочитать и (по желанию) записать. */
+async function setting(key, value) {
+  const cur = await readStore('settings.json', {});
+  if (value === undefined) return cur[key];
+  const next = Object.assign({}, cur, { [key]: value });
+  await writeStore('settings.json', next);
+  return next[key];
+}
+
 /**
  * Автономный HTML одним файлом.
  *
@@ -586,32 +626,6 @@ function register() {
     }
   });
 
-  /**
-   * Недавние файлы и настройки — маленькие json рядом с настройками
-   * пользователя. Пишем атомарно (через tmp + rename), иначе падение
-   * посреди записи оставляет битый файл и приложение падает на старте.
-   */
-  const storeFile = (name) => path.join(app.getPath('userData'), name);
-
-  async function readStore(name, fallback) {
-    try {
-      const raw = await fsp.readFile(storeFile(name), 'utf8');
-      const v = JSON.parse(raw);
-      return v && typeof v === 'object' ? v : fallback;
-    } catch {
-      return fallback;   // нет файла или битый — начинаем с пустого
-    }
-  }
-
-  async function writeStore(name, value) {
-    const file = storeFile(name);
-    const tmp = file + '.tmp';
-    await fsp.mkdir(path.dirname(file), { recursive: true });
-    await fsp.writeFile(tmp, JSON.stringify(value, null, 2), 'utf8');
-    await fsp.rename(tmp, file);
-    return true;
-  }
-
   const RECENT_MAX = 24;
 
   ipcMain.handle('mdv:recentGet', () => readStore('recent.json', { files: [] }));
@@ -726,6 +740,6 @@ function register() {
 
 module.exports = {
   register, listMdTree, decodeBuffer, buildStandaloneHtml, buildPdf,
-  listSystemFonts, exportCss,
+  listSystemFonts, exportCss, setting,
   setCaptionWidth: (px) => { captionWidth = Math.max(0, Math.round(px || 0)); },
 };

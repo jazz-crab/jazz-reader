@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld('mdv', {
   exportPdf: (payload) => ipcRenderer.invoke('mdv:exportPdf', payload),
   /** Системные шрифты для выпадающего списка в окне экспорта. */
   fonts: () => ipcRenderer.invoke('mdv:fonts'),
+  /**
+   * Выход по тому же пути, что и Ctrl+Q, — для автотеста.
+   *
+   * Обработчик живёт только в скрытом режиме (--mdview-hidden), так что в
+   * обычном запуске вызова нет и метод ничего не делает.
+   */
+  testQuit: () => ipcRenderer.invoke('mdv:testQuit'),
 
   /** Путь файла из DataTransfer (drop) или из <input type=file>. */
   pathForFile: (file) => {

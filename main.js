@@ -215,6 +215,81 @@ function send(channel, payload) {
   if (target) target.webContents.send(channel, payload);
 }
 
+/*
+ * Выход по Ctrl+Q спрашивает подтверждение.
+ *
+ * Диалог системный, а не нарисованный: у него есть настоящая рамка с
+ * крестиком, и закрытие крестиком равносильно «Отмена» — как в любом
+ * системном окне. Рисованный слой с двумя кнопками выглядел бы частью
+ * приложения, и его нельзя закрыть ничем, кроме двух этих кнопок.
+ *
+ * Галочка «Не показывать больше» записывается в settings.json, поэтому
+ * настройку не нужно искать заново при каждом запуске.
+ *
+ * Право выхода выдаётся один раз и снимается при любом новом вызове: пока
+ * идёт диалог, повторный Ctrl+Q не должен подтверждения отменять.
+ */
+let quitArmed = false;
+
+/** Сколько вкладок с несохранёнными правками — предупредить в диалоге. */
+async function dirtyTabs() {
+  const w = targetWindowSafe();
+  if (!w || w.isDestroyed()) return 0;
+  try {
+    const n = await w.webContents.executeJavaScript(
+      'window.mdvDirtyTabs ? window.mdvDirtyTabs() : 0');
+    return Number(n) || 0;
+  } catch {
+    return 0;   // renderer мог уже закрыться — тогда и спрашивать не о чем
+  }
+}
+
+function targetWindowSafe() {
+  return win || BrowserWindow.getAllWindows()[0] || null;
+}
+
+async function requestQuit() {
+  if (quitArmed) { app.quit(); return; }
+  let ask = true;
+  try { ask = (await ipc.setting('quitAsk')) !== false; }
+  catch { ask = true; }   // не прочитали настройку — спрашиваем, как обычно
+  if (!ask) { log('выход: подтверждение выключено, закрываемся сразу'); app.quit(); return; }
+
+  const dirty = await dirtyTabs();
+  log('выход: спрашиваем подтверждение, несохранённых ' + dirty);
+  const detail = dirty
+    ? 'В ' + dirty + ' заметк' + plural(dirty) + ' есть несохранённые правки — они пропадут.'
+    : 'Несохранённых правок нет.';
+  const res = await dialog.showMessageBox(targetWindowSafe(), {
+    type: 'question',
+    title: 'Закрыть?',
+    message: 'Закрыть MDView?',
+    detail,
+    buttons: ['Закрыть', 'Отмена'],
+    defaultId: 0,
+    cancelId: 1,          // крестик в рамке равносилен «Отмена»
+    checkboxLabel: 'Не показывать больше',
+    noLink: true,
+  });
+  if (res.checkboxChecked) {
+    try { await ipc.setting('quitAsk', false); } catch { /* не записалось — спросим в следующий раз */ }
+  }
+  if (res.response !== 0) { log('выход: отменён'); return; }
+  log('выход: подтверждён, закрываемся'
+    + (res.checkboxChecked ? ', больше не спрашиваем' : ''));
+  quitArmed = true;
+  app.quit();
+}
+
+/** 1 заметка / 2 заметки / 5 заметок. */
+function plural(n) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'е';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'ах';
+  return 'ах';
+}
+
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
@@ -228,7 +303,9 @@ function buildMenu() {
         { label: 'Скачать HTML', click: () => send('mdv:menu', 'download-html') },
         { label: 'Печать / PDF…', accelerator: 'CmdOrCtrl+P', click: () => send('mdv:menu', 'print') },
         { type: 'separator' },
-        { label: 'Выход', accelerator: 'Alt+F4', role: 'quit' },
+        // CmdOrCtrl+Q вместо role: 'quit': роль закрывает приложение молча,
+        // минуя подтверждение.
+        { label: 'Выход', accelerator: 'CmdOrCtrl+Q', click: () => requestQuit() },
       ],
     },
     {
@@ -343,6 +420,19 @@ function releaseTabShortcuts() {
 }
 
 app.on('will-quit', releaseTabShortcuts);
+
+/*
+ * Скрытый режим + тестовый IPC для выхода.
+ *
+ * Проверить окно подтверждения из теста иначе нечем: системный диалог
+ * закрывается только настоящей мышью, и поднять его из скрипта нельзя.
+ * Канал живёт только там, где окно и так не показывается, и в обычном
+ * запуске его не существует.
+ */
+if (process.argv.includes('--mdview-hidden') || process.env.MDVIEW_HIDDEN === '1') {
+  const { ipcMain } = require('electron');
+  ipcMain.handle('mdv:testQuit', () => { requestQuit(); return true; });
+}
 
 app.whenReady()
   .then(() => {
