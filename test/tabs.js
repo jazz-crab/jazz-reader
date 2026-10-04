@@ -2997,57 +2997,277 @@ const SILENCE_CONFIRM = `(() => {
   // Заметка для проверки прокрутки была изменена на диске: возвращаем как было
   fs.rmSync(longFile, { force: true });
 
-  // ------------------------------------------- меню экспорта: иконка слева
-  console.log('\n== меню экспорта ==');
+  // ------------------------------------------- окно экспорта
+  console.log('\n== окно экспорта ==');
 
-  // Раньше у кнопки не было display:flex, и .ico (inline-flex) вставал
-  // отдельной строкой — иконка оказывалась НАД надписью. Меню из двух слов с
-  // картинкой сверху читается как список картинок, а не как список действий.
+  // Чистая заметка в чтении: в правке экспорт честно отказывается («сначала
+  // сохрани»), и проверять окно было бы негде.
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    M.exitEdit(true);
+    await new Promise(r2 => setTimeout(r2, 400));
+    await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])},
+      { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 600));
+    return 1;
+  })()`);
+
+  // Список из кольца разросся бы: у форматов есть параметры, у параметров —
+  // предпросмотр. Поэтому «Экспорт» открывает окно, а «Путь» — короткое
+  // меню из двух пунктов, и проверяем оба.
   r = JSON.parse(await js(`(async () => {
-    const out = {};
-    // Кнопки экспорта в тулбаре больше нет, поэтому проверяем то же меню там,
-    // где оно теперь: раскрытое из кругового.
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.ctxmenu, .modal-back').forEach((m) => m.remove());
+    await new Promise(r2 => setTimeout(r2, 250));
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
-    await window.__mdvTest.openRingIn('content', Math.round(box.left + box.width / 2), Math.round(box.top + 200));
+    await M.openRingIn('content', Math.round(box.left + box.width / 2), Math.round(box.top + 200));
     await new Promise(r2 => setTimeout(r2, 350));
-    document.getElementById('radial').querySelector('[data-act="export"]').click();
-    await new Promise(r2 => setTimeout(r2, 450));
+    const ring = document.getElementById('radial');
+    const out = {
+      hasPath: !!ring.querySelector('[data-act="path"]'),
+      hasOpen: !!ring.querySelector('[data-act="open"]'),
+      hasExport: !!ring.querySelector('[data-act="export"]'),
+      acts: [...ring.querySelectorAll('.radial-sector')].map((b) => b.dataset.act),
+    };
+    ring.querySelector('[data-act="path"]').click();
+    await new Promise(r2 => setTimeout(r2, 400));
     const m = document.querySelector('.ctxmenu');
-    const items = [...m.querySelectorAll('.ctxmenu-item')];
-    out.open = !!m;
-    out.count = items.length;
-    // В контекстном меню иконка и надпись живут в .ctxmenu-label, который и так
-    // flex-строка с зазором — то есть иконка слева. Проверяем геометрией.
-    out.allRows = items.every((b) => {
-      const icon = b.querySelector('.ctxmenu-label .ico');
-      if (!icon) return false;
-      const bi = icon.getBoundingClientRect();
-      const bb = b.getBoundingClientRect();
-      return bi.right <= bb.left + bb.width && bi.top >= bb.top - 1 && bi.bottom <= bb.bottom + 1;
-    });
-    const one = items[0];
-    const lab = one ? one.querySelector('.ctxmenu-label') : null;
-    const ico = one ? one.querySelector('.ico') : null;
-    out.firstHtml = one ? one.outerHTML.slice(0, 220) : 'нет пунктов';
-    out.labels = items.map((b) => b.textContent.trim());
-    if (lab && ico) {
-      const lb = lab.getBoundingClientRect();
-      const ib = ico.getBoundingClientRect();
-      out.iconLeft = ib.right <= lb.left + lb.width && ib.left < lb.left + lb.width;
-      out.iconSize = Math.round(one.querySelector('.ico-svg').getBoundingClientRect().width);
+    out.menuOpen = !!m;
+    if (m) {
+      const items = [...m.querySelectorAll('.ctxmenu-item')];
+      out.labels = items.map((b) => b.textContent.trim());
+      out.count2 = items.length;
+      // Иконка слева от надписи: тот же дефект был у пунктов меню, когда
+      // .ico вставал отдельной строкой.
+      out.allRows = items.every((b) => {
+        const icon = b.querySelector('.ctxmenu-label .ico');
+        if (!icon) return false;
+        const bi = icon.getBoundingClientRect();
+        const bb = b.getBoundingClientRect();
+        return bi.right <= bb.left + bb.width && bi.top >= bb.top - 1 && bi.bottom <= bb.bottom + 1;
+      });
+      const one = items[0];
+      const lab = one.querySelector('.ctxmenu-label');
+      const ico = one.querySelector('.ico');
+      if (lab && ico) {
+        const lb = lab.getBoundingClientRect();
+        const ib = ico.getBoundingClientRect();
+        out.iconLeft = ib.left < lb.left + lb.width && ib.right <= lb.left + lb.width;
+      }
+      out.height = Math.round(one.getBoundingClientRect().height);
     }
-    out.height = one ? Math.round(one.getBoundingClientRect().height) : 0;
     return JSON.stringify(out);
   })()`));
-
-  t('меню экспорта открывается', r.open === true);
-  t('в меню пять пунктов', r.count === 5, String(r.count));
+  t('в кольцо вернулось «Путь»', r.hasPath === true);
+  t('«Открыть» и «Экспорт» на месте', r.hasOpen === true && r.hasExport === true);
+  t('состав кольца: правка, экспорт, буфер, открыть, путь',
+    JSON.stringify(r.acts) === JSON.stringify(
+      ['mode', 'export', 'copy', 'cut', 'paste', 'open', 'path']),
+    JSON.stringify(r.acts));
+  t('меню «Путь» открывается', r.menuOpen === true);
+  t('в меню «Путь» два пункта', r.count2 === 2, JSON.stringify(r.labels));
+  t('иконка слева от надписи в меню «Путь»', r.iconLeft === true, JSON.stringify(r.labels));
   t('иконка и надпись в одной строке', r.allRows === true, JSON.stringify(r.labels));
-
-  t('иконка слева от надписи', r.iconLeft === true,
-    'labels=' + JSON.stringify(r.labels) + ' first=' + r.firstHtml);
   t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
+
+  // Окно экспорта
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.ctxmenu, .modal-back').forEach((m) => m.remove());
+    await new Promise(r2 => setTimeout(r2, 250));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    await M.openRingIn('content', Math.round(box.left + box.width / 2), Math.round(box.top + 200));
+    await new Promise(r2 => setTimeout(r2, 350));
+    document.getElementById('radial').querySelector('[data-act="export"]').click();
+    await new Promise(r2 => setTimeout(r2, 700));
+    const back = document.querySelector('.modal-back');
+    const out = { open: !!back };
+    if (!back) return JSON.stringify(out);
+    const box2 = back.querySelector('.modal-box');
+    out.title = back.querySelector('.modal-title').textContent;
+    out.forms = [...back.querySelectorAll('.exp-seg')][0].querySelectorAll('.exp-segbtn').length;
+    out.formIds = [...back.querySelectorAll('.exp-seg')][0]
+      .querySelectorAll('.exp-segbtn').map ? '' : '';
+    out.pals = [...back.querySelectorAll('.exp-seg')][1].querySelectorAll('.exp-segbtn').length;
+    out.ranges = back.querySelectorAll('input[type=range]').length;
+    const sel = back.querySelector('.exp-select');
+    out.hasSelect = !!sel;
+    out.fonts = sel ? sel.options.length : 0;
+    out.fontDisabled = sel ? sel.disabled : null;
+    out.fontFirst = sel && sel.options.length ? sel.options[0].value : null;
+    out.prevText = (back.querySelector('.exp-doc').textContent || '').slice(0, 60);
+    out.prevChildren = back.querySelector('.exp-doc').children.length;
+    out.cards = back.querySelectorAll('.set-row').length;
+    // Габариты окна: узкое окно прячет предпросмотр
+    const r2 = box2.getBoundingClientRect();
+    out.w = Math.round(r2.width);
+    out.h = Math.round(r2.height);
+    out.prevH = Math.round(back.querySelector('.exp-preview').getBoundingClientRect().height);
+    // Главное требование к окну: кнопка экспорта должна быть видна целиком.
+    // Раньше предпросмотр имел свою высоту, окно уезжало в прокрутку, и
+    // «Экспортировать» оказывалась под нижним краем.
+    const okb = [...back.querySelectorAll('.dlgbtn')].pop().getBoundingClientRect();
+    out.okVisible = okb.bottom <= innerHeight && okb.top >= 0 && okb.right <= innerWidth;
+    out.okBox = [Math.round(okb.top), Math.round(okb.bottom), innerHeight];
+    out.boxFits = r2.height <= innerHeight;
+    out.buttons = [...back.querySelectorAll('.dlgbtn')].map((b) => b.textContent);
+    return JSON.stringify(out);
+  })()`));
+  t('окно экспорта открывается', r.open === true);
+  t('заголовок «Экспорт»', r.title === 'Экспорт', String(r.title));
+  t('четыре формата', r.forms === 4, String(r.forms));
+  t('две палитры', r.pals === 2, String(r.pals));
+  t('ползунок размера на месте', r.ranges === 1, String(r.ranges));
+  t('пять карточек: формат, палитра, размер, шрифт, предпросмотр',
+    r.cards === 5, String(r.cards));
+  t('список шрифтов есть', r.hasSelect === true);
+  t('шрифты прочитались', r.fonts > 5, String(r.fonts));
+  t('список шрифтов не заблокирован', r.fontDisabled === false, String(r.fontDisabled));
+  t('первым идёт свой шрифт', r.fontFirst === 'JetBrainsMono', String(r.fontFirst));
+  t('предпросмотр показывает заметку', r.prevChildren > 0
+    && !/^#/.test(r.prevText), JSON.stringify(r.prevText));
+  t('окно широкое', r.w >= 600, r.w + 'px');
+  t('предпросмотр не схлопнулся', r.prevH >= 110, r.prevH + 'px');
+  t('кнопка экспорта видна целиком', r.okVisible === true, JSON.stringify(r.okBox));
+  t('окно помещается по высоте', r.boxFits === true);
+  t('кнопки «Отмена» и «Экспортировать»',
+    r.buttons && r.buttons[0] === 'Отмена' && r.buttons[1] === 'Экспортировать',
+    JSON.stringify(r.buttons));
+
+  // Переключение формата: у MD и TXT нет оформления — карточки прячутся
+  r = JSON.parse(await js(`(async () => {
+    const back = document.querySelector('.modal-back');
+    const rows = [...back.querySelectorAll('.set-row')];
+    const seg = [...back.querySelectorAll('.exp-seg')][0];
+    const pick = async (id) => {
+      [...seg.querySelectorAll('.exp-segbtn')].find((b) => b.dataset.id === id).click();
+      await new Promise(r2 => setTimeout(r2, 250));
+    };
+    const cards = () => rows.map((row) => !row.hidden);
+    const out = { html: cards() };
+    const prev = back.querySelector('.exp-preview');
+    const doc = back.querySelector('.exp-doc');
+    out.htmlPrevTag = doc.firstElementChild ? doc.firstElementChild.tagName : '';
+    await pick('md');
+    out.md = cards();
+    out.mdIsPre = doc.firstElementChild ? doc.firstElementChild.className : '';
+    out.mdText = (doc.textContent || '').slice(0, 40);
+    out.mdPlain = prev.classList.contains('plain');
+    await pick('txt');
+    out.txt = cards();
+    out.txtIsPre = doc.firstElementChild ? doc.firstElementChild.className : '';
+    out.txtText = (doc.textContent || '').slice(0, 40);
+    await pick('pdf');
+    out.pdf = cards();
+    out.pdfPrevTag = doc.firstElementChild ? doc.firstElementChild.tagName : '';
+    return JSON.stringify(out);
+  })()`));
+  t('у HTML все пять карточек', JSON.stringify(r.html) === '[true,true,true,true,true]',
+    JSON.stringify(r.html));
+  t('у MD палитра, размер и шрифт скрыты',
+    JSON.stringify(r.md) === '[true,false,false,false,true]', JSON.stringify(r.md));
+  t('у TXT то же самое',
+    JSON.stringify(r.txt) === '[true,false,false,false,true]',
+    JSON.stringify(r.txt) + ' текст=' + JSON.stringify(r.txtText));
+  t('у PDF оформление снова нужно', JSON.stringify(r.pdf) === '[true,true,true,true,true]',
+    JSON.stringify(r.pdf));
+  t('предпросмотр MD — исходный текст', r.mdIsPre === 'exp-plain'
+    && /^#/.test(String(r.mdText)), JSON.stringify(r.mdText));
+  t('предпросмотр TXT — без разметки', r.txtIsPre === 'exp-plain'
+    && !/^#/.test(String(r.txtText)), JSON.stringify(r.txtText));
+  t('предпросмотр HTML/PDF — собранная заметка',
+    /^H1$/.test(r.htmlPrevTag) && /^H1$/.test(r.pdfPrevTag),
+    r.htmlPrevTag + '/' + r.pdfPrevTag);
+  t('предпросмотр помечен как «простой текст»', r.mdPlain === true);
+
+  // Палитра, размер и шрифт применяются к предпросмотру
+  r = JSON.parse(await js(`(async () => {
+    const back = document.querySelector('.modal-back');
+    const seg = [...back.querySelectorAll('.exp-seg')];
+    const pal = seg[1];
+    const prev = back.querySelector('.exp-preview');
+    const doc = back.querySelector('.exp-doc');
+    const range = back.querySelector('input[type=range]');
+    const sel = back.querySelector('.exp-select');
+    // Не <p>: в тестовой заметке его может не быть, и проверка молча падала бы
+    // на пустом месте.
+    // Узел переспрашиваем каждый раз: любое изменение пересобирает
+    // предпросмотр, и пойманный раньше элемент оказывается в отброшенном
+    // дереве — getComputedStyle на нём молчит.
+    const first = () => doc.firstElementChild;
+    const out = {
+      darkBg: getComputedStyle(prev).backgroundColor,
+      sizeBefore: getComputedStyle(doc).fontSize,
+      pBefore: first() ? getComputedStyle(first()).fontSize : '',
+      fontBefore: getComputedStyle(doc).fontFamily,
+    };
+    [...pal.querySelectorAll('.exp-segbtn')].find((b) => b.dataset.id === 'bw').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.bwOn = prev.classList.contains('bw');
+    out.bwBg = getComputedStyle(prev).backgroundColor;
+    out.bwText = first() ? getComputedStyle(first()).color : '';
+    [...pal.querySelectorAll('.exp-segbtn')].find((b) => b.dataset.id === 'colour').click();
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.colourBack = !prev.classList.contains('bw');
+    range.value = '22';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.sizeAfter = getComputedStyle(doc).fontSize;
+    out.pAfter = first() ? getComputedStyle(first()).fontSize : '';
+    out.valText = back.querySelector('.set-val').textContent;
+    if (sel.options.length > 3) {
+      const other = [...sel.options].find((o) => o.value && o.value !== 'JetBrainsMono');
+      sel.value = other.value;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(r2 => setTimeout(r2, 250));
+      out.chosen = other.value;
+      out.fontAfter = getComputedStyle(doc).fontFamily;
+    }
+    return JSON.stringify(out);
+  })()`));
+  t('палитра ч/б включает белый фон', r.bwOn === true
+    && /255,\s*255,\s*255/.test(r.bwBg), r.bwBg);
+  t('в ч/б текст тёмный', /rgb\(2[0-9],/.test(String(r.bwText)), String(r.bwText));
+  t('возврат к цветной палитре', r.colourBack === true);
+  t('размер шрифта до ползунка 15px', r.sizeBefore === '15px', r.sizeBefore);
+  t('ползунок меняет размер предпросмотра', r.sizeAfter === '22px', r.sizeAfter);
+  t('размер текста масштабируется вместе с .content',
+    r.pBefore !== '' && r.pAfter !== '' && parseFloat(r.pAfter) > parseFloat(r.pBefore),
+    r.pBefore + ' -> ' + r.pAfter);
+  t('значение размера показано', /22\s*px/.test(r.valText), String(r.valText));
+  t('шрифт предпросмотра меняется на выбранный',
+    !!r.chosen && String(r.fontAfter).indexOf(r.chosen) >= 0,
+    r.chosen + ' / ' + r.fontAfter);
+
+  // Экспорт HTML с параметрами: собираем настоящий файл
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.modal-back').forEach((m) => m.remove());
+    await new Promise(r2 => setTimeout(r2, 250));
+    const t = M.active();
+    const body = MDV.renderMd('# Экспорт\\n\\nПроверка параметров.\\n', t.baseUrl);
+    const res = await window.mdv.exportHtml({
+      title: t.name, body, opts: { font: 'Consolas', size: 21, bw: true },
+    });
+    return JSON.stringify({ path: res.path, bytes: res.bytes });
+  })()`));
+  t('HTML собран с параметрами', !!r.path && r.bytes > 1000, r.path + ' ' + r.bytes + ' байт');
+  if (r.path && fs.existsSync(r.path)) {
+    const file = fs.readFileSync(r.path, 'utf8');
+    t('в файле выбранный шрифт', /--mono:\s*"Consolas"/.test(file));
+    t('в файле выбранный размер', /font-size:\s*21px/.test(file));
+    t('в файле чёрно-белая палитра', /#14161c/.test(file) && /#fff\s*!important/.test(file));
+    t('размер не попал в print-отступы', /padding:\s*34px 26px 70px/.test(file));
+    fs.rmSync(r.path, { force: true });
+  } else {
+    t('файл HTML создан на диске', false, String(r.path));
+  }
 
   // ------------------------------------------- экспорт PDF: настоящий файл
   // Проверяем на живом API, а не по исходнику: printToPDF в скрытом окне —
@@ -3055,7 +3275,7 @@ const SILENCE_CONFIRM = `(() => {
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    document.querySelectorAll('.ctxmenu, .modal-back').forEach((m) => m.remove());
     await new Promise(r2 => setTimeout(r2, 250));
     const t = M.active();
     const body = MDV.renderMd('# PDF\\n\\nПроверка экспорта.\\n\\n\`\`\`js\\nconst x = 1;\\n\`\`\`\\n', t.baseUrl);
@@ -3076,6 +3296,7 @@ const SILENCE_CONFIRM = `(() => {
   } else {
     t('файл PDF создан на диске', false, String(r.path));
   }
+
 
   // ------------------------------------------- кольцо: сектора и зона отмены
   console.log('\n== кольцо: сектора ==');
@@ -3200,15 +3421,21 @@ const SILENCE_CONFIRM = `(() => {
     // Далеко за кольцом, но по направлению
     out.far.up = at(q.left, q.top - 240);
     out.far.right = at(q.left + 300, q.top);
-    out.far.left = at(q.left - 300, q.top);
     out.far.down = at(q.left, q.top + 240);
+    // Слева теперь два сектора: «Путь» выше горизонтали, «Открыть» ниже.
+    // Ровно влево (180°) попадает на их общую границу, поэтому проверяем обе
+    // стороны отдельно — иначе проверка зависит от того, куда отнесла граница
+    // этот угол.
+    out.far.leftUp = at(q.left - 240, q.top - 120);
+    out.far.leftLow = at(q.left - 240, q.top + 120);
     // Радиус кольца = 122, значит 240 — точно за ним
     out.outsideIsFar = 240 > 122;
     return JSON.stringify(out);
   })()`));
   t('вверх выбирается правка', r.far.up === 'mode', String(r.far.up));
   t('вправо выбирается экспорт', r.far.right === 'export', String(r.far.right));
-  t('влево выбирается открытие', r.far.left === 'open', String(r.far.left));
+  t('слева снизу выбирается открытие', r.far.leftLow === 'open', String(r.far.leftLow));
+  t('слева сверху выбирается путь', r.far.leftUp === 'path', String(r.far.leftUp));
   t('вниз выбирается буфер обмена', /^copy$|^cut$|^paste$/.test(String(r.far.down)),
     String(r.far.down));
   t('точки проверки — за пределами кольца', r.outsideIsFar === true);
@@ -3313,7 +3540,9 @@ const SILENCE_CONFIRM = `(() => {
     const rad = document.getElementById('radial');
     const q = rad.getBoundingClientRect();
     const sec = rad.querySelector('[data-act="open"]');
-    const out2 = { opened: !rad.hidden, before: M.radialPick(Math.round(q.left - 90), Math.round(q.top)) };
+    // «Открыть» занимает дугу 141..180, середина — 160.5°, то есть ниже
+    // горизонтали: берём точку на середине его радиуса.
+    const out2 = { opened: !rad.hidden, before: M.radialPick(Math.round(q.left - 85), Math.round(q.top + 30)) };
     out2.beforeAct = out2.before ? out2.before.dataset.act : null;
     await new Promise(r2 => setTimeout(r2, 250));
     const lab = document.getElementById('radialLabel');
@@ -3389,13 +3618,23 @@ const SILENCE_CONFIRM = `(() => {
     // целимся в самый край сектора, а не в значок
     // Сектор — это клип по углу плюс маска-кольцо. Проверяем попадание в
     // разных радиусах: у самого края кольца, посередине и у внешней границы.
-    const probe = (dx, dy) => {
+    // Целимся по УГЛАМ секторов, а не по «влево от центра»: слева теперь два
+    // сектора, «Путь» и «Открыть», и точка «ровно влево» попадает на их
+    // границу — проверка зависела бы от того, куда граница отнесла этот угол.
+    // Радиусы 60/90/100 — толщина кольца: у самого края, посередине и у
+    // внешней границы.
+    const rad2 = (deg, rr) => {
+      const a = deg * Math.PI / 180;
+      return [Math.round(Math.cos(a) * rr), Math.round(Math.sin(a) * rr)];
+    };
+    const probe = (deg, rr) => {
+      const [dx, dy] = rad2(deg, rr);
       const e = document.elementFromPoint(Math.round(q.left + dx), Math.round(q.top + dy));
       const s2 = e ? e.closest('.radial-sector') : null;
       return s2 ? s2.dataset.act : 'нет';
     };
-    const edgeIs = [probe(-100, 0), probe(-90, 0), probe(-60, 0), probe(0, -100),
-      probe(100, 0), probe(0, 100)].join('|');
+    const edgeIs = [probe(160.5, 100), probe(160.5, 90), probe(160.5, 60),
+      probe(199.5, 90), probe(-90, 90), probe(0, 90), probe(56, 90)].join('|');
     sec.click();
     await new Promise(r2 => setTimeout(r2, 450));
     return JSON.stringify({
@@ -3403,8 +3642,10 @@ const SILENCE_CONFIRM = `(() => {
       labels: document.querySelectorAll('.ctxmenu-label').length,
     });
   })()`));
+  // «Открыть» держим от края, посередине и у внешней границы, дальше —
+  // «Путь», правка, экспорт и один из секторов буфера обмена.
   t('секторы кликабельны по всей толщине кольца',
-    r.edgeIs === 'open|open|open|mode|export|cut', r.edgeIs);
+    r.edgeIs === 'open|open|open|path|mode|export|copy', r.edgeIs);
   t('клик по сектору открывает его меню', r.labels === 2, String(r.labels));
 
   await js(`(() => {
@@ -3418,63 +3659,6 @@ const SILENCE_CONFIRM = `(() => {
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
     return 1;
   })()`);
-
-  // ------------------------------------------- меню экспорта: иконка слева
-  r = JSON.parse(await js(`(async () => {
-    const out = {};
-    const M = window.__mdvTest;
-    await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])},
-      { newTab: true });
-    await new Promise(r2 => setTimeout(r2, 500));
-    const c = document.getElementById('content');
-    const box = c.getBoundingClientRect();
-    // Каждая проба начинается с закрытого кольца: правый клик при открытом
-    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 200));
-    await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
-    await new Promise(r2 => setTimeout(r2, 400));
-    document.getElementById('radial').querySelector('[data-act="export"]').click();
-    await new Promise(r2 => setTimeout(r2, 450));
-    const m = document.querySelector('.ctxmenu');
-    const items = [...m.querySelectorAll('.ctxmenu-item')];
-    out.open = !!m;
-    out.count = items.length;
-    out.allRows = items.every((b) => {
-      const icon = b.querySelector('.ctxmenu-label .ico');
-      if (!icon) return false;
-      const bi = icon.getBoundingClientRect();
-      const bb = b.getBoundingClientRect();
-      return bi.right <= bb.left + bb.width && bi.top >= bb.top - 1 && bi.bottom <= bb.bottom + 1;
-    });
-    const one = items[0];
-    const lab = one ? one.querySelector('.ctxmenu-label') : null;
-    const ico = one ? one.querySelector('.ico') : null;
-    out.labels = items.map((b) => b.textContent.trim());
-    if (lab && ico) {
-      const lb = lab.getBoundingClientRect();
-      const ib = ico.getBoundingClientRect();
-      out.iconLeft = ib.right <= lb.left + lb.width && ib.left < lb.left + lb.width;
-      out.iconSize = Math.round(one.querySelector('.ico-svg').getBoundingClientRect().width);
-    }
-    out.height = one ? Math.round(one.getBoundingClientRect().height) : 0;
-    return JSON.stringify(out);
-  })()`));
-
-  t('меню экспорта открывается', r.open === true);
-  t('в меню пять пунктов', r.count === 5, String(r.count));
-  t('иконка и надпись в одной строке', r.allRows === true, JSON.stringify(r.labels));
-  t('иконка слева от надписи', r.iconLeft === true);
-  t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
-
-  await js(`(async () => {
-    const M = window.__mdvTest;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
-    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
-    return 1;
-  })()`);
-
 
   // --------------------------------------------------- отмена и повтор
   console.log('\n== отмена и повтор ==');
@@ -4237,9 +4421,9 @@ const SILENCE_CONFIRM = `(() => {
   t('k возвращает назад', r.afterK === 'mode', String(r.afterK));
   t('Enter подтверждает выбор', r.mode === 'edit', r.mode);
   t('после Enter кольцо закрыто', r.closed === true);
-  t('список закольцован: сверху назад вниз', r.wrap === 'open', String(r.wrap));
+  t('список закольцован: сверху назад вниз', r.wrap === 'path', String(r.wrap));
   t('l работает как стрелка вперёд', r.wrapDown === 'mode', String(r.wrapDown));
-  t('h работает как стрелка назад', r.wrapBack === 'open', String(r.wrapBack));
+  t('h работает как стрелка назад', r.wrapBack === 'path', String(r.wrapBack));
   await js(`window.__mdvTest.exitEdit(true)`);
   await new Promise((x) => setTimeout(x, 300));
 

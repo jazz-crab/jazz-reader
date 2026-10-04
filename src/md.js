@@ -272,6 +272,90 @@
     return html;
   };
 
+  /**
+   * Разметка -> обычный текст.
+   *
+   * Для экспорта в TXT. Не «вырезать теги из HTML»: в TXT человек ждёт текст,
+   * который можно прочитать в блокноте, — без решёток, звёздочек, обратных
+   * кавычек и подчёркиваний. Списки остаются списками, таблицы — табами,
+   * ссылки — своим текстом, картинки — подписью, код — кодом.
+   *
+   * Эвристика, а не парсер: нестандартную разметку разбирать не на чем, и
+   * выдумывать тут нечего.
+   */
+  const ESC_MARK = '\uE000';
+
+  function plainInline(src) {
+    let x = String(src);
+    // Экранированные символы: \* не считается началом выделения. Прячем их
+    // за символ частной области — он в заметке не встречается.
+    const esc = [];
+    x = x.replace(/\\([\\`*_{}[\]()#+\-.!>|~])/g, (_m, c) => {
+      esc.push(c);
+      return ESC_MARK + (esc.length - 1) + ESC_MARK;
+    });
+    x = x.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1');
+    x = x.replace(/!\[([^\]]*)\]\[[^\]]*\]/g, '$1');
+    x = x.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+    x = x.replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1');
+    x = x.replace(/<\/?[A-Za-z][^>]*>/g, '');
+    x = x.replace(/`+/g, '');
+    x = x.replace(/(\*\*\*|\*\*|\*|___|__|_|~~)(?=\S)([\s\S]*?\S)\1/g, '$2');
+    x = x.replace(/[ \t]+$/g, '');
+    return x.replace(new RegExp(ESC_MARK + '(\\d+)' + ESC_MARK, 'g'),
+      (_m, n) => esc[+n]);
+  }
+
+  function mdToText(src) {
+    const lines = String(src == null ? '' : src).replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let fence = '';
+    let inTable = false;
+
+    const flushTable = () => {
+      if (inTable) { out.push(''); inTable = false; }
+    };
+
+    for (const raw of lines) {
+      const f = /^\s{0,3}(`{3,}|~{3,})/.exec(raw);
+      if (fence) {
+        if (f && raw.trim().startsWith(fence)) { fence = ''; out.push(''); continue; }
+        out.push(raw);
+        continue;
+      }
+      if (f) { flushTable(); fence = f[1].replace(/[`~]/g, ''); out.push(''); continue; }
+
+      // Горизонтальная линия: в тексте ей нечего соответствовать.
+      if (/^\s{0,3}([-*_])\s*(\1\s*){2,}$/.test(raw)) { flushTable(); out.push(''); continue; }
+
+      // Таблица: строка-разделитель убирается, ячейки склеиваются табом.
+      if (raw.includes('|') && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(raw)) continue;
+      if (raw.includes('|') && /^\s*\|/.test(raw)) {
+        inTable = true;
+        out.push(raw.replace(/^\s*\|/, '').replace(/\|\s*$/, '')
+          .split('|').map((c) => plainInline(c.trim())).join('\t'));
+        continue;
+      }
+      flushTable();
+
+      const h = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(raw);
+      if (h) { out.push(plainInline(h[2])); continue; }
+
+      let line = raw.replace(/^\s{0,3}>\s?/, '');
+      // Задача: галочка в тексте полезнее пустой скобки.
+      line = line.replace(/^(\s*)([-*+]|\d+[.)])\s+\[([ xX])\]\s+/, '$1- [$3] ');
+      line = line.replace(/^(\s*)([-*+]|\d+[.)])\s+/, '$1- ');
+      out.push(plainInline(line));
+    }
+
+    return out.join('\n')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim() + '\n';
+  }
+
+  MDV.mdToText = mdToText;
+
   MDV.replaceCheckboxes = replaceCheckboxes;
 
   MDV.extractMath = extractMath;

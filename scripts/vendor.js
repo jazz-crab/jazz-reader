@@ -55,6 +55,9 @@ const USED_ICONS = [
   'search', 'file-down', 'file-code', 'check', 'list-tree', 'menu', 'plus', 'chevron-left', 'chevron-right',
   // круговое меню заметки: буфер обмена
   'scissors', 'clipboard-paste',
+  // «Путь» в кольце: дорожный указатель, а не папка — про путь к файлу,
+  // а не про каталог.
+  'signpost',
   // Чекбоксы task-list (- [x] / 1. [ ]): marked рендерит их нативными
   // <input type=checkbox>, они выглядели чужеродно в тёмной теме.
   'square-check-big', 'square',

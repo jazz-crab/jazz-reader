@@ -11,6 +11,7 @@ const os = require('os');
 const fsp = require('fs/promises');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { execFile } = require('child_process');
 
 const MD_EXT = /\.md$/i;
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', '.obsidian', '.trash']);
@@ -212,7 +213,7 @@ async function buildStandaloneHtml(title, body, opts) {
     + '<title>' + esc(title) + '</title>\n<style>\n' + out + '\n' + ourCss + '\n'
     + 'html,body{height:auto;overflow:visible;background:#1a1b26}\n'
     + '.content{position:static;max-width:900px;margin:0 auto;padding:34px 26px 70px}\n'
-    + (o.print ? PRINT_CSS : '')
+    + (o.print ? PRINT_CSS + exportCss(o) : exportCss(o))
     + '</style>\n</head>\n<body>\n<article class="content">' + body + '</article>\n</body>\n</html>\n';
 
   if (o.print) return { html, fonts: inlined + own.inlined, bytes: Buffer.byteLength(html) };
@@ -222,6 +223,156 @@ async function buildStandaloneHtml(title, body, opts) {
   await fsp.writeFile(file, html, 'utf8');
   return { path: file, fonts: inlined + own.inlined, bytes: Buffer.byteLength(html) };
 }
+
+/*
+ * Список системных шрифтов.
+ *
+ * Браузер шрифты не перечислит: queryLocalFonts() в Electron не работает, а
+ * font-family всегда молча падает на следующий в списке. Единственный честный
+ * источник — реестр Windows, где имя значения устроено как «Семейство Стиль
+ * (TrueType)».
+ *
+ *   Consolas Bold Italic (TrueType)   -> Consolas
+ *   Segoe UI Semibold (TrueType)      -> Segoe UI Semibold
+ *
+ * Второй случай разбирается не до конца (у Segoe UI Semibold семейство —
+ * «Segoe UI», а начертание жирное), но для списка выбора это честнее, чем
+ * ничего: человек увидит знакомое имя и, если оно не применилось, увидит
+ * предпросмотр и поставит другое.
+ */
+const FONT_STYLE_WORDS = new Set([
+  'regular', 'roman', 'book', 'bold', 'black', 'heavy', 'demibold', 'semibold',
+  'extralight', 'ultralight', 'light', 'thin', 'extrathin', 'ultrathin',
+  'semilight', 'lightitalic', 'medium', 'semimedium', 'extramedium', 'demi',
+  'italic', 'oblique', 'condensed', 'semicondensed', 'narrow', 'expanded',
+  'semiexpanded', 'extended', 'extraexpanded', 'ultraexpanded',
+  'normal', 'italic', 'bolditalic',
+]);
+
+function fontFamilyFromRegistryName(value) {
+  let name = String(value).replace(/\s*\([^()]*\)\s*$/, '').trim();
+  // Стиль может идти двумя словами («Bold Italic»), снимаем по одному, пока
+  // хвост похож на стиль.
+  for (let n = 0; n < 3; n += 1) {
+    const m = /^(.*\S)\s+([A-Za-z]+)$/.exec(name);
+    if (!m) break;
+    const tail = m[2].toLowerCase().replace(/[^a-z]/g, '');
+    if (!FONT_STYLE_WORDS.has(tail)) break;
+    name = m[1];
+  }
+  name = name.trim();
+  // @-шрифты в реестре — это файлы, а не семейства, в списке выбора они
+  // бесполезны.
+  if (!name || name.startsWith('@')) return null;
+  return name;
+}
+
+async function listSystemFonts() {
+  const out = new Map();
+  const put = (n) => {
+    if (n) out.set(n.toLowerCase(), n);
+  };
+  put('JetBrainsMono');
+  const keys = [
+    'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts',
+    'HKCU\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts',
+  ];
+  for (const key of keys) {
+    let outp = '';
+    try {
+      outp = await new Promise((res, rej) => {
+        execFile('reg.exe', ['query', key], {
+          encoding: 'utf8', windowsHide: true, timeout: 5000, maxBuffer: 8 << 20,
+        }, (e, so) => (e ? rej(e) : res(so)));
+      });
+    } catch {
+      // Ключа может не быть (например, у portable-сборки в чужом профиле) —
+      // это не ошибка, а просто один из источников пуст.
+      continue;
+    }
+    for (const line of String(outp).split(/\r?\n/)) {
+      // Строка вывода reg query: «    Имя    REG_SZ    файл.ttf».
+      const m = /^\s{4}(.+?)\s{4}REG_\w+\s/.exec(line);
+      if (!m) continue;
+      put(fontFamilyFromRegistryName(m[1]));
+    }
+  }
+  const coll = new Intl.Collator('ru', { sensitivity: 'base' });
+  // Свой шрифт первым, остальные по алфавиту: список в выпадающем поле
+  // начинается с того, что нужно чаще всего.
+  const all = [...out.values()];
+  const own = all.filter((n) => n === 'JetBrainsMono');
+  const rest = all.filter((n) => n !== 'JetBrainsMono').sort(coll.compare);
+  return own.concat(rest).slice(0, 600);
+}
+
+/*
+ * CSS по выбору в окне экспорта: палитра, шрифт, размер.
+ *
+ * Размер задаётся на .content — всё внутри в em, поэтому масштабируется
+ * ровно то же, что масштабируется ползунком зума в приложении, и в
+ * предпросмотре, и в файле.
+ *
+ * Шрифт идёт через --mono и --ui: ими размечены и код, и интерфейс, и
+ * подставлять имя в сотни правил незачем. Имя в кавычках и с отброшенными
+ * кавычками и обратными слэшами — иначе значение из select уехало бы в CSS
+ * как есть.
+ */
+function exportCss(opts) {
+  const o = opts || {};
+  const raw = String(o.font || 'JetBrainsMono').replace(/["'\\;{}()]/g, '').trim();
+  const family = '"' + (raw || 'JetBrainsMono') + '", monospace';
+  const size = Math.min(48, Math.max(8, Number(o.size) || 15));
+  const pad = o.print ? '16mm 18mm 18mm' : '34px 26px 70px';
+  let css = '\n/* --- выбор из окна экспорта --- */\n'
+    + ':root { --mono: ' + family + '; --ui: ' + family + '; }\n'
+    + '.content { font-family: var(--mono) !important; font-size: ' + size + 'px !important;'
+    + ' padding: ' + pad + ' !important; }\n';
+  css += o.bw ? BANDW_CSS : (o.print ? COLOUR_PRINT_CSS : '');
+  return css;
+}
+
+/*
+ * Чёрно-белая палитра.
+ *
+ * На экране и на бумаге. Правила те же, что в @media print, только без
+ * !important по цвету текста там, где хватает обычного каскада: этот блок
+ * стоит последним и перебивает и @media print, и тему.
+ */
+const BANDW_CSS = `
+html, body, .content { background: #fff !important; color: #14161c !important; }
+.content p, .content li, .content td, .content th,
+.content h1, .content h2, .content h3, .content h4, .content h5, .content h6,
+.content pre, .content code, .content blockquote { color: #14161c !important; }
+.content pre, .content blockquote { background: #f5f5f7 !important; border-color: #d8d8de !important; }
+.content code { background: #eeeef2 !important; }
+.content a { color: #1450c0 !important; border-bottom-color: #1450c0 !important; }
+.content th, .content td { border-color: #b9b9c2 !important; }
+.content th { background: #eeeef2 !important; }
+.content h2, .content h3 { border-color: #d8d8de !important; }
+.content hr { border-color: #d8d8de !important; }
+`;
+
+/*
+ * Цветная палитра на печати.
+ *
+ * @media print в style.css насильно перекрашивает страницу в белый — на
+ * бумаге это правильно, но человек выбрал «цветное», и его выбор должен
+ * выиграть. Поэтому возвращаем цвета темы, дублируя те же селекторы.
+ */
+const COLOUR_PRINT_CSS = `
+html, body, .content { background: var(--bg) !important; color: var(--fg) !important; }
+.content p, .content li, .content td, .content th,
+.content h1, .content h2, .content h3, .content h4, .content h5, .content h6,
+.content pre, .content code, .content blockquote { color: var(--fg) !important; }
+.content pre, .content blockquote { background: var(--bg-soft) !important;
+    border-color: var(--border) !important; }
+.content code { background: var(--bg-alt) !important; }
+.content a { color: var(--blue) !important; border-bottom-color: var(--blue) !important; }
+.content th, .content td { border-color: var(--border) !important; }
+.content th { background: var(--bg-soft) !important; }
+.content hr { border-color: var(--border) !important; }
+`;
 
 /*
  * Дополнение к автономному HTML для печати.
@@ -569,9 +720,12 @@ function register() {
   });
   ipcMain.handle('mdv:exportHtml', (_e, { title, body, opts }) => buildStandaloneHtml(title, body, opts));
   ipcMain.handle('mdv:exportPdf', (_e, { title, body, opts }) => buildPdf(title, body, opts));
+  /** Системные шрифты для выпадающего списка в окне экспорта. */
+  ipcMain.handle('mdv:fonts', () => listSystemFonts());
 }
 
 module.exports = {
   register, listMdTree, decodeBuffer, buildStandaloneHtml, buildPdf,
+  listSystemFonts, exportCss,
   setCaptionWidth: (px) => { captionWidth = Math.max(0, Math.round(px || 0)); },
 };

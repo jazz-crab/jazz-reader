@@ -2219,50 +2219,294 @@ function download(name, text, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-function downloadMd() {
-  const t = active();
-  if (!t || !t.path) return;
-  if (t.mode === 'edit' && t.dirty) { toast('Сначала сохрани (Ctrl+S)'); return; }
-  download(t.name, t.raw, 'text/markdown');
-}
-
 /**
- * Автономный HTML одним файлом. Сборку делает main: он умеет прочитать
- * style.css и шрифты KaTeX и подставить их base64 прямо в @font-face
- * (из renderer их не достать — CSP запрещает connect-src).
- */
-async function downloadHtml() {
-  const t = active();
-  if (!t || !t.path) return;
-  if (t.mode === 'edit' && t.dirty) { toast('Сначала сохрани (Ctrl+S)'); return; }
-  try {
-    const body = MDV.renderMd(t.raw, t.baseUrl);
-    const res = await api.exportHtml({ title: t.name, body });
-    toast('Сохранено: ' + res.path + ' (' + fmtSize(res.bytes) + ', шрифтов: ' + res.fonts + ')', 'ok');
-    api.reveal(res.path);
-  } catch (e) {
-    status('Ошибка сборки HTML: ' + (e.message || e), 'err');
-  }
-}
-
-/**
- * PDF мимо системного диалога печати.
+ * Форматы экспорта.
  *
- * Диалог на Windows и есть тот самый нижний тулбар с подписями: он рисует
- * колонтитул с именем файла и номерами страниц, и он попадал в результат.
- * Здесь файл собирает main и сразу пишет на диск — смотреть не на что.
+ * MD и TXT — файл как есть (TXT без разметки), их видно целиком и решать
+ * там нечего. HTML и PDF собираются заново, и только для них имеют смысл
+ * палитра, шрифт и размер: это не оформление заметки, а оформление файла,
+ * который уедет с машины.
  */
-async function downloadPdf() {
+const EXPORT_FORMATS = [
+  { id: 'md', label: 'MD', icon: 'file-text', plain: true, hint: 'исходный текст заметки' },
+  { id: 'txt', label: 'TXT', icon: 'file-down', plain: true, hint: 'то же без разметки' },
+  { id: 'html', label: 'HTML', icon: 'file-code', plain: false, hint: 'один файл, шрифты внутри' },
+  { id: 'pdf', label: 'PDF', icon: 'printer', plain: false, hint: 'для печати и отправки' },
+];
+
+/** Своё имя шрифта JetBrains, для показа в списке. */
+function exportFontLabel(name) {
+  return name === 'JetBrainsMono' ? 'JetBrains Mono (свой)' : name;
+}
+
+/**
+ * Окно экспорта.
+ *
+ * Отдельное окно, а не список в кольце: у форматов есть параметры, а у
+ * параметров — предпросмотр, и всё это не влезает в меню. В кольце осталось
+ * два действия: «Экспорт» открывает это окно, «Путь» — короткое меню про
+ * путь к файлу.
+ */
+function exportDialog(preset) {
   const t = active();
-  if (!t || !t.path) return;
+  if (!t || !t.path) { toast('Нет открытой заметки'); return; }
   if (t.mode === 'edit' && t.dirty) { toast('Сначала сохрани (Ctrl+S)'); return; }
-  try {
-    const body = MDV.renderMd(t.raw, t.baseUrl);
-    const res = await api.exportPdf({ title: t.name, body });
-    toast('Сохранено: ' + res.path + ' (' + fmtSize(res.bytes) + ')', 'ok');
-    api.reveal(res.path);
-  } catch (e) {
-    status('Ошибка сборки PDF: ' + (e.message || e), 'err');
+
+  let closeModal = () => back.remove();
+  const back = modalShell();
+  const box = modalBox('Экспорт', 640, 830);
+  box.classList.add('exp-box');
+
+  const first = EXPORT_FORMATS.find((f) => f.id === preset) || EXPORT_FORMATS[2];
+  const state = {
+    format: first.id,
+    bw: false,
+    size: BASE_TEXT_PX,
+    font: 'JetBrainsMono',
+  };
+  const fmtById = (id) => EXPORT_FORMATS.find((f) => f.id === id) || first;
+
+  // ---------------------------------------------------------- карточка поля
+  function addCard(label, valueEl, hint) {
+    const row = document.createElement('div');
+    row.className = 'set-row';
+    const head = document.createElement('div');
+    head.className = 'set-head';
+    const l = document.createElement('span');
+    l.className = 'set-label';
+    l.textContent = label;
+    head.append(l);
+    if (valueEl) head.append(valueEl);
+    row.append(head);
+    let hintEl = null;
+    if (hint) {
+      hintEl = document.createElement('div');
+      hintEl.className = 'set-hint';
+      hintEl.textContent = hint;
+      row.append(hintEl);
+    }
+    box.append(row);
+    row._before = hintEl;
+    row.addControl = (ctl) => {
+      row.insertBefore(ctl, hintEl || null);
+      return ctl;
+    };
+    return row;
+  }
+
+  /** Ряд кнопок-переключателей: формат, палитра. */
+  function segmented(options, current, onPick) {
+    const wrap = document.createElement('div');
+    wrap.className = 'exp-seg';
+    const btns = options.map((o) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'exp-segbtn';
+      b.dataset.id = o.id;
+      if (o.icon) {
+        const ic = document.createElement('span');
+        ic.className = 'ico';
+        ic.innerHTML = ICONS.icon(o.icon);
+        b.append(ic);
+      }
+      const tx = document.createElement('span');
+      tx.textContent = o.label;
+      b.append(tx);
+      b.onclick = () => onPick(o.id);
+      wrap.append(b);
+      return b;
+    });
+    const sync = (id) => btns.forEach((b) => b.classList.toggle('on', b.dataset.id === id));
+    sync(current);
+    wrap.sync = sync;
+    return wrap;
+  }
+
+  // ---------------------------------------------------------------- формат
+  const fmtCard = addCard('Формат', null, null);
+  const fmtSeg = segmented(EXPORT_FORMATS.map((f) => ({ id: f.id, label: f.label, icon: f.icon })),
+    state.format, (id) => {
+      state.format = id;
+      fmtSeg.sync(id);
+      syncAll();
+    });
+  fmtCard.addControl(fmtSeg);
+
+  // ---------------------------------------------------------------- палитра
+  const palCard = addCard('Палитра', null,
+    'Чёрно-белая — для принтера и для тех, кто печатает много.');
+  const palSeg = segmented([
+    { id: 'colour', label: 'Цветное' },
+    { id: 'bw', label: 'Чёрно-белая' },
+  ], state.bw ? 'bw' : 'colour', (id) => {
+    state.bw = id === 'bw';
+    palSeg.sync(id);
+    syncAll();
+  });
+  palCard.addControl(palSeg);
+
+  // ------------------------------------------------------------ размер шрифта
+  const sizeOut = document.createElement('span');
+  sizeOut.className = 'set-val';
+  const sizeIn = document.createElement('input');
+  sizeIn.type = 'range';
+  sizeIn.min = '11';
+  sizeIn.max = '28';
+  sizeIn.step = '1';
+  sizeIn.value = String(state.size);
+  sizeIn.oninput = () => {
+    state.size = +sizeIn.value;
+    sizeOut.textContent = sizeIn.value + ' px';
+    paintRange(sizeIn);
+    syncAll();
+  };
+  const sizeCard = addCard('Размер шрифта', sizeOut, 'Так же, как в заметке.');
+  sizeCard.addControl(sizeIn);
+
+  // ------------------------------------------------------------------ шрифт
+  const fontSel = document.createElement('select');
+  fontSel.className = 'exp-select';
+  fontSel.disabled = true;
+  const fontLoading = document.createElement('option');
+  fontLoading.textContent = 'Читаем системные шрифты…';
+  fontSel.append(fontLoading);
+  fontSel.onchange = () => {
+    state.font = fontSel.value || 'JetBrainsMono';
+    syncAll();
+  };
+  const fontCard = addCard('Шрифт', null,
+    'Свой JetBrains Mono или любой из установленных в системе.');
+  fontCard.addControl(fontSel);
+  const fillFonts = (names) => {
+    fontSel.innerHTML = '';
+    const list = (names && names.length ? names : ['JetBrainsMono']).slice();
+    if (!list.includes('JetBrainsMono')) list.unshift('JetBrainsMono');
+    for (const n of list) {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = exportFontLabel(n);
+      fontSel.append(o);
+    }
+    fontSel.value = state.font;
+    fontSel.disabled = false;
+  };
+  // Шрифты читает main из реестра Windows: renderer их не перечислит.
+  Promise.resolve(api.fonts()).then(fillFonts, () => fillFonts(null));
+
+  // ------------------------------------------------------------- предпросмотр
+  const prev = document.createElement('div');
+  prev.className = 'exp-preview';
+  const doc = document.createElement('article');
+  doc.className = 'content exp-doc';
+  prev.append(doc);
+  const prevCard = addCard('Предпросмотр', null, null);
+  // Карточка с предпросмотром забирает остаток высоты окна: остальные пять
+  // карточек фиксированы, и если предпросмотру оставить свою высоту, окно
+  // уезжает в прокрутку вместе с кнопкой экспорта.
+  prevCard.classList.add('exp-card');
+  prevCard.addControl(prev);
+
+  /*
+   * Один проход на любое изменение.
+   *
+   * Предпросмотр показывает ровно то, что уедет в файл: для MD — исходный
+   * текст, для TXT — текст без разметки, для HTML и PDF — собранную заметку
+   * с выбранными палитрой, шрифтом и размером.
+   */
+  function syncAll() {
+    const f = fmtById(state.format);
+    fmtSeg.sync(state.format);
+    palSeg.sync(state.bw ? 'bw' : 'colour');
+    const plain = !!f.plain;
+    // У MD и TXT нет оформления — показывать палитру и шрифт было бы враньём,
+    // и человек настраивал бы то, чего в файле нет.
+    palCard.hidden = plain;
+    sizeCard.hidden = plain;
+    fontCard.hidden = plain;
+    prev.classList.toggle('bw', !plain && state.bw);
+    prev.classList.toggle('plain', plain);
+    prev.style.setProperty('--exp-mono',
+      '"' + String(state.font).replace(/["'\\]/g, '') + '", monospace');
+    prev.style.setProperty('--exp-size', state.size + 'px');
+    if (plain) {
+      let pre = doc.querySelector('.exp-plain');
+      if (!pre) { doc.innerHTML = ''; pre = document.createElement('pre'); pre.className = 'exp-plain'; doc.append(pre); }
+      pre.textContent = state.format === 'md' ? t.raw : MDV.mdToText(t.raw);
+    } else {
+      doc.innerHTML = MDV.renderMd(t.raw, t.baseUrl);
+    }
+    ok.textContent = 'Экспортировать';
+  }
+
+  // ----------------------------------------------------------------- кнопки
+  const row = document.createElement('div');
+  row.className = 'modal-row';
+  const cancel = document.createElement('button');
+  cancel.className = 'dlgbtn';
+  cancel.textContent = 'Отмена';
+  cancel.onclick = () => closeModal(false);
+  const ok = document.createElement('button');
+  ok.className = 'dlgbtn dlgbtn-primary';
+  ok.onclick = run;
+  row.append(cancel, ok);
+  box.append(row);
+
+  back.append(box);
+  document.body.append(back);
+  closeModal = wireModal(back, () => ok);
+  sizeOut.textContent = sizeIn.value + ' px';
+  paintRange(sizeIn);
+  syncAll();
+
+  // Enter в окне — экспорт. В списке шрифтов Enter открывает сам список, там
+  // подтверждением ничего не сделать.
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName !== 'SELECT') {
+      e.preventDefault();
+      e.stopPropagation();
+      run();
+    }
+  });
+
+  let busy = false;
+
+  async function run() {
+    if (busy) return;
+    const tab = active();
+    // Пока окно открыто, вкладку могли закрыть по Ctrl+W — тогда экспортируем
+    // не то.
+    if (!tab || tab.path !== t.path) { closeModal(false); return; }
+    if (tab.mode === 'edit' && tab.dirty) { toast('Сначала сохрани (Ctrl+S)'); closeModal(false); return; }
+
+    const f = fmtById(state.format);
+    const base = t.name.replace(/\.md$/i, '');
+    busy = true;
+    ok.disabled = true;
+    ok.textContent = 'Готовим…';
+    try {
+      if (state.format === 'md') {
+        download(t.name, t.raw, 'text/markdown');
+        toast('Сохранено: ' + t.name, 'ok');
+      } else if (state.format === 'txt') {
+        const file = base + '.txt';
+        download(file, MDV.mdToText(t.raw), 'text/plain');
+        toast('Сохранено: ' + file, 'ok');
+      } else {
+        const body = MDV.renderMd(t.raw, t.baseUrl);
+        const opts = { font: state.font, size: state.size, bw: state.bw };
+        const res = state.format === 'html'
+          ? await api.exportHtml({ title: t.name, body, opts })
+          : await api.exportPdf({ title: t.name, body, opts });
+        toast('Сохранено: ' + res.path + ' (' + fmtSize(res.bytes) + ')', 'ok');
+        api.reveal(res.path);
+      }
+      closeModal(false);
+    } catch (e) {
+      status('Ошибка экспорта: ' + (e.message || e), 'err');
+      busy = false;
+      ok.disabled = false;
+      syncAll();
+    }
   }
 }
 
@@ -2452,7 +2696,8 @@ const RADIAL_LAYOUT = [
   { act: 'copy', slot: 'bottom', icon: 'copy', tip: 'Копировать' },
   { act: 'cut', slot: 'bottom', icon: 'scissors', tip: 'Вырезать' },
   { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: 'Вставить' },
-  { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть', cls: 'r-open' },
+  { act: 'open', slot: 'leftLow', icon: 'plus', tip: 'Открыть', cls: 'r-open' },
+  { act: 'path', slot: 'left', icon: 'signpost', tip: 'Путь к файлу', cls: 'r-path' },
 ];
 
 let radialOpen = false;
@@ -2494,7 +2739,12 @@ const RADIAL_ARCS = {
   top: [-141, -39],
   right: [-39, 39],
   bottom: [39, 141],
-  left: [141, 219],
+  // Левая сторона делится пополам: «Открыть» ниже горизонтали, «Путь» выше.
+  // Раньше «Путь» жил внутри списка экспорта, а менять форму кольца от
+  // выделения в тексте нельзя — значит место под новый сектор берём у
+  // соседнего, а не двигаем остальные.
+  leftLow: [141, 180],
+  left: [180, 219],
 };
 /** Насколько сдвинулся курсор, прежде чем жест признаётся перетаскиванием. */
 const DRAG_PX = 14;
@@ -2796,8 +3046,10 @@ function closeRadial() {
 }
 
 function radialAct(act) {
-  if (act === 'export') { radialToMenu('export'); return; }
-  if (act === 'open') { radialToMenu('open'); return; }
+  // Экспорт — отдельное окно: у форматов есть параметры и предпросмотр, и
+  // они не помещаются в меню.
+  if (act === 'export') { closeRadial(); exportDialog(); return; }
+  if (act === 'path' || act === 'open') { radialToMenu(act); return; }
   closeRadial();
   if (act === 'mode') { toggleEditMode(); return; }
   // Именно exitEdit(true), а не save(): сектор в кольце — это «покинуть
@@ -2860,15 +3112,11 @@ function radialToMenu(which) {
    */
   const x = r.left;
   const y = r.bottom + 6;
-  if (which === 'export') {
+  if (which === 'path') {
     showContextMenu(x, y, [
-      { label: 'Сохранить MD', icon: 'file-down', act: () => downloadMd() },
-      { label: 'Сохранить HTML', icon: 'file-code', act: () => downloadHtml() },
-      { label: 'Сохранить PDF', icon: 'printer', act: () => downloadPdf() },
-      { sep: true },
-      { label: 'Показать в проводнике', icon: 'folder-search', act: () => revealFile() },
       { label: 'Скопировать путь', icon: 'copy', act: () => copyPath() },
-    ], { width: 258, height: 214, anchorRect: r });
+      { label: 'Открыть в проводнике', icon: 'folder-search', act: () => revealFile() },
+    ], { width: 258, height: 84, anchorRect: r });
   } else {
     showContextMenu(x, y, [
       { label: 'Открыть .md', icon: 'file-text', hint: 'Ctrl+O', act: openFileDialog },
@@ -3930,8 +4178,8 @@ api.onMenu((action) => {
     case 'open-file': openFileDialog(); break;
     case 'open-folder': openFolderDialog(); break;
     case 'save': save(); break;
-    case 'download-md': downloadMd(); break;
-    case 'download-html': downloadHtml(); break;
+    case 'download-md': exportDialog('md'); break;
+    case 'download-html': exportDialog('html'); break;
     case 'print': api.print(); break;
     case 'find': openFind(); break;
     case 'toggle-sidebar': toggleView('files'); break;
@@ -4022,7 +4270,10 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     const t = active();
-    if (t && t.mode === 'edit' && t.dirty) save(); else downloadMd();
+    // Ctrl+Shift+S — «Сохранить как»: то же окно экспорта, но с готовым MD.
+    // Отдельного второго пути не держим, иначе придётся поддерживать две
+    // одинаковые проверки и два разных места, где экспорт может сломаться.
+    if (t && t.mode === 'edit' && t.dirty) save(); else exportDialog('md');
   }
   // Tab в textarea должен вставлять отступ, а не менять фокус
   if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && document.activeElement === el.editor) {

@@ -1007,6 +1007,92 @@ kbd {
     }
 }
 
+/* ================= Окно экспорта =================
+
+   Свои классы, а не переиспользование настроек: у экспорта есть предпросмотр
+   и сегменты-переключатели, которых в настройках нет, а называть их
+   set-*-ом было бы враньём в коде.
+
+   Палитра ч/б задаётся ПОДменой переменных темы на самом предпросмотре.
+   Иначе пришлось бы перечислять в CSS все правила @media print заново, и
+   через месяц они бы разошлись с настоящей темой: перекрашено всё, кроме
+   того, что забыли. */
+/* Окно экспорта не прокручивается: растягивается предпросмотр.
+   Плотнее, чем у настроек: здесь пять карточек подряд, и каждый лишний
+   отступ съедал высоту предпросмотра — того самого места, ради которого
+   окно и открывается. */
+.exp-box { overflow: hidden; gap: 8px; }
+.exp-box .set-row { padding: 9px 12px 10px; }
+.exp-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.exp-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.exp-segbtn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 7px; cursor: pointer;
+    font-family: var(--ui); font-size: 13px;
+    border: 1px solid #2f3b54; background: #24283b; color: var(--fg-dark);
+}
+.exp-segbtn .ico { display: inline-flex; }
+.exp-segbtn .ico-svg { width: 15px; height: 15px; stroke: currentColor; }
+.exp-segbtn:hover { border-color: var(--comment); color: var(--fg); }
+.exp-segbtn.on {
+    background: var(--bg-select); border-color: var(--blue); color: var(--fg);
+}
+.exp-segbtn.on .ico-svg { stroke: var(--cyan); }
+
+.exp-select {
+    width: 100%; padding: 6px 8px; border-radius: 7px;
+    background: #1a1b26; border: 1px solid #2f3b54; color: var(--fg);
+    font-family: var(--ui); font-size: 13px;
+}
+.exp-select:disabled { color: var(--comment); cursor: default; }
+
+/* Предпросмотр: рамка и своя прокрутка, ширина как у листа A4 при печати
+   не нужна — важно, чтобы колонка читалась той же шириной, что и заметка.
+
+   Высота не задана: карточка занимает остаток окна, прокручивается только
+   предпросмотр. С фиксированной высотой окно уезжало в прокрутку целиком, и
+   кнопки экспорта уходили под нижний край — то есть окно работало, но
+   «Экспортировать» было не видно. */
+.exp-preview {
+    --exp-mono: "JetBrainsMono", monospace;
+    --exp-size: 15px;
+    flex: 1 1 auto; min-height: 120px; overflow: auto;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #1a1b26;
+    /* Цвет — здесь, а не только в .bw: переменные темы каскадом идут
+       сверху вниз, а body выше предпросмотра и посчитал --fg по корневой
+       теме. Без этой строки ч/б-предпросмотр оставался голубым по белому. */
+    color: var(--fg);
+}
+.exp-preview.bw {
+    --bg: #ffffff; --bg-alt: #eeeef2; --bg-soft: #f5f5f7; --bg-popup: #ffffff;
+    --bg-select: #e6e6ee; --border: #d8d8de; --fg: #14161c; --fg-dark: #3a3d46;
+    --comment: #55596b; --blue: #1450c0; --orange: #14161c; --cyan: #14161c;
+    --green: #14161c; --red: #b02a3c;
+    background: #ffffff;
+}
+.exp-doc {
+    /* .content в приложении — абсолютный и прокручиваемый, здесь это ломает
+       и высоту, и предпросмотр. */
+    position: static; inset: auto; overflow: visible;
+    max-width: none; margin: 0;
+    padding: 16px 20px;
+    font-family: var(--exp-mono);
+    font-size: var(--exp-size);
+}
+/* У MD и TXT оформления нет: показываем сам текст, а не собранную заметку,
+   и задаём свой размер — иначе ползунок врал бы, меняя то, чего в файле
+   нет. */
+.exp-preview.plain .exp-doc { padding: 14px 18px; }
+/* Селектор с .content: у него специфичность выше, и рамка от .content pre
+   иначе оставалась — предпросмотр читался как блок кода, а это исходный
+   текст заметки. */
+.content .exp-plain {
+    margin: 0; padding: 0; border: none; background: none;
+    font-family: var(--mono); font-size: 13px; line-height: 1.6;
+    color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 /* ================= Режим правки =================
    Кнопки «Правка» / «Сохранить» / «Отменить» стоят в левом нижнем углу
    заметки, а не в тулбаре: режим правки — состояние заметки, а не панели.

@@ -36,7 +36,7 @@ global.marked = require(path.join(ROOT, 'src', 'vendor', 'marked.min.js'));
 global.katex = require(path.join(ROOT, 'src', 'vendor', 'katex', 'katex.min.js'));
 require(path.join(ROOT, 'src', 'icons.js'));
 const MDV = require(path.join(ROOT, 'src', 'md.js'));
-const { buildStandaloneHtml } = require(path.join(ROOT, 'ipc.js'));
+const { buildStandaloneHtml, listSystemFonts, exportCss } = require(path.join(ROOT, 'ipc.js'));
 
 let pass = 0, fail = 0;
 const t = (name, cond, extra) => {
@@ -163,15 +163,62 @@ t('экспорт доступен из renderer', /exportHtml:/.test(preload));
 t('экспорт PDF доступен из renderer', /exportPdf:/.test(preload));
 
 const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
-// Пункта печати в разметке тулбара нет: экспорт живёт в круговом меню
-// заметки. В списке экспорта — «Сохранить PDF», он собирает файл сам, без
-// системного диалога. А Ctrl+P (api.print) остался: иногда нужен именно
-// диалог, чтобы печатать на принтере.
-t('в меню экспорта есть «Сохранить PDF»',
-  /label: 'Сохранить PDF', icon: 'printer'/.test(appJs));
-t('пункт вызывает downloadPdf', /act: \(\) => downloadPdf\(\)/.test(appJs));
-t('downloadPdf зовёт api.exportPdf', /api\.exportPdf\(\{/.test(appJs));
+// Списка экспорта в кольце больше нет: у форматов есть параметры и
+// предпросмотр, они не помещаются в меню. Экспорт — отдельное окно, а из
+// кольца в него ведёт сектор «Экспорт».
+t('в кольцо вернулся сектор «Экспорт»',
+  /act: 'export', slot: 'right', icon: 'folder-output'/.test(appJs));
+t('сектор открывает окно экспорта', /act === 'export'\) \{ closeRadial\(\); exportDialog\(\)/.test(appJs));
+t('окно экспорта зовёт api.exportPdf', /api\.exportPdf\(\{/.test(appJs));
+t('окно экспорта зовёт api.exportHtml', /api\.exportHtml\(\{/.test(appJs));
+t('у кольца есть сектор «Путь»', /act: 'path', slot: 'left', icon: 'signpost'/.test(appJs));
+t('списка форматов в кольце больше нет', !/label: 'Сохранить PDF'/.test(appJs)
+  && !/label: 'Сохранить HTML'/.test(appJs));
 t('Ctrl+P остался системным диалогом', /api\.print\(\)/.test(appJs));
+
+console.log('\n== окно экспорта ==');
+
+// Список системных шрифтов: renderer их не перечислит, читаем реестр.
+const fonts = await listSystemFonts();
+t('свой шрифт первый в списке', fonts[0] === 'JetBrainsMono', String(fonts[0]));
+t('шрифтов заметно больше одного', fonts.length > 20, String(fonts.length));
+t('в списке есть системные шрифты Windows',
+  ['Consolas', 'Arial', 'Segoe UI'].every((n) => fonts.includes(n)),
+  String(fonts.slice(0, 8)));
+// Хвост « (TrueType)» и начертание в конце имени — это не часть семейства:
+// «Consolas Bold (TrueType)» в списке выбора превратилось бы в два разных
+// шрифта, и какой из них есть, не проверить. Проверяем, что маркер типа убран
+// везде, а начертание срезано хотя бы там, где это однозначно.
+t('маркер типа шрифта убран', !fonts.some((n) => /\((TrueType|OpenType|TTF)\)/.test(n)),
+  String(fonts.filter((n) => /\((TrueType|OpenType|TTF)\)/.test(n)).slice(0, 4)));
+t('начертание срезано у обычных шрифтов',
+  fonts.includes('Consolas') && !fonts.includes('Consolas Bold'),
+  JSON.stringify(fonts.filter((n) => n.indexOf('Consolas') === 0)));
+t('список без повторов', new Set(fonts.map((n) => n.toLowerCase())).size === fonts.length);
+
+// CSS от выбора в окне экспорта
+const cssColour = exportCss({ font: 'Consolas', size: 19 });
+t('шрифт подставляется в --mono и --ui',
+  cssColour.includes('--mono: "Consolas", monospace')
+  && cssColour.includes('--ui: "Consolas", monospace'), cssColour.split('\n')[1]);
+t('размер шрифта попадает в .content', /\.content \{[^}]*font-size: 19px/.test(cssColour));
+t('цветная палитра на экране ничего не перекрашивает',
+  !cssColour.includes('#14161c'), 'в файле для экрана перекрашивать нечего');
+const cssBw = exportCss({ bw: true });
+t('чёрно-белая палитра красит фон в белый', /background: #fff !important/.test(cssBw));
+t('чёрно-белая палитра красит текст в тёмный', /color: #14161c !important/.test(cssBw));
+const cssPrint = exportCss({ print: true, bw: false });
+t('цветная палитра на печати возвращает цвета темы',
+  cssPrint.includes('background: var(--bg) !important')
+  && cssPrint.includes('color: var(--fg) !important'));
+t('имя шрифта с кавычками не ломает CSS',
+  !/url\(|expression\(/.test(exportCss({ font: 'Arial"; } body{display:none' })));
+
+// Кавычки и скобки из выпадающего списка не должны попасть в CSS.
+const evil = exportCss({ font: 'x"; } body { display: none } .a{', size: '15); }' });
+t('враждебное имя не закрывает правило',
+  /--mono: "x"; \} body \{ display: none \} \.a\{", monospace/.test(evil)
+  || /--mono: "x[^"]*", monospace/.test(evil), evil.split('\n')[1]);
 
 console.log('\n== на печать отдаётся непустая страница ==');
 // Chromium печатает текущий DOM. Если бы мы печатали скрытый контейнер или
