@@ -660,11 +660,16 @@ function showContextMenu(x, y, items, opts) {
     } else {
       b.onclick = () => { closeAllMenus(); it.act(); };
     }
+    b._index = m.querySelectorAll('.ctxmenu-item').length - 1;
+    b._items = it.items || null;
     m.append(b);
   }
 
   document.body.append(m);
   menuChain.push({ menu: m, parent: o.parent || null, item: o.parentItem || null });
+  // Первый доступный пункт сразу подсвечен: меню открыто с клавиатуры —
+  // человек должен видеть, где окажется Enter.
+  menuMark(m, menuItemsOf(m).findIndex((b) => !b.disabled));
   if (!o.parent) {
     // Коридор строится один раз, по геометрии корневого меню: подменю
     // открывается от пункта ВНУТРИ меню и курсор до него уже внутри.
@@ -692,8 +697,107 @@ function onMenuDown(e) {
   if (!e.target.closest || !e.target.closest('.ctxmenu')) closeAllMenus();
 }
 
+/*
+ * Навигация по меню с клавиатуры.
+ *
+ *   стрелки вверх/вниз, j/k — по пунктам;
+ *   стрелки вправо/влево, l/h — по разветвлениям: вправо открывает
+ *     подменю, лево возвращает в родительское;
+ *   Enter или Space — подтвердить;
+ *   Esc — закрыть меню, а если меню нет — закрыть окно.
+ *
+ * И то и другое нужно: человек с клавиатуры не должен тянуться к мыши, а у
+ * мыши нет клавиши. Разделители пропускаются, список закольцован, и текущий
+ * пункт виден рамкой, а не только подсветкой при наведении.
+ */
+function menuItemsOf(menu) {
+  return [...menu.querySelectorAll('.ctxmenu-item')];
+}
+
+function menuMark(menu, index) {
+  const items = menuItemsOf(menu);
+  items.forEach((b, k) => b.classList.toggle('cur', k === index));
+  const link = menuChain.find((l) => l.menu === menu);
+  if (link) link.cur = index;
+  const b = items[index];
+  if (b) b.scrollIntoView({ block: 'nearest' });
+}
+
+/** Соседний доступный пункт, минуя разделители и неактивные. */
+function menuStep(menu, from, dir) {
+  const items = menuItemsOf(menu);
+  if (!items.length) return -1;
+  let k = from;
+  for (let n = 0; n < items.length; n += 1) {
+    k = (k + dir + items.length) % items.length;
+    if (!items[k].disabled) return k;
+  }
+  return from;
+}
+
+function menuCurrent(link) {
+  const items = menuItemsOf(link.menu);
+  if (link.cur != null && items[link.cur] && !items[link.cur].disabled) return link.cur;
+  const first = items.findIndex((b) => !b.disabled);
+  return first;
+}
+
+/** Открыть подменю пункта (как при наведении мышью). */
+function menuOpenSub(item) {
+  if (!item || !item._items) return false;
+  item.dispatchEvent(new MouseEvent('mouseenter'));
+  return !!item._sub;
+}
+
 function onMenuKey(e) {
-  if (e.key === 'Escape') { e.stopPropagation(); closeAllMenus(); }
+  if (e.key === 'Escape') { e.stopPropagation(); closeAllMenus(); return; }
+  if (!menuChain.length) return;
+  // Работает только в корневом меню: подменю следуют за родительским.
+  const link = menuChain[0];
+  const items = menuItemsOf(link.menu);
+  const cur = menuCurrent(link);
+  const item = items[cur];
+  const k = e.key;
+
+  const isDown = k === 'ArrowDown' || k === 'j' || k === 'J';
+  const isUp = k === 'ArrowUp' || k === 'k' || k === 'K';
+  const isRight = k === 'ArrowRight' || k === 'l' || k === 'L';
+  const isLeft = k === 'ArrowLeft' || k === 'h' || k === 'H';
+  const isOk = k === 'Enter' || k === ' ' || k === 'Spacebar';
+
+  if (!isDown && !isUp && !isRight && !isLeft && !isOk) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (isDown || isUp) {
+    const next = menuStep(link.menu, cur, isDown ? 1 : -1);
+    menuMark(link.menu, next);
+    return;
+  }
+  if (isRight) {
+    if (item && menuOpenSub(item)) menuMark(item._sub, menuCurrent(item._sub));
+    return;
+  }
+  if (isLeft) {
+    // Закрываем самое глубокое подменю: лево возвращает на уровень выше.
+    if (menuChain.length > 1) {
+      const deep = menuChain[menuChain.length - 1];
+      const parentLink = menuChain[menuChain.length - 2];
+      dropSubmenu(parentLink.menu, deep.item);
+      menuMark(parentLink.menu, parentLink.item
+        ? menuItemsOf(parentLink.menu).indexOf(parentLink.item) : menuCurrent(parentLink));
+    }
+    return;
+  }
+  if (isOk) {
+    if (!item) return;
+    if (item._items) {
+      menuOpenSub(item);
+      menuMark(item._sub, menuCurrent(item._sub));
+      return;
+    }
+    if (!item.disabled) item.click();
+  }
 }
 
 /**
@@ -2331,6 +2435,10 @@ const RADIAL_LAYOUT = [
 ];
 
 let radialOpen = false;
+/** Выбранное действие: по нему идёт и подсветка, и клавиатурный обход. */
+let radialCur = null;
+/** Действия кольца в порядке по часовой стрелке от верха — для клавиатуры. */
+let radialOrder = [];
 /** Идёт ли «зажать и вести»: точка нажатия и признак, что кольцо уже открыто. */
 let radialDrag = null;
 /**
@@ -2455,6 +2563,8 @@ function buildRadial() {
   }
 
   el.radial.innerHTML = '';
+  radialOrder = acts.map((i) => i.act);
+  radialCur = null;
   for (const item of acts) {
     const b = document.createElement('button');
     b.className = 'radial-sector' + (item.cls ? ' ' + item.cls : '');
@@ -2571,9 +2681,16 @@ function radialPick(x, y) {
       if (inArc(a, +b.dataset.a0, +b.dataset.a1)) { hit = b; break; }
     }
   }
+  radialHighlight(hit);
+  return hit;
+}
+
+/** Подсветить выбранный сектор и показать его подпись. */
+function radialHighlight(hit) {
   for (const b of el.radial.querySelectorAll('.radial-sector, .radial-kill')) {
     b.classList.toggle('sel', b === hit);
   }
+  radialCur = hit ? hit.dataset.act : null;
   if (!hit) {
     radialSetLabel(null);
   } else if (hit.classList.contains('radial-kill')) {
@@ -2582,7 +2699,46 @@ function radialPick(x, y) {
     radialSetLabel(hit.title, hit.style.getPropertyValue('--mx'),
       hit.style.getPropertyValue('--my'));
   }
-  return hit;
+}
+
+/**
+ * Переход по кольцу с клавиатуры.
+ *
+ * Действия обходятся в порядке по часовой стрелке от верха: так список
+ * укладывается в одну строку и не зависит от того, сколько градусов занимает
+ * сектор. Enter и Space подтверждают выбор.
+ */
+function radialStep(dir) {
+  const order = radialOrder;
+  if (!order.length) return;
+  const cur = order.indexOf(radialCur);
+  const next = cur < 0
+    ? (dir > 0 ? 0 : order.length - 1)
+    : (cur + dir + order.length) % order.length;
+  radialHighlight(el.radial.querySelector('.radial-sector[data-act="' + order[next] + '"]'));
+}
+
+function radialKeyRun() {
+  const hit = radialCur === 'kill'
+    ? el.radial.querySelector('.radial-kill')
+    : el.radial.querySelector('.radial-sector[data-act="' + radialCur + '"]');
+  const act = hit ? hit.dataset.act : null;
+  closeRadial();
+  if (act && act !== 'kill') radialAct(act);
+}
+
+function radialKey(e) {
+  const k = e.key;
+  const isNext = k === 'ArrowDown' || k === 'ArrowRight' || k === 'j' || k === 'J'
+    || k === 'l' || k === 'L';
+  const isPrev = k === 'ArrowUp' || k === 'ArrowLeft' || k === 'k' || k === 'K'
+    || k === 'h' || k === 'H';
+  const isOk = k === 'Enter' || k === ' ' || k === 'Spacebar';
+  if (!isNext && !isPrev && !isOk) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  if (isOk) radialKeyRun(); else radialStep(isNext ? 1 : -1);
+  return true;
 }
 
 function radialClearPick() {
@@ -2776,6 +2932,20 @@ function radialUp(e) {
   closeRadial();
   if (act && act !== 'kill') radialAct(act);
 }
+
+/*
+ * Где стоит курсор и когда он последний раз двигался.
+ *
+ * Нужно для Ctrl+Space: кольцо должно открываться там, где человек указал
+ * мышью, а если мышь давно стояла — по центру заметки.
+ */
+const lastMouse = { x: 0, y: 0, at: 0 };
+const MOUSE_FRESH_MS = 4000;
+window.addEventListener('mousemove', (e) => {
+  lastMouse.x = e.clientX;
+  lastMouse.y = e.clientY;
+  lastMouse.at = Date.now();
+}, { passive: true });
 
 // ------------------------------------------------------- временный файл / папка
 
@@ -3547,8 +3717,13 @@ document.addEventListener('mousedown', (e) => {
   closeRadial();
 }, true);
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (radialOpen || radialDrag) { e.stopPropagation(); closeRadial(); }
+  if (e.key === 'Escape') {
+    if (radialOpen || radialDrag) { e.stopPropagation(); closeRadial(); }
+    return;
+  }
+  // Пока кольцо открыто, оно забирает навигацию себе: иначе стрелки уходили бы
+  // в заметку под кольцом, а Enter — в поле правки.
+  if (radialOpen) radialKey(e);
 }, true);
 el.content.addEventListener('wheel', () => closeRadial(), { passive: true });
 el.editor.addEventListener('wheel', () => closeRadial(), { passive: true });
@@ -3780,6 +3955,25 @@ document.addEventListener('keydown', (e) => {
     if (k === 'z' && !e.shiftKey && editing) { e.preventDefault(); undoEdit(); return; }
     if ((k === 'y' || (k === 'z' && e.shiftKey)) && editing) { e.preventDefault(); redoEdit(); return; }
   }
+  // Ctrl+Space открывает кольцо с клавиатуры. Точка — там, где стоит курсор,
+  // а если мышь давно не двигалась — по центру заметки: вызывать с клавиатуры
+  // и тянуться к чужому месту незачем.
+  if ((e.ctrlKey || e.metaKey) && e.key === ' ') {
+    e.preventDefault();
+    if (radialOpen) { closeRadial(); return; }
+    const now = Date.now();
+    const p = (now - lastMouse.at < MOUSE_FRESH_MS && lastMouse.x) ? lastMouse : null;
+    if (p) {
+      openRadial(p.x, p.y);
+    } else {
+      const q = (el.content && !el.content.hidden ? el.content : el.editor).getBoundingClientRect();
+      openRadial(q.left + q.width / 2, q.top + Math.min(q.height / 2, 320));
+    }
+    // Первое действие подсвечено сразу: вызвали с клавиатуры — значит
+    // Enter должен сработать, не нажимая стрелку.
+    radialStep(1);
+    return;
+  }
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); go(-1); return; }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); go(1); return; }
   // Ctrl+Tab / Ctrl+Shift+Tab — по порядку вкладок, по кругу.
@@ -3899,6 +4093,8 @@ window.__mdvTest = {
   },
 
   settings: () => currentSettings, previewSettings, settingsDialog,
+  /* Метка последнего движения мыши: проверке нужно состарить курсор. */
+  lastMouse,
   /* Что реально лежит в settings.json: проверка «сохранилось ли». */
   savedSettings: () => api.settingsGet().catch(() => null),
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,

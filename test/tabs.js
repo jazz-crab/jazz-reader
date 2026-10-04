@@ -3959,6 +3959,262 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
+  // ------------------------------------------- клавиатура: меню и кольцо
+  console.log('\n== клавиатура: меню и кольцо ==');
+
+  // Вне правки: в правке у кольца другой состав (Сохранить/Отмена), и проверки
+  // идут по чтению.
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    M.exitEdit(true);
+    await new Promise(r2 => setTimeout(r2, 400));
+    await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])},
+      { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    return 1;
+  })()`);
+
+  // 1. Меню иконки приложения: стрелки, jk, Enter, Esc
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    const root = document.querySelector('.ctxmenu');
+    const out = { open: !!root };
+    const cur = () => {
+      const b = root.querySelector('.ctxmenu-item.cur');
+      return b ? b.textContent.trim() : null;
+    };
+    const labels = () => [...root.querySelectorAll('.ctxmenu-item')]
+      .map((b) => b.textContent.trim());
+    out.labels = labels();
+    out.first = cur();
+    const key = (k) => document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: k, bubbles: true, cancelable: true }));
+    key('ArrowDown');
+    await new Promise(r2 => setTimeout(r2, 120));
+    out.afterDown = cur();
+    key('j');
+    await new Promise(r2 => setTimeout(r2, 120));
+    out.afterJ = cur();
+    key('k');
+    await new Promise(r2 => setTimeout(r2, 120));
+    out.afterK = cur();
+    key('ArrowUp');
+    await new Promise(r2 => setTimeout(r2, 120));
+    out.afterUp = cur();
+    // Разделители пропускаются
+    out.skipsSep = !/^$/.test(String(out.afterUp));
+    // Переход в подменю и обратно
+    const parent = [...root.querySelectorAll('.ctxmenu-item.ctxmenu-parent')][0];
+    out.hasParent = !!parent;
+    const stepToParent = () => {
+      const items = [...root.querySelectorAll('.ctxmenu-item')];
+      const idx = items.indexOf(parent);
+      for (let i = idx; i > 0; i -= 1) key('k');
+      for (let i = 0; i < idx; i += 1) key('j');
+    };
+    stepToParent();
+    await new Promise(r2 => setTimeout(r2, 120));
+    out.onParent = cur();
+    key('ArrowRight');
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.subCount = document.querySelectorAll('.ctxmenu').length;
+    out.subFirst = (document.querySelectorAll('.ctxmenu')[1] || root)
+      .querySelector('.ctxmenu-item.cur') ? 'есть' : 'нет';
+    key('ArrowLeft');
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterLeft = document.querySelectorAll('.ctxmenu').length;
+    key('Escape');
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterEsc = document.querySelectorAll('.ctxmenu').length;
+    return JSON.stringify(out);
+  })()`));
+
+  t('меню иконки открылось', r.open === true);
+  t('первый пункт подсвечен сразу', r.first === r.labels[0],
+    JSON.stringify(r.first) + ' из ' + JSON.stringify(r.labels));
+  t('стрелка вниз идёт по пунктам', r.afterDown === r.labels[1],
+    JSON.stringify(r.afterDown));
+  t('j работает как стрелка вниз', r.afterJ === r.labels[2], JSON.stringify(r.afterJ));
+  t('k возвращает назад', r.afterK === r.labels[1], JSON.stringify(r.afterK));
+  t('стрелка вверх работает', r.afterUp === r.labels[0], JSON.stringify(r.afterUp));
+  t('разделители пропускаются', r.skipsSep === true, String(r.afterUp));
+  t('в меню есть разветвление', r.hasParent === true);
+  t('стрелка вправо открывает подменю', r.subCount === 2, String(r.subCount));
+  t('в подменю подсвечен пункт', r.subFirst === 'есть', r.subFirst);
+  t('стрелка влево возвращает назад', r.afterLeft === 1, String(r.afterLeft));
+  t('Esc закрывает меню', r.afterEsc === 0, String(r.afterEsc));
+
+  // 2. Enter и Space: у первых пунктов меню иконки есть подменю, поэтому Enter
+  //    их раскрывает, а не выполняет. На простом пункте Enter выполняет.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    const key = (k) => document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: k, bubbles: true, cancelable: true }));
+    const root = document.querySelector('.ctxmenu');
+    const items = [...root.querySelectorAll('.ctxmenu-item')];
+    const parent = items.find((b) => b.classList.contains('ctxmenu-parent'));
+    const idx = items.indexOf(parent);
+    for (let i = 0; i < idx; i += 1) key('j');
+    key('Enter');
+    await new Promise(r2 => setTimeout(r2, 400));
+    const afterEnterOnParent = document.querySelectorAll('.ctxmenu').length;
+    key('Escape');
+    await new Promise(r2 => setTimeout(r2, 250));
+    // Теперь простой пункт: последний в меню — «Настройки»
+    document.getElementById('appBrand').click();
+    await new Promise(r2 => setTimeout(r2, 350));
+    const root2 = document.querySelector('.ctxmenu');
+    const items2 = [...root2.querySelectorAll('.ctxmenu-item')];
+    const leaf = items2[items2.length - 1];
+    const leafLabel = leaf.textContent.trim();
+    const steps = items2.length - 1;
+    for (let i = 0; i < steps; i += 1) key('j');
+    key(' ');
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({
+      afterEnterOnParent,
+      leafLabel,
+      menus: document.querySelectorAll('.ctxmenu').length,
+      dialog: !!document.querySelector('.modal-back'),
+    });
+  })()`));
+  t('Enter на пункте с подменю раскрывает его', r.afterEnterOnParent === 2,
+    String(r.afterEnterOnParent));
+  t('Space выполняет простой пункт', r.menus === 0, String(r.menus));
+  t('простой пункт выполнился', r.dialog === true, String(r.dialog) + ' ' + r.leafLabel);
+  await js(`(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return 1;
+  })()`);
+
+  // 3. Ctrl+Space открывает кольцо по центру заметки, когда мышь не двигалась
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    await new Promise(r2 => setTimeout(r2, 250));
+    const q = document.getElementById('content').getBoundingClientRect();
+    // Мышь «давно не двигалась»: состариваем метку последнего движения
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 40, clientY: 500 }));
+    M.lastMouse.at = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ' ', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    const p = rad.getBoundingClientRect();
+    const cx = Math.round(q.left + q.width / 2);
+    const out = {
+      open: !rad.hidden,
+      onCentre: Math.abs(p.left - cx) < 6,
+      ringX: Math.round(p.left), noteX: cx,
+    };
+    // Повторное нажатие закрывает
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ' ', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r2 => setTimeout(r2, 300));
+    out.closed = rad.hidden;
+    return JSON.stringify(out);
+  })()`));
+  t('Ctrl+Space открывает кольцо', r.open === true);
+  t('без свежего курсора кольцо по центру заметки', r.onCentre === true,
+    r.ringX + ' против ' + r.noteX);
+  t('повторный Ctrl+Space закрывает кольцо', r.closed === true);
+
+  // 3a. Свежий курсор — кольцо открывается под мышью
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 420, clientY: 300 }));
+    await new Promise(r2 => setTimeout(r2, 120));
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ' ', ctrlKey: true, bubbles: true, cancelable: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    const p = document.getElementById('radial').getBoundingClientRect();
+    return JSON.stringify({ x: Math.round(p.left), y: Math.round(p.top) });
+  })()`));
+  t('со свежим курсором кольцо открывается под мышью',
+    Math.abs(r.x - 420) < 6 && Math.abs(r.y - 300) < 6, r.x + ',' + r.y);
+  await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+
+  // 4. Навигация по кольцу с клавиатуры
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    await M.openRingIn('content', b.left + b.width / 2, b.top + 220);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const key = (k) => document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: k, bubbles: true, cancelable: true }));
+    const sel = () => {
+      const s = document.querySelector('#radial .radial-sector.sel');
+      return s ? s.dataset.act : null;
+    };
+    const label = () => (document.getElementById('radialLabel') || {}).textContent || '';
+    const out = { first: sel(), labelBefore: label() };
+    key('j');
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.afterJ = sel();
+    out.labelAfterJ = label();
+    key('j');
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.afterJ2 = sel();
+    key('k');
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.afterK = sel();
+    // Enter сразу на первом действии: кольцо открыто мышью, выбора ещё нет,
+    // поэтому k возвращает на «Правку».
+    key('Enter');
+    await new Promise(r2 => setTimeout(r2, 500));
+    out.mode = M.active().mode;
+    out.closed = document.getElementById('radial').hidden;
+    // Список закольцован проверяем на втором открытии, уже без нажатия Enter:
+    // «Открыть» выбрать нельзя, откроется диалог файла.
+    await M.exitEdit(true);
+    await new Promise(r2 => setTimeout(r2, 400));
+    await M.openRingIn('content', b.left + b.width / 2, b.top + 220);
+    await new Promise(r2 => setTimeout(r2, 400));
+    key('j');
+    await new Promise(r2 => setTimeout(r2, 150));
+    key('ArrowUp');
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.wrap = sel();
+    key('l');
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.wrapDown = sel();
+    key('h');
+    await new Promise(r2 => setTimeout(r2, 150));
+    out.wrapBack = sel();
+    key('Escape');
+    await new Promise(r2 => setTimeout(r2, 250));
+    return JSON.stringify(out);
+  })()`));
+  // Кольцо открыто мышью и ещё ничего не выбрано: сначала ждём наведения.
+  t('мышь открыла кольцо без выбора', r.first === null, String(r.first));
+  t('до выбора подписи нет', String(r.labelBefore).trim() === '',
+    JSON.stringify(r.labelBefore));
+  t('j выбирает первое действие', r.afterJ === 'mode', String(r.afterJ));
+  t('подпись показывает выбранное действие', /Правка/.test(String(r.labelAfterJ)),
+    JSON.stringify(r.labelAfterJ));
+  t('j переводит выбор дальше', r.afterJ2 === 'export', String(r.afterJ2));
+  t('k возвращает назад', r.afterK === 'mode', String(r.afterK));
+  t('Enter подтверждает выбор', r.mode === 'edit', r.mode);
+  t('после Enter кольцо закрыто', r.closed === true);
+  t('список закольцован: сверху назад вниз', r.wrap === 'open', String(r.wrap));
+  t('l работает как стрелка вперёд', r.wrapDown === 'mode', String(r.wrapDown));
+  t('h работает как стрелка назад', r.wrapBack === 'open', String(r.wrapBack));
+  await js(`window.__mdvTest.exitEdit(true)`);
+  await new Promise((x) => setTimeout(x, 300));
+
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
   // через IPC. Отмену тоже проверяем — файл должен остаться на месте.
