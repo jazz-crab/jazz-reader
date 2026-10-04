@@ -90,6 +90,18 @@ t('нет битых url(fonts/...)', count(html, /url\(fonts\//g) === 0,
 t('нет внешних таблиц стилей', !/<link[^>]+stylesheet/i.test(html));
 t('нет <script>', !/<script/i.test(html));
 t('KaTeX на месте', /katex/i.test(html));
+// Шрифт приложения лежит отдельным файлом src/fonts.css и в style.css его
+// нет. Про него забыли, и в экспорте вместо JetBrains Mono была системная
+// моноширинная: весь смысл «своей темы» терялся.
+t('свой шрифт объявлен', /@font-face\s*\{[^}]*JetBrainsMono/.test(html));
+t('все 8 начертаний JetBrains на месте',
+  count(html, /@font-face\s*\{[^}]*JetBrainsMono/g) === 8,
+  String(count(html, /@font-face\s*\{[^}]*JetBrainsMono/g)));
+t('нет битых url(fonts/jetbrains',
+  count(html, /url\(fonts\/jetbrains/g) === 0,
+  String(count(html, /url\(fonts\/jetbrains/g)));
+t('свой шрифт вшит в base64', /data:font\/woff2;base64/g.test(html));
+t('счётчик шрифтов включает свой шрифт', res.fonts >= 16, String(res.fonts));
 t('<title> — имя файла как есть', /<title>\s*Заметка\.md\s*<\/title>/.test(html),
   (/<title>([^<]*)<\/title>/.exec(html) || [])[1]);
 t('заголовок попал в тело', /Заголовок/.test(html));

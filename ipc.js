@@ -82,6 +82,43 @@ async function listMdTree(root) {
 }
 
 /**
+ * Заменить в CSS ссылки на файлы рядом с ним на base64-данные.
+ *
+ * Нужно для автономного файла: оставшийся url(fonts/...) в @font-face — это
+ * битая ссылка, и без интернета (а в поезде его нет) вместо своего шрифта
+ * браузер покажет системный. Все восемь начертаний JetBrains Mono весили
+ * меньше мегабайта вместе, а @font-face с data-URI работает везде.
+ *
+ * base64 кладём только на woff2/woff/ttf/otf: на data:, SVG и прочее не
+ * трогаем — вдруг в CSS встретится картинка, которую и так надо хранить
+ * файлом (тогда пусть лучше битая ссылка, чем молчаливое превращение в
+ * base64 в десять раз больший файл).
+ */
+async function inlineLocalFonts(css, baseDir) {
+  const urls = [...css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => m[1]);
+  let out = css;
+  let inlined = 0;
+  for (const u of new Set(urls)) {
+    if (!/\.(woff2?|ttf|otf)(\?.*)?$/i.test(u)) continue;
+    const file = path.join(baseDir, u.replace(/[\\/]/g, path.sep));
+    let data;
+    try { data = await fsp.readFile(file); }
+    catch { continue; }
+    const ext = path.extname(file).toLowerCase();
+    const mime = ext === '.woff2' ? 'font/woff2' : ext === '.woff' ? 'font/woff'
+      : ext === '.ttf' ? 'font/ttf' : 'font/otf';
+    const data2 = 'data:' + mime + ';base64,' + data.toString('base64');
+    // Заменяем посимвольно-по-строке: регулярка с обратной ссылкой $1
+    // съедала бы слэши, а тут важна точность до символа.
+    for (const q of [u, '"' + u + '"', "'" + u + "'"]) {
+      out = out.split('url(' + q + ')').join('url(' + data2 + ')');
+    }
+    inlined += 1;
+  }
+  return { css: out, inlined };
+}
+
+/**
  * Автономный HTML одним файлом.
  *
  * Формулы к этому моменту уже отрендерены KaTeX в HTML, но KaTeX-CSS тянет
@@ -92,7 +129,13 @@ async function listMdTree(root) {
 async function buildStandaloneHtml(title, body) {
   const katexDir = path.join(__dirname, 'src', 'vendor', 'katex');
   const katexCss = await fsp.readFile(path.join(katexDir, 'katex.min.css'), 'utf8');
-  const ourCss = await fsp.readFile(path.join(__dirname, 'src', 'style.css'), 'utf8');
+  let ourCss = await fsp.readFile(path.join(__dirname, 'src', 'style.css'), 'utf8');
+  // Свой шрифт лежит отдельным файлом src/fonts.css и в style.css его нет —
+  // про него забыли, и в экспорте вместо JetBrains Mono была системная
+  // моноширинная. Подключаем и вшиваем наравне с KaTeX.
+  const fontCss = await fsp.readFile(path.join(__dirname, 'src', 'fonts.css'), 'utf8');
+  const own = await inlineLocalFonts(fontCss, path.join(__dirname, 'src'));
+  ourCss += '\n/* шрифты приложения */\n' + own.css;
 
   const classBag = [...String(body).matchAll(/class="([^"]*)"/g)].map((m) => m[1]).join(' ');
 
@@ -159,7 +202,7 @@ async function buildStandaloneHtml(title, body) {
   const name = String(title).replace(/\.md$/i, '') + '.html';
   const file = path.join(app.getPath('downloads'), name);
   await fsp.writeFile(file, html, 'utf8');
-  return { path: file, fonts: inlined, bytes: Buffer.byteLength(html) };
+  return { path: file, fonts: inlined + own.inlined, bytes: Buffer.byteLength(html) };
 }
 
 /** Ширину проставляет main после применения titleBarOverlay. */
