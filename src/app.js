@@ -2291,21 +2291,39 @@ el.btnNewTab.oncontextmenu = (e) => {
  * меню прямо у нажатой кнопки.
  */
 
-/* Углы по часовой стрелке от верхней кнопки. */
+/*
+ * Раскладка кольца.
+ *
+ * Углы не заданы жёстко: пунктов в секции столько, сколько имеет смысл
+ * показать, и секция центрируется по своему низу/верху. Иначе кольцо то
+ * перекашивало (три кнопки сверху и одна слева снизу), то выглядело пустым.
+ *
+ * slot — где пункт по смыслу: верхняя секция (буфер обмена), нижняя (правка),
+ * либо фиксированные позиции справа и слева.
+ *
+ * Мёртвых кнопок нет: то, что сейчас бесполезно, просто не показывается.
+ * Раньше кнопки оставались на месте, но становились серыми и не нажимались —
+ * выглядело это как «иконка сломалась».
+ */
 const RADIAL_LAYOUT = [
-  { act: 'copy', icon: 'copy', tip: 'Копировать', angle: -125 },
-  { act: 'cut', icon: 'scissors', tip: 'Вырезать', angle: -90, cls: 'r-top' },
-  { act: 'paste', icon: 'clipboard-paste', tip: 'Вставить', angle: -55, cls: 'r-top' },
-  { act: 'export', icon: 'folder-output', tip: 'Экспорт', angle: 0, cls: 'r-export' },
-  { act: 'mode', icon: 'pencil', tip: 'Правка (Ctrl+E)', angle: 55 },
-  { act: 'save', icon: 'save', tip: 'Сохранить (Ctrl+S)', angle: 90, cls: 'r-save' },
-  { act: 'cancel', icon: 'x', tip: 'Отменить правки (Esc)', angle: 125, cls: 'r-cancel' },
-  { act: 'open', icon: 'plus', tip: 'Открыть файл или папку', angle: 180, cls: 'r-open' },
+  { act: 'copy', slot: 'top', icon: 'copy', tip: 'Копировать' },
+  { act: 'cut', slot: 'top', icon: 'scissors', tip: 'Вырезать' },
+  { act: 'paste', slot: 'top', icon: 'clipboard-paste', tip: 'Вставить' },
+  { act: 'export', slot: 'right', icon: 'folder-output', tip: 'Экспорт', cls: 'r-export' },
+  { act: 'mode', slot: 'bottom', icon: 'pencil', tip: 'Правка (Ctrl+E)' },
+  { act: 'save', slot: 'bottom', icon: 'save', tip: 'Сохранить (Ctrl+S)', cls: 'r-save' },
+  { act: 'cancel', slot: 'bottom', icon: 'x', tip: 'Отменить правки (Esc)', cls: 'r-cancel' },
+  { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть файл или папку', cls: 'r-open' },
 ];
 
 let radialOpen = false;
 
-/** Есть ли что копировать/вырезать. */
+/** Радиус кольца в пикселях: столько от центра кнопки. */
+const RADIAL_R = 78;
+/** Насколько кольцо удерживается от края окна, чтобы подписи не срезало. */
+const RADIAL_KEEP = 112;
+
+/** Есть ли что копировать или вырезать. */
 function hasSelection() {
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed && sel.toString().length) return true;
@@ -2313,52 +2331,66 @@ function hasSelection() {
   return !!(ed && !ed.hidden && ed.selectionStart !== ed.selectionEnd);
 }
 
-function radialEnabled(act) {
+/**
+ * Что кольцо показывает в текущем состоянии заметки.
+ *
+ * В чтении буфер обмена ограничен копированием (вырезать и вставлять некуда),
+ * в правке добавляются «Сохранить» и «Отмена», а карандаш исчезает.
+ * «Сохранить» и «Отмена» показываем всегда, когда идёт правка: «Сохранить»
+ * без изменений просто скажет «Изменений нет», а «Отмена» вернёт к чтению.
+ * Раньше они были серыми при отсутствии правок, и нажатие на них ничего
+ * не делало — выглядело как сломанная иконка.
+ */
+function radialVisible(act) {
   const t = active();
   const editing = !!(t && t.mode === 'edit');
-  if (act === 'copy') return hasSelection();
-  if (act === 'cut' || act === 'paste') return editing && (act === 'paste' || hasSelection());
-  if (act === 'mode') return !!t && !editing && !!t.path;
-  if (act === 'save') return editing && !!t.dirty;
-  if (act === 'cancel') return editing && !!t.dirty;
-  return true;
+  const hasFile = !!(t && t.path);
+  const sel = hasSelection();
+  switch (act) {
+    case 'copy': return sel;
+    case 'cut': return editing && sel;
+    case 'paste': return editing;
+    case 'mode': return hasFile && !editing;
+    case 'save': return editing;
+    case 'cancel': return editing;
+    default: return hasFile;
+  }
 }
 
 /** Собрать кольцо под текущее состояние заметки. */
 function buildRadial() {
-  const t = active();
-  const editing = !!(t && t.mode === 'edit');
+  const acts = RADIAL_LAYOUT.filter((i) => radialVisible(i.act));
+  // Центрируем каждую секцию: одна кнопка встаёт строго вверх или вниз,
+  // три — симметрично вокруг 90°.
+  const spread = (slot, base) => {
+    const list = acts.filter((i) => i.slot === slot);
+    list.forEach((i, k) => {
+      i.angle = list.length === 1 ? base : base + (k - (list.length - 1) / 2) * 27;
+    });
+  };
+  spread('top', -90);
+  spread('bottom', 90);
+  acts.forEach((i) => { if (i.slot === 'right') i.angle = 0; });
+  acts.forEach((i) => { if (i.slot === 'left') i.angle = 180; });
+
   el.radial.innerHTML = '';
-  const acts = [];
-  for (const item of RADIAL_LAYOUT) {
-    // В чтении снизу только карандаш, в правке — «Сохранить» и «Отмена».
-    // Иначе кольцо в чтении было бы с двумя серыми кнопками, которые всё
-    // равно ничего не делают.
-    if (item.act === 'mode' && editing) continue;
-    if ((item.act === 'save' || item.act === 'cancel') && !editing) continue;
-    acts.push(item);
-  }
-  // Карандаш в чтении один, и он встаёт напротив верхней кнопки, то есть в
-  // низ кольца. Иначе он висел бы сбоку, а низ оставался пустым, и кольцо
-  // выглядело бы перекошенным: три кнопки сверху и одна слева снизу.
-  if (!editing) {
-    for (const item of acts) {
-      if (item.act === 'mode') item.angle = 90;
-    }
-  }
   for (const item of acts) {
     const b = document.createElement('button');
     b.className = 'radial-btn' + (item.cls ? ' ' + item.cls : '');
     b.type = 'button';
     b.dataset.act = item.act;
-    b.style.setProperty('--a', item.angle + 'deg');
+    // Положение — координатами от центра, а не поворотом: повёрнутая кнопка
+    // уносила за собой иконку и подпись, они вставали набок.
+    const rad = item.angle * Math.PI / 180;
+    b.style.setProperty('--x', Math.round(Math.cos(rad) * RADIAL_R) + 'px');
+    b.style.setProperty('--y', Math.round(Math.sin(rad) * RADIAL_R) + 'px');
     b.title = item.tip;
     b.innerHTML = ICONS.icon(item.icon) + '<span class="rd-tip">' + item.tip + '</span>';
-    b.disabled = !radialEnabled(item.act);
     b.onclick = () => radialAct(item.act);
     el.radial.append(b);
   }
 }
+
 
 function radialAct(act) {
   if (act === 'export') { radialToMenu('export'); return; }
@@ -2433,9 +2465,8 @@ function openRadial(x, y) {
   buildRadial();
   // Держим кольцо целиком на экране: у края заметки часть кнопок уезжала бы
   // за окно, и нажать на них было бы нельзя.
-  const R = 78 + 34;
-  const cx = Math.max(R, Math.min(x, innerWidth - R));
-  const cy = Math.max(R, Math.min(y, innerHeight - R));
+  const cx = Math.max(RADIAL_KEEP, Math.min(x, innerWidth - RADIAL_KEEP));
+  const cy = Math.max(RADIAL_KEEP, Math.min(y, innerHeight - RADIAL_KEEP));
   el.radial.style.left = cx + 'px';
   el.radial.style.top = cy + 'px';
   el.radial.hidden = false;

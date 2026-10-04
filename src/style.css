@@ -1191,45 +1191,51 @@ kbd {
 /* ================= Круговое меню заметки =================
    Правый клик внутри заметки открывает кольцо кнопок вокруг точки клика.
    Раскладка по секциям: сверху буфер обмена, снизу правка, справа экспорт,
-   слева открытие. Углы задаются переменной --a, радиус --r.
+   слева открытие.
 
-   Кнопки выезжают от центра по направлению своего угла и слегка
-   проявляются: без этого кольцо возникает мгновенно и кажется не связанным с
-   точкой клика. Порядок появления идёт по часовой стрелке от верхней кнопки
-   — так глаз обходит кольцо, а не прыгает через центр. */
+   Кнопки раскладываются координатами (--x, --y), а НЕ через
+   rotate + translate. С rotate кнопка вертикально стояла на боку, а её
+   иконка и подпись поворачивались вместе с ней: у правой кнопки подпись
+   уезжала набок, у нижней — вбок, и прочитать их было нельзя. Координаты
+   дают круг с правильной геометрией и оставляют содержимое кнопки
+   вертикальным при любом угле. */
 .radial {
     position: fixed; z-index: 80;
     width: 0; height: 0;
-    /* --r и --a задаются из JS */
-    --r: 78px;
 }
+
+/*
+ * Подложка — КОЛЬЦО, а не кружок: окружность, по которой и разложены
+ * кнопки. Кружок в середине выглядел пустым пятном и занимал место,
+ * которого нет. Размер задан по радиусу кнопок плюс запас под их край.
+ */
 .radial::before {
-    /* полупрозрачный диск: показывает, что это кольцо вокруг точки клика */
-    content: ''; position: absolute; left: -46px; top: -46px;
-    width: 92px; height: 92px; border-radius: 50%;
-    background: rgba(22, 22, 30, .55);
+    content: ''; position: absolute; left: -104px; top: -104px;
+    width: 208px; height: 208px; border-radius: 50%;
+    background: rgba(22, 22, 30, .72);
     border: 1px solid var(--border);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
+    /* Подложка ничего не ловит: клик в центре кольца должен закрывать меню,
+       а не попадать в круг. */
+    pointer-events: none;
     opacity: 0; transition: opacity .12s ease;
 }
 .radial.on::before { opacity: 1; }
 
 .radial-btn {
-    position: absolute; left: 0; top: 0;
-    width: 40px; height: 40px; margin: -20px 0 0 -20px;
+    position: absolute;
+    left: var(--x, 0px); top: var(--y, 0px);
+    margin: -21px 0 0 -21px;
+    width: 42px; height: 42px;
     display: inline-flex; align-items: center; justify-content: center;
     padding: 0; border-radius: 50%; cursor: pointer;
     background: var(--bg-soft); border: 1px solid var(--border);
     color: var(--fg); box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
-    /* Кнопка едет по своему углу и остаётся в нём: rotate -> смещение ->
-       обратный rotate, иначе все они встали бы наклонёнными. */
-    transform: rotate(var(--a, 0deg)) translate(var(--r)) rotate(0deg);
     opacity: 0;
-    transition: opacity .12s ease, background .12s, border-color .12s;
+    transition: opacity .12s ease, background .12s, border-color .12s, transform .1s ease;
 }
-.radial-btn .ico-svg { width: 18px; height: 18px; }
+.radial-btn .ico-svg { width: 19px; height: 19px; }
 .radial-btn:hover:not(:disabled) { background: var(--bg-select); border-color: var(--comment); }
-.radial-btn:disabled { opacity: .3; cursor: default; }
-/* Палец, наведённый на кнопку, выходит вперёд — иначе кольцо плоское. */
 .radial-btn:hover:not(:disabled) { z-index: 2; }
 .radial.on .radial-btn { opacity: 1; }
 
@@ -1243,8 +1249,8 @@ kbd {
 .radial.on .radial-btn:nth-child(7) { transition-delay: 90ms; }
 .radial.on .radial-btn:nth-child(8) { transition-delay: 105ms; }
 
-/* Цветовые семейства: буфер — спокойный, правка — зелёный/красный,
-   экспорт и открытие — синие акценты. */
+/* Цветовые семейства: правка — зелёная и красная, экспорт и открытие —
+   синие акценты при наведении. */
 .radial-btn.r-save { background: #1d2a1c; border-color: rgba(158, 206, 106, .5); color: var(--green); }
 .radial-btn.r-save .ico-svg { stroke: var(--green); }
 .radial-btn.r-save:hover:not(:disabled) { background: rgba(158, 206, 106, .3); border-color: var(--green); }
@@ -1254,10 +1260,13 @@ kbd {
 .radial-btn.r-export:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
 .radial-btn.r-open:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); }
 
-/* Подпись кнопки появляется рядом с ней, а не в подсказке: подсказку не видно
-   мышью, а тут человек наводит сознательно. */
+/*
+ * Подпись кнопки: всегда снизу, всегда горизонтально, всегда в одну строку.
+ * Положение задано в неповёрнутой системе координат, поэтому одинаково у всех
+ * кнопок кольца — раньше «снизу» означало «в сторону от центра кольца».
+ */
 .radial-btn .rd-tip {
-    position: absolute; left: 50%; top: calc(100% + 6px);
+    position: absolute; left: 50%; top: calc(100% + 7px);
     transform: translateX(-50%);
     white-space: nowrap; pointer-events: none;
     padding: 2px 7px; border-radius: 5px;
@@ -1265,9 +1274,23 @@ kbd {
     color: var(--fg-dark); font-size: 11px;
     opacity: 0; transition: opacity .1s;
 }
-.radial-btn:hover .rd-tip { opacity: 1; }
-/* Верхние кнопки подписью вниз не поместятся — разворачиваем. */
-.radial-btn.r-top .rd-tip { top: auto; bottom: calc(100% + 6px); }
+.radial-btn:hover .rd-tip,
+.radial-btn.sel .rd-tip { opacity: 1; }
+
+/*
+ * Выбранная кнопка в режиме «зажать правую кнопку и вести»: подпись видна
+ * сразу, до отпускания, и сама кнопка подсвечена и увеличена.
+ */
+.radial-btn.sel {
+    background: var(--bg-select);
+    border-color: var(--blue);
+    color: var(--fg);
+    transform: scale(1.16);
+    z-index: 2;
+}
+.radial-btn.sel .ico-svg { stroke: var(--fg); }
+/* Увеличивать надо только кольцо целиком, иначе кнопки наезжают на соседние. */
+.radial.dragging::before { transform: scale(1.04); }
 
 @media (prefers-reduced-motion: reduce) {
     .radial-btn, .radial::before { transition: none; }

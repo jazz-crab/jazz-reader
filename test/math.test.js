@@ -118,8 +118,15 @@ if (fs.existsSync(REAL)) {
   const src = fs.readFileSync(REAL, 'utf8');
   const h2 = MDV.renderMd(src);
   t('реальный файл: нет нативных checkbox', !/type="checkbox"/.test(h2));
-  t('реальный файл: 9 иконок задач', (h2.match(/mdv-task-wrap/g) || []).length === 9,
-    'найдено: ' + (h2.match(/mdv-task-wrap/g) || []).length);
+  // Сколько задач — считаем по самому файлу, а не зашиваем числом: заметка
+  // пользователя меняется, и проверка падала вслед за ней, ничего не говоря
+  // о рендере.
+  // Маркер задачи встречается и в списках «1. [x]», не только в «- [x]»,
+  // поэтому берём любой нумерованный или маркированный пункт.
+  const wantTasks = (src.match(/^\s*(?:[-*]|\d+\.)\s+\[[ xX]\]/gm) || []).length;
+  const gotTasks = (h2.match(/mdv-task-wrap/g) || []).length;
+  t('реальный файл: все задачи получили иконки', gotTasks === wantTasks && wantTasks > 0,
+    'в файле ' + wantTasks + ', отрисовано ' + gotTasks);
   t('реальный файл: первая задача done', /mdv-task mdv-task-done/.test(h2));
 }
 

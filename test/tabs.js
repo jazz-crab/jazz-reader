@@ -3021,6 +3021,32 @@ const SILENCE_CONFIRM = `(() => {
         return q.left >= 0 && q.right <= innerWidth && q.top >= 0 && q.bottom <= innerHeight;
       }),
       inWindow: rad.getBoundingClientRect().left >= 0,
+      dead: btns.filter((b) => b.disabled).length,
+      // Подложка — кольцо, а не кружок в середине
+      ringW: parseFloat(getComputedStyle(rad, '::before').width),
+      ringRadius: getComputedStyle(rad, '::before').borderRadius,
+      ringNone: getComputedStyle(rad, '::before').pointerEvents,
+      // Подписи: всегда снизу кнопки и всегда в одну строку. Раньше кнопки
+      // стояли rotate+translate, и подпись уезжала набок вместе с ними.
+      tips: btns.map((b) => {
+        const tip = b.querySelector('.rd-tip');
+        const tb = b.getBoundingClientRect();
+        const tt = tip.getBoundingClientRect();
+        return {
+          below: tt.top >= tb.top + tb.height - 2,
+          oneLine: tip.offsetHeight < 30,
+          // Описанный прямоугольник совпадает с размером макета => поворота нет
+          axisAligned: Math.abs(tt.width - tip.offsetWidth) < 2
+            && Math.abs(tt.height - tip.offsetHeight) < 2,
+          gap: Math.round(tt.top - (tb.top + tb.height)),
+        };
+      }),
+      // Иконки тоже стоят ровно: у повёрнутой кнопки значок вставал набок.
+      icoLevel: btns.map((b) => {
+        const s = b.querySelector('svg').getBoundingClientRect();
+        return Math.abs(s.width - s.height);
+      }),
+      ringH: parseFloat(getComputedStyle(rad, '::before').height),
       dockGone: !document.getElementById('modeDock'),
       exportBtnGone: !document.getElementById('dlBtn'),
       toTopInsideNote: (document.getElementById('toTop') || {}).parentElement
@@ -3030,21 +3056,39 @@ const SILENCE_CONFIRM = `(() => {
 
   t('правый клик в заметке открывает кольцо', r.open === true);
   t('системное меню подавлено', r.prevented === true);
-  t('сверху буфер обмена',
-    ['copy', 'cut', 'paste'].every((a) => r.acts.includes(a)), JSON.stringify(r.acts));
+  // Мёртвых кнопок в кольце нет: то, что сейчас бесполезно, просто не
+  // показывается. Раньше они оставались на месте серыми и не нажимались —
+  // со стороны это выглядело как «иконка сломалась».
+  t('в чтении без выделения кольцо пустое от буфера обмена',
+    !r.acts.includes('copy') && !r.acts.includes('cut') && !r.acts.includes('paste'),
+    JSON.stringify(r.acts));
   t('справа экспорт', r.acts.includes('export'), JSON.stringify(r.acts));
   t('слева открытие', r.acts.includes('open'), JSON.stringify(r.acts));
   t('снизу карандаш', r.acts.includes('mode'), JSON.stringify(r.acts));
   t('в чтении нет «Сохранить» и «Отменить»',
     !r.acts.includes('save') && !r.acts.includes('cancel'), JSON.stringify(r.acts));
-  t('буфер обмена без выделения неактивен',
-    r.disabled[0] === 1 && r.disabled[1] === 1 && r.disabled[2] === 1,
-    JSON.stringify(r.disabled));
+  t('в кольце нет неактивных кнопок',
+    r.disabled.every((d) => d === 0) && r.dead === 0, JSON.stringify(r.disabled));
   t('кнопки круглые',
-    r.round.every((w) => w === r.round[0]) && r.round[0] === 40
+    r.round.every((w) => w === r.round[0]) && r.round[0] === 42
     && r.radius === '50%' && r.roundH.every((h) => h === r.round[0]),
     JSON.stringify(r.round) + ' ' + r.radius);
   t('все кнопки на экране', r.onScreen === true);
+  // Подложка — окружность по краю кнопок, а не кружок в середине: кружок
+  // занимал место, которого нет, и выглядел пустым пятном.
+  t('подложка кольца — окружность',
+    r.ringW >= 200 && r.ringRadius === '50%' && r.ringW === r.ringH,
+    r.ringW + 'x' + r.ringH + ' ' + r.ringRadius);
+  t('подложка не перехватывает клики', r.ringNone === 'none', r.ringNone);
+  // Подпись раньше была дочерним узлом повёрнутой кнопки и поворачивалась
+  // вместе с ней: у правой кнопки уезжала набок, у нижней — вбок, и прочитать
+  // её было нельзя.
+  t('подпись у всех кнопок снизу', r.tips.every((x) => x.below),
+    JSON.stringify(r.tips.map((x) => x.gap)));
+  t('подпись в одну строку и не повёрнута',
+    r.tips.every((x) => x.oneLine && x.axisAligned), JSON.stringify(r.tips));
+  t('иконки стоят ровно, без поворота',
+    r.icoLevel.every((d) => d < 1), JSON.stringify(r.icoLevel));
   t('экспорт убран из тулбара', r.exportBtnGone === true);
   t('«Наверх» внутри заметки', r.toTopInsideNote === 'mainPane', String(r.toTopInsideNote));
 
@@ -3194,8 +3238,44 @@ const SILENCE_CONFIRM = `(() => {
 
   t('кольцо открывается', r.first === true);
   t('Esc закрывает кольцо', r.afterEsc === true);
+
   t('клик мимо закрывает кольцо', r.second === true && r.afterClickOutside === true);
   t('прокрутка закрывает кольцо', r.third === true && r.afterWheel === true);
+
+  // Клик по центру кольца — тоже закрытие: это пустое место внутри кольца,
+  // выбирать там нечего. Подложка обязана ничего не ловить, иначе клик
+  // проваливался бы в заметку и правил бы текст под кольцом.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    const out = {};
+    const at = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      return el ? (el.id || el.className || el.tagName) : 'нет';
+    };
+    const open = async () => {
+      c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+        clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 200) }));
+      await new Promise(r2 => setTimeout(r2, 350));
+      return !document.getElementById('radial').hidden;
+    };
+    out.opened = await open();
+    const rad = document.getElementById('radial');
+    const ctr = rad.getBoundingClientRect();
+    out.hitCentre = at(Math.round(ctr.left), Math.round(ctr.top));
+    c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true,
+      clientX: Math.round(ctr.left), clientY: Math.round(ctr.top) }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterCentreClick = rad.hidden;
+    // и повторно открыть — кольцо не залипло
+    out.reopened = await open();
+    return JSON.stringify(out);
+  })()`));
+  t('в центр кольца попадает сама заметка', r.hitCentre === 'content',
+    String(r.hitCentre));
+  t('клик по центру кольца закрывает его', r.opened === true && r.afterCentreClick === true);
+  t('после этого кольцо открывается снова', r.reopened === true);
 
   // ------------------------------------------------- удаление в корзину
   // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
