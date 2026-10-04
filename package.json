@@ -1,7 +1,7 @@
 {
   "name": "mdview-desktop",
-  "version": "1.0.11",
-  "description": "MDView \u2014 \u043e\u0444\u043b\u0430\u0439\u043d-\u0447\u0438\u0442\u0430\u043b\u043a\u0430 Markdown (\u043f\u043e\u0440\u0442 github.com/jazz-crab/jazz-reader) \u0441 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u043e\u0439 LaTeX/KaTeX",
+  "version": "1.0.12",
+  "description": "MDView — офлайн-читалка Markdown (порт github.com/jazz-crab/jazz-reader) с поддержкой LaTeX/KaTeX",
   "main": "main.js",
   "author": "jc",
   "license": "MIT",
