@@ -1017,13 +1017,20 @@ kbd {
    Иначе пришлось бы перечислять в CSS все правила @media print заново, и
    через месяц они бы разошлись с настоящей темой: перекрашено всё, кроме
    того, что забыли. */
-/* Окно экспорта не прокручивается: растягивается предпросмотр.
-   Плотнее, чем у настроек: здесь пять карточек подряд, и каждый лишний
-   отступ съедал высоту предпросмотра — того самого места, ради которого
-   окно и открывается. */
-.exp-box { overflow: hidden; gap: 8px; }
+/* Окно экспорта не прокручивается.
+   Плотнее, чем у настроек: каждый лишний отступ съедал высоту
+   предпросмотра — того самого места, ради которого окно и открывается. */
+.exp-box { overflow: hidden; gap: 10px; }
 .exp-box .set-row { padding: 9px 12px 10px; }
-.exp-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* Настройки слева, предпросмотр справа. В одной колонке предпросмотр
+   получался широким, но низким — из него не было видно ни заголовка, ни
+   начала таблицы, а именно это и нужно проверять перед экспортом. */
+.exp-body { display: flex; gap: 12px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+.exp-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.exp-left { flex: 0 0 352px; overflow: auto; }
+.exp-right { flex: 1 1 auto; }
+.exp-cap { font-size: 13px; font-weight: 600; color: var(--fg-dark); flex: 0 0 auto; }
 .exp-seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .exp-segbtn {
     display: flex; align-items: center; gap: 6px;
@@ -1031,13 +1038,26 @@ kbd {
     font-family: var(--ui); font-size: 13px;
     border: 1px solid #2f3b54; background: #24283b; color: var(--fg-dark);
 }
+/* Иконка формата живёт своим цветом (--seg): четыре одинаково голубые
+   иконки в переключателе читались как один переключатель, а не как четыре
+   формата. Не выбранные приглушены, выбранная — в полную. */
 .exp-segbtn .ico { display: inline-flex; }
-.exp-segbtn .ico-svg { width: 15px; height: 15px; stroke: currentColor; }
+.exp-segbtn .ico-svg {
+    width: 15px; height: 15px;
+    stroke: var(--seg, currentColor);
+    opacity: .5; transition: opacity .1s ease;
+}
 .exp-segbtn:hover { border-color: var(--comment); color: var(--fg); }
 .exp-segbtn.on {
-    background: var(--bg-select); border-color: var(--blue); color: var(--fg);
+    background: var(--bg-select); border-color: var(--seg, var(--blue)); color: var(--fg);
 }
-.exp-segbtn.on .ico-svg { stroke: var(--cyan); }
+.exp-segbtn.on .ico-svg { opacity: 1; }
+
+/* «Цветное» и «Чёрно-белая» показывают то, что делают. */
+.exp-segbtn.tinted.on { color: var(--seg); border-color: var(--seg); }
+.exp-segbtn.bw { color: #d7d7de; border-color: #4d4d57; }
+.exp-segbtn.bw:hover { color: #fff; border-color: #8a8a94; }
+.exp-segbtn.bw.on { background: #fff; border-color: #fff; color: #14161c; }
 
 .exp-select {
     width: 100%; padding: 6px 8px; border-radius: 7px;

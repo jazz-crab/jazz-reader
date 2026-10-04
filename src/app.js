@@ -2226,17 +2226,43 @@ function download(name, text, mime) {
  * там нечего. HTML и PDF собираются заново, и только для них имеют смысл
  * палитра, шрифт и размер: это не оформление заметки, а оформление файла,
  * который уедет с машины.
+ *
+ * У каждого формата свой цвет иконки. Раньше все иконки в выбранном сегменте
+ * становились одинаково голубыми, и четыре формата читались как один
+ * переключатель; теперь видно, где какой.
  */
 const EXPORT_FORMATS = [
-  { id: 'md', label: 'MD', icon: 'file-text', plain: true, hint: 'исходный текст заметки' },
-  { id: 'txt', label: 'TXT', icon: 'file-down', plain: true, hint: 'то же без разметки' },
-  { id: 'html', label: 'HTML', icon: 'file-code', plain: false, hint: 'один файл, шрифты внутри' },
-  { id: 'pdf', label: 'PDF', icon: 'printer', plain: false, hint: 'для печати и отправки' },
+  { id: 'md', label: 'MD', icon: 'file-text', plain: true, color: 'var(--blue)',
+    hint: 'исходный текст заметки' },
+  { id: 'txt', label: 'TXT', icon: 'file-down', plain: true, color: 'var(--green)',
+    hint: 'то же без разметки' },
+  { id: 'html', label: 'HTML', icon: 'file-code', plain: false, color: 'var(--magenta)',
+    hint: 'один файл, шрифты внутри' },
+  { id: 'pdf', label: 'PDF', icon: 'printer', plain: false, color: 'var(--orange)',
+    hint: 'для печати и отправки' },
 ];
 
-/** Своё имя шрифта JetBrains, для показа в списке. */
+/*
+ * Цвет кнопки «Цветное».
+ *
+ * Один и тот же цвет каждый раз выглядел бы как часть интерфейса: человек
+ * привыкает, что голубая кнопка значит «цветное», и перестаёт её читать.
+ * Поэтому набор из палитры TokyoNight и шаг по нему: цвета каждый раз
+ * разные, но не выпадают, а голубого здесь нет — он у MD.
+ */
+const EXPORT_TINTS = ['var(--green)', 'var(--orange)', 'var(--red)',
+  'var(--yellow)', 'var(--purple)'];
+let exportTintAt = 0;
+
+function nextExportTint() {
+  const c = EXPORT_TINTS[exportTintAt % EXPORT_TINTS.length];
+  exportTintAt += 1;
+  return c;
+}
+
+/** Своё имя шрифта JetBrains для показа в списке: в CSS оно без пробела. */
 function exportFontLabel(name) {
-  return name === 'JetBrainsMono' ? 'JetBrains Mono (свой)' : name;
+  return name === 'JetBrainsMono' ? 'JetBrains Mono' : name;
 }
 
 /**
@@ -2246,6 +2272,10 @@ function exportFontLabel(name) {
  * параметров — предпросмотр, и всё это не влезает в меню. В кольце осталось
  * два действия: «Экспорт» открывает это окно, «Путь» — короткое меню про
  * путь к файлу.
+ *
+ * Слева настройки, справа предпросмотр: подсказки убирали, карточки стали
+ * низкими, и места для предпросмотра в одной колонке не хватало — он
+ * получался узкой полосой, где не видно ни заголовка, ни таблицы.
  */
 function exportDialog(preset) {
   const t = active();
@@ -2254,8 +2284,18 @@ function exportDialog(preset) {
 
   let closeModal = () => back.remove();
   const back = modalShell();
-  const box = modalBox('Экспорт', 640, 830);
+  const box = modalBox('Экспорт', 860, 620);
   box.classList.add('exp-box');
+
+  // Настройки слева, предпросмотр справа.
+  const body = document.createElement('div');
+  body.className = 'exp-body';
+  const left = document.createElement('div');
+  left.className = 'exp-col exp-left';
+  const right = document.createElement('div');
+  right.className = 'exp-col exp-right';
+  body.append(left, right);
+  box.append(body);
 
   const first = EXPORT_FORMATS.find((f) => f.id === preset) || EXPORT_FORMATS[2];
   const state = {
@@ -2265,9 +2305,15 @@ function exportDialog(preset) {
     font: 'JetBrainsMono',
   };
   const fmtById = (id) => EXPORT_FORMATS.find((f) => f.id === id) || first;
+  // Карточка размера: к ней обращается syncAll, а она создаётся ниже.
+  let sizeCard = null;
 
-  // ---------------------------------------------------------- карточка поля
-  function addCard(label, valueEl, hint) {
+  /**
+   * Одна настройка — карточка: заголовок со значением справа, контрол под ним.
+   * Подсказок нет: их было четыре, и каждая отнимала строку у предпросмотра,
+   * а сказать было нечего — подпись кнопки и так всё объясняет.
+   */
+  function addCard(label, valueEl) {
     const row = document.createElement('div');
     row.className = 'set-row';
     const head = document.createElement('div');
@@ -2278,19 +2324,8 @@ function exportDialog(preset) {
     head.append(l);
     if (valueEl) head.append(valueEl);
     row.append(head);
-    let hintEl = null;
-    if (hint) {
-      hintEl = document.createElement('div');
-      hintEl.className = 'set-hint';
-      hintEl.textContent = hint;
-      row.append(hintEl);
-    }
-    box.append(row);
-    row._before = hintEl;
-    row.addControl = (ctl) => {
-      row.insertBefore(ctl, hintEl || null);
-      return ctl;
-    };
+    left.append(row);
+    row.addControl = (ctl) => { row.append(ctl); return ctl; };
     return row;
   }
 
@@ -2301,8 +2336,9 @@ function exportDialog(preset) {
     const btns = options.map((o) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'exp-segbtn';
+      b.className = 'exp-segbtn' + (o.cls ? ' ' + o.cls : '');
       b.dataset.id = o.id;
+      if (o.color) b.style.setProperty('--seg', o.color);
       if (o.icon) {
         const ic = document.createElement('span');
         ic.className = 'ico';
@@ -2323,21 +2359,21 @@ function exportDialog(preset) {
   }
 
   // ---------------------------------------------------------------- формат
-  const fmtCard = addCard('Формат', null, null);
-  const fmtSeg = segmented(EXPORT_FORMATS.map((f) => ({ id: f.id, label: f.label, icon: f.icon })),
-    state.format, (id) => {
-      state.format = id;
-      fmtSeg.sync(id);
-      syncAll();
-    });
+  const fmtCard = addCard('Формат');
+  const fmtSeg = segmented(EXPORT_FORMATS.map((f) => ({
+    id: f.id, label: f.label, icon: f.icon, color: f.color,
+  })), state.format, (id) => {
+    state.format = id;
+    fmtSeg.sync(id);
+    syncAll();
+  });
   fmtCard.addControl(fmtSeg);
 
   // ---------------------------------------------------------------- палитра
-  const palCard = addCard('Палитра', null,
-    'Чёрно-белая — для принтера и для тех, кто печатает много.');
+  const palCard = addCard('Палитра');
   const palSeg = segmented([
-    { id: 'colour', label: 'Цветное' },
-    { id: 'bw', label: 'Чёрно-белая' },
+    { id: 'colour', label: 'Цветное', cls: 'tinted', color: nextExportTint() },
+    { id: 'bw', label: 'Чёрно-белая', cls: 'bw' },
   ], state.bw ? 'bw' : 'colour', (id) => {
     state.bw = id === 'bw';
     palSeg.sync(id);
@@ -2360,7 +2396,7 @@ function exportDialog(preset) {
     paintRange(sizeIn);
     syncAll();
   };
-  const sizeCard = addCard('Размер шрифта', sizeOut, 'Так же, как в заметке.');
+  sizeCard = addCard('Размер шрифта', sizeOut);
   sizeCard.addControl(sizeIn);
 
   // ------------------------------------------------------------------ шрифт
@@ -2374,8 +2410,7 @@ function exportDialog(preset) {
     state.font = fontSel.value || 'JetBrainsMono';
     syncAll();
   };
-  const fontCard = addCard('Шрифт', null,
-    'Свой JetBrains Mono или любой из установленных в системе.');
+  const fontCard = addCard('Шрифт');
   fontCard.addControl(fontSel);
   const fillFonts = (names) => {
     fontSel.innerHTML = '';
@@ -2394,17 +2429,15 @@ function exportDialog(preset) {
   Promise.resolve(api.fonts()).then(fillFonts, () => fillFonts(null));
 
   // ------------------------------------------------------------- предпросмотр
+  const cap = document.createElement('div');
+  cap.className = 'exp-cap';
+  cap.textContent = 'Предпросмотр';
   const prev = document.createElement('div');
   prev.className = 'exp-preview';
   const doc = document.createElement('article');
   doc.className = 'content exp-doc';
   prev.append(doc);
-  const prevCard = addCard('Предпросмотр', null, null);
-  // Карточка с предпросмотром забирает остаток высоты окна: остальные пять
-  // карточек фиксированы, и если предпросмотру оставить свою высоту, окно
-  // уезжает в прокрутку вместе с кнопкой экспорта.
-  prevCard.classList.add('exp-card');
-  prevCard.addControl(prev);
+  right.append(cap, prev);
 
   /*
    * Один проход на любое изменение.
@@ -2478,7 +2511,6 @@ function exportDialog(preset) {
     if (!tab || tab.path !== t.path) { closeModal(false); return; }
     if (tab.mode === 'edit' && tab.dirty) { toast('Сначала сохрани (Ctrl+S)'); closeModal(false); return; }
 
-    const f = fmtById(state.format);
     const base = t.name.replace(/\.md$/i, '');
     busy = true;
     ok.disabled = true;

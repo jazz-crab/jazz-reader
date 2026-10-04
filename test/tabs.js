@@ -3103,6 +3103,16 @@ const SILENCE_CONFIRM = `(() => {
     out.prevText = (back.querySelector('.exp-doc').textContent || '').slice(0, 60);
     out.prevChildren = back.querySelector('.exp-doc').children.length;
     out.cards = back.querySelectorAll('.set-row').length;
+    // Предпросмотр уехал в правую колонку и больше не карточка.
+    out.cols = back.querySelectorAll('.exp-body > .exp-col').length;
+    out.previewInRight = !!back.querySelector('.exp-right .exp-preview');
+    out.hints = back.querySelectorAll('.set-hint').length;
+    out.fontLabel = back.querySelector('.exp-select').options[0].textContent;
+    out.fmtColors = [...[...back.querySelectorAll('.exp-seg')][0]
+      .querySelectorAll('.exp-segbtn')]
+      .map((b) => getComputedStyle(b.querySelector('.ico-svg')).stroke).join('|');
+    out.tint = [...back.querySelectorAll('.exp-seg')][1]
+      .querySelector('.exp-segbtn[data-id="colour"]').style.getPropertyValue('--seg');
     // Габариты окна: узкое окно прячет предпросмотр
     const r2 = box2.getBoundingClientRect();
     out.w = Math.round(r2.width);
@@ -3123,8 +3133,15 @@ const SILENCE_CONFIRM = `(() => {
   t('четыре формата', r.forms === 4, String(r.forms));
   t('две палитры', r.pals === 2, String(r.pals));
   t('ползунок размера на месте', r.ranges === 1, String(r.ranges));
-  t('пять карточек: формат, палитра, размер, шрифт, предпросмотр',
-    r.cards === 5, String(r.cards));
+  t('четыре карточки: формат, палитра, размер, шрифт',
+    r.cards === 4, String(r.cards));
+  t('настройки и предпросмотр в двух колонках',
+    r.cols === 2 && r.previewInRight === true, r.cols + '/' + r.previewInRight);
+  t('подсказок под карточками нет', r.hints === 0, String(r.hints));
+  t('свой шрифт без «(свой)»', r.fontLabel === 'JetBrains Mono', String(r.fontLabel));
+  t('у каждого формата свой цвет иконки',
+    new Set(r.fmtColors.split('|')).size === 4, String(r.fmtColors));
+  t('у кнопки «Цветное» есть цвет', !!r.tint, String(r.tint));
   t('список шрифтов есть', r.hasSelect === true);
   t('шрифты прочитались', r.fonts > 5, String(r.fonts));
   t('список шрифтов не заблокирован', r.fontDisabled === false, String(r.fontDisabled));
@@ -3167,14 +3184,14 @@ const SILENCE_CONFIRM = `(() => {
     out.pdfPrevTag = doc.firstElementChild ? doc.firstElementChild.tagName : '';
     return JSON.stringify(out);
   })()`));
-  t('у HTML все пять карточек', JSON.stringify(r.html) === '[true,true,true,true,true]',
+  t('у HTML все четыре карточки', JSON.stringify(r.html) === '[true,true,true,true]',
     JSON.stringify(r.html));
   t('у MD палитра, размер и шрифт скрыты',
-    JSON.stringify(r.md) === '[true,false,false,false,true]', JSON.stringify(r.md));
+    JSON.stringify(r.md) === '[true,false,false,false]', JSON.stringify(r.md));
   t('у TXT то же самое',
-    JSON.stringify(r.txt) === '[true,false,false,false,true]',
+    JSON.stringify(r.txt) === '[true,false,false,false]',
     JSON.stringify(r.txt) + ' текст=' + JSON.stringify(r.txtText));
-  t('у PDF оформление снова нужно', JSON.stringify(r.pdf) === '[true,true,true,true,true]',
+  t('у PDF оформление снова нужно', JSON.stringify(r.pdf) === '[true,true,true,true]',
     JSON.stringify(r.pdf));
   t('предпросмотр MD — исходный текст', r.mdIsPre === 'exp-plain'
     && /^#/.test(String(r.mdText)), JSON.stringify(r.mdText));
