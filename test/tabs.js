@@ -1469,7 +1469,7 @@ const SILENCE_CONFIRM = `(() => {
     await window.__mdvTest.openRingIn('content', Math.round(box.left + 160), Math.round(box.top + 90));
     await new Promise(r2 => setTimeout(r2, 400));
     const rad = document.getElementById('radial');
-    const acts = [...rad.querySelectorAll('.radial-btn')].map((b) => b.dataset.act);
+    const acts = [...rad.querySelectorAll('.radial-sector')].map((b) => b.dataset.act);
     return JSON.stringify({
       editing: M.active().mode,
       acts,
@@ -2859,8 +2859,10 @@ const SILENCE_CONFIRM = `(() => {
     const box = ed.getBoundingClientRect();
     await window.__mdvTest.openRingIn('editor', Math.round(box.left + 160), Math.round(box.top + 90));
     await new Promise(r2 => setTimeout(r2, 450));
+    // Точка — центр плашки значка. Центр сектора не годится: сектор это
+    // квадрат во всю подложку, и его середина совпадает с центром кольца.
     const mid = (sel) => {
-      const q = document.querySelector('#radial ' + sel).getBoundingClientRect();
+      const q = document.querySelector('#radial ' + sel + ' .rd-dot').getBoundingClientRect();
       return [q.left + q.width / 2, q.top + q.height / 2];
     };
     return JSON.stringify({
@@ -2870,8 +2872,10 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
 
+  // Фон берём с плашки значка (.rd-dot), а не с сектора: сектор теперь
+  // полупрозрачный клин, и его цвет ничего не говорит о наведении.
   const readBtn = (sel) => js(`(() => {
-    const b = document.querySelector('#radial ${sel}');
+    const b = document.querySelector('#radial ${sel} .rd-dot');
     const cs = getComputedStyle(b);
     const px = (v) => (v.match(/[\\d.]+/g) || []).map(Number);
     const bg = px(cs.backgroundColor);
@@ -3045,13 +3049,10 @@ const SILENCE_CONFIRM = `(() => {
     'labels=' + JSON.stringify(r.labels) + ' first=' + r.firstHtml);
   t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
 
-  // ------------------------------------------- круговое меню заметки
-  console.log('\n== круговое меню заметки ==');
+  // ------------------------------------------- кольцо: сектора и зона отмены
+  console.log('\n== кольцо: сектора ==');
 
-  const openRing = async (jsExpr) => JSON.parse(await js(jsExpr));
-
-  // 1. Кольцо по правому клику в заметке
-  r = await openRing(`(async () => {
+  r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
@@ -3059,363 +3060,330 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 600));
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
-    const rad = document.getElementById('radial');
     const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
       clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 220) });
-    // Настоящий правый клик целиком: mousedown → mouseup → contextmenu.
+    // Каждая проба начинается с закрытого кольца: правый клик при открытом
+    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
     await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
-    await new Promise(r2 => setTimeout(r2, 400));
-    const btns = [...rad.querySelectorAll('.radial-btn')];
-    // Системное меню приходит после отпускания и тоже подавляется.
+    await new Promise(r2 => setTimeout(r2, 450));
     c.dispatchEvent(ev);
+    const rad = document.getElementById('radial');
+    const secs = [...rad.querySelectorAll('.radial-sector')];
+    const kill = rad.querySelector('.radial-kill');
+    const ring = rad.getBoundingClientRect();
+    const cx = ring.left, cy = ring.top;
     return JSON.stringify({
       open: !rad.hidden && rad.classList.contains('on'),
       prevented: ev.defaultPrevented,
-      acts: btns.map(b => b.dataset.act),
-      disabled: btns.map(b => (b.disabled ? 1 : 0)),
-      // Размер берём из offsetWidth, а НЕ из getBoundingClientRect: кнопка
-      // повёрнута на свой угол, и её описанный прямоугольник у повёрнутой
-      // кнопки шире самой кнопки (40px превращались в 56px). Это артефакт
-      // измерения, а неLayout: offsetWidth не учитывает transform.
-      round: btns.map(b => b.offsetWidth),
-      roundH: btns.map(b => b.offsetHeight),
-      radius: getComputedStyle(btns[0]).borderRadius,
-      // Раскладка на координатах от центра, а не на углах: повёрнутая кнопка
-      // уносила за собой иконку и подпись.
-      coords: btns.map(b => [
-        b.style.getPropertyValue('--x'), b.style.getPropertyValue('--y'),
-      ]),
-      rotated: btns.map(b => getComputedStyle(b).transform),
-      onScreen: btns.every((b) => {
-        const q = b.getBoundingClientRect();
-        return q.left >= 0 && q.right <= innerWidth && q.top >= 0 && q.bottom <= innerHeight;
-      }),
-      inWindow: rad.getBoundingClientRect().left >= 0,
-      dead: btns.filter((b) => b.disabled).length,
-      clipOff: ['copy', 'cut', 'paste']
-        .filter((a) => btns.find((b) => b.dataset.act === a) && btns.find((b) => b.dataset.act === a).disabled)
-        .length,
-      // Секции по сторонам от центра кольца
-      side: btns.map((b) => {
-        const r = b.getBoundingClientRect();
-        const c = rad.getBoundingClientRect();
-        return {
-          act: b.dataset.act,
-          half: Math.abs((r.top + r.height / 2) - (c.top + c.height / 2)) < 8 ? 'центр'
-            : ((r.top + r.height / 2) < c.top + c.height / 2 ? 'верх' : 'низ'),
-        };
-      }),
-      // Подложка — кольцо, а не кружок в середине
-      ringW: parseFloat(getComputedStyle(rad, '::before').width),
-      ringRadius: getComputedStyle(rad, '::before').borderRadius,
-      ringNone: getComputedStyle(rad, '::before').pointerEvents,
-      // Подписи: всегда снизу кнопки и всегда в одну строку. Раньше кнопки
-      // стояли rotate+translate, и подпись уезжала набок вместе с ними.
-      tips: btns.map((b) => {
-        const tip = b.querySelector('.rd-tip');
-        const tb = b.getBoundingClientRect();
-        const tt = tip.getBoundingClientRect();
-        return {
-          below: tt.top >= tb.top + tb.height - 2,
-          oneLine: tip.offsetHeight < 30,
-          // Описанный прямоугольник совпадает с размером макета => поворота нет
-          axisAligned: Math.abs(tt.width - tip.offsetWidth) < 2
-            && Math.abs(tt.height - tip.offsetHeight) < 2,
-          gap: Math.round(tt.top - (tb.top + tb.height)),
-        };
-      }),
-      // Иконки тоже стоят ровно: у повёрнутой кнопки значок вставал набок.
-      icoLevel: btns.map((b) => {
-        const s = b.querySelector('svg').getBoundingClientRect();
-        return Math.abs(s.width - s.height);
-      }),
-      ringH: parseFloat(getComputedStyle(rad, '::before').height),
-      // Соседи внутри одной секции: кнопка 42px, а при старом радиусе 78px и
-      // разбросе 27° центры стояли в 37px — налезали друг на друга.
-      sectionGap: (() => {
-        const xs = btns.map((b) => ({
-          act: b.dataset.act, x: b.offsetLeft, y: b.offsetTop, w: b.offsetWidth,
-        })).filter((p) => ['copy', 'cut', 'paste', 'save', 'cancel'].includes(p.act));
-        let worst = Infinity;
-        for (let i = 0; i < xs.length; i += 1) {
-          for (let j = i + 1; j < xs.length; j += 1) {
-            const d = Math.hypot(xs[i].x - xs[j].x, xs[i].y - xs[j].y);
-            if (d < worst) worst = d;
-          }
+      acts: secs.map((b) => b.dataset.act),
+      arcs: secs.map((b) => [+b.dataset.a0, +b.dataset.a1]),
+      disabled: secs.filter((b) => b.disabled).length,
+      // Секторы должны делить круг без щелей и перекрытий
+      tiling: (() => {
+        let edge = -141;
+        for (const [a0, a1] of secs.map((b) => [+b.dataset.a0, +b.dataset.a1])) {
+          if (Math.abs(a0 - edge) > 0.01) return false;
+          edge = a1;
         }
-        return xs.length > 1 ? Math.round(worst) : -1;
+        return Math.abs(edge - 219) < 0.01;
       })(),
-      btnW: btns[0] ? btns[0].offsetWidth : 0,
+      // Зона отмены в центре, круглая, с крестиком
+      killExists: !!kill,
+      killIsCircle: kill ? getComputedStyle(kill).borderRadius === '50%' : false,
+      killRadius: kill ? getComputedStyle(kill).borderRadius : '',
+      killBg: kill ? getComputedStyle(kill).backgroundColor : '',
+      killRed: kill ? getComputedStyle(kill).backgroundColor.includes('247, 118, 142') : false,
+      killBorder: kill ? getComputedStyle(kill).borderTopColor : '',
+      killSize: kill ? Math.round(kill.getBoundingClientRect().width) : 0,
+      killX: kill ? !!kill.querySelector('svg') : false,
+      killAtCentre: kill ? (() => {
+        const q = kill.getBoundingClientRect();
+        return Math.abs(q.left + q.width / 2 - cx) < 2 && Math.abs(q.top + q.height / 2 - cy) < 2;
+      })() : false,
+      // Крестик лежит поверх кнопки, поэтому смотрим ближайшего предка.
+      killHits: (() => {
+        const e = document.elementFromPoint(Math.round(cx), Math.round(cy));
+        const k = e ? e.closest('.radial-kill') : null;
+        return k ? 'radial-kill' : (e ? String(e.className) : 'нет');
+      })(),
+      // Внутри кольца, но на радиусе 90 — это уже сектор, а не пустота
+      bandHit: (() => {
+        const e = document.elementFromPoint(Math.round(cx + 90), Math.round(cy));
+        const s = e ? e.closest('.radial-sector') : null;
+        return s ? s.dataset.act : 'нет';
+      })(),
+      outsideHit: (() => {
+        const e = document.elementFromPoint(Math.round(cx + 200), Math.round(cy));
+        const s = e ? e.closest('.radial') : null;
+        return s ? 'кольцо' : 'нет';
+      })(),
       dockGone: !document.getElementById('modeDock'),
       exportBtnGone: !document.getElementById('dlBtn'),
-      toTopInsideNote: (document.getElementById('toTop') || {}).parentElement
-        ? document.getElementById('toTop').parentElement.id : null,
+      toTopInsideNote: document.getElementById('toTop').parentElement.id,
     });
-  })()`);
+  })()`));
 
   t('правый клик в заметке открывает кольцо', r.open === true);
   t('системное меню подавлено', r.prevented === true);
-  // Буфер обмена стоит в кольце ВСЕГДА: три кнопки на своих местах, просто
-  // гаснут, когда действие невозможно. Иначе кольцо меняло форму от
-  // выделения и приходилось искать глазами, где кнопка вообще.
-  t('буфер обмена в кольце есть и в чтении',
+  t('кольцо поделено на сектора', r.acts.length >= 5, JSON.stringify(r.acts));
+  t('буфер обмена есть и в чтении',
     ['copy', 'cut', 'paste'].every((a) => r.acts.includes(a)), JSON.stringify(r.acts));
-  t('в чтении буфер обмена неактивен',
-    r.clipOff === 3, String(r.clipOff));
-  t('справа экспорт', r.acts.includes('export'), JSON.stringify(r.acts));
-  t('слева открытие', r.acts.includes('open'), JSON.stringify(r.acts));
-  t('снизу карандаш', r.acts.includes('mode'), JSON.stringify(r.acts));
+  t('в чтении есть карандаш', r.acts.includes('mode'), JSON.stringify(r.acts));
   t('в чтении нет «Сохранить» и «Отменить»',
     !r.acts.includes('save') && !r.acts.includes('cancel'), JSON.stringify(r.acts));
-  // Неактивны ровно три — буфер обмена; всё остальное в чтении работает.
-  t('неактивен только буфер обмена', r.dead === 3, JSON.stringify(r.disabled));
-  t('кнопки круглые',
-    r.round.every((w) => w === r.round[0]) && r.round[0] === 42
-    && r.radius === '50%' && r.roundH.every((h) => h === r.round[0]),
-    JSON.stringify(r.round) + ' ' + r.radius);
-  t('все кнопки на экране', r.onScreen === true);
-  // Подложка — окружность по краю кнопок, а не кружок в середине: кружок
-  // занимал место, которого нет, и выглядел пустым пятном.
-  t('подложка кольца — окружность',
-    r.ringW >= 200 && r.ringRadius === '50%' && r.ringW === r.ringH,
-    r.ringW + 'x' + r.ringH + ' ' + r.ringRadius);
-  t('подложка не перехватывает клики', r.ringNone === 'none', r.ringNone);
-  // Подпись раньше была дочерним узлом повёрнутой кнопки и поворачивалась
-  // вместе с ней: у правой кнопки уезжала набок, у нижней — вбок, и прочитать
-  // её было нельзя.
-  t('подпись у всех кнопок снизу', r.tips.every((x) => x.below),
-    JSON.stringify(r.tips.map((x) => x.gap)));
-  t('подпись в одну строку и не повёрнута',
-    r.tips.every((x) => x.oneLine && x.axisAligned), JSON.stringify(r.tips));
-  // Соседи в секции не налезают: расстояние между центрами заметно больше
-  // ширины кнопки.
-  t('кнопки в секции не налезают друг на друга',
-    r.sectionGap === -1 || r.sectionGap >= r.btnW + 8,
-    r.sectionGap + 'px при кнопке ' + r.btnW + 'px');
-  // Секции: правка сверху, буфер обмена снизу.
-  t('правка сверху', ['mode'].every((a) => r.side.find((x) => x.act === a).half === 'верх'),
-    JSON.stringify(r.side));
-  t('буфер обмена снизу',
-    ['copy', 'cut', 'paste'].every((a) => r.side.find((x) => x.act === a).half === 'низ'),
-    JSON.stringify(r.side));
-  t('иконки стоят ровно, без поворота',
-    r.icoLevel.every((d) => d < 1), JSON.stringify(r.icoLevel));
+  t('секторы делят круг без щелей', r.tiling === true, JSON.stringify(r.arcs));
+  t('в чтении неактивен только буфер обмена', r.disabled === 3, String(r.disabled));
+  t('зона отмены круглая', r.killExists === true && r.killIsCircle === true,
+    r.killRadius + ' ' + r.killSize + 'px');
+  t('зона отмены красная', r.killRed === true, r.killBg + ' / ' + r.killBorder);
+  t('в зоне отмены крестик', r.killX === true);
+  t('зона отмены в центре кольца', r.killAtCentre === true);
+  t('клик в центре попадает в зону отмены',
+    /radial-kill/.test(r.killHits), r.killHits);
+  t('на радиусе кольца ловится сектор', r.bandHit === 'export', r.bandHit);
+  t('за кольцом кольцо не ловит', r.outsideHit === 'нет', r.outsideHit);
   t('экспорт убран из тулбара', r.exportBtnGone === true);
-  t('«Наверх» внутри заметки', r.toTopInsideNote === 'mainPane', String(r.toTopInsideNote));
+  t('«Наверх» внутри заметки', r.toTopInsideNote === 'mainPane', r.toTopInsideNote);
 
-  // 2. Кольцо у края экрана остаётся целиком в окне
-  r = await openRing(`(async () => {
-    const c = document.getElementById('content');
-    const rad = document.getElementById('radial');
-    document.getElementById('btnNewTab').dispatchEvent(
-      new MouseEvent('mousedown', { bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 250));
-    const box = c.getBoundingClientRect();
-    await window.__mdvTest.openRingIn('content', Math.round(box.left + 4), Math.round(box.top + 4));
-    await new Promise(r2 => setTimeout(r2, 400));
-    const btns = [...rad.querySelectorAll('.radial-btn')];
-    return JSON.stringify({
-      allOnScreen: btns.every((b) => {
-        const q = b.getBoundingClientRect();
-        return q.left >= 0 && q.right <= innerWidth && q.top >= 0 && q.bottom <= innerHeight;
-      }),
-      cx: Math.round(rad.getBoundingClientRect().left),
-      cy: Math.round(rad.getBoundingClientRect().top),
-    });
-  })()`);
-  t('у самого края кольцо не уезжает за окно', r.allOnScreen === true,
-    r.cx + ',' + r.cy);
-
-  // 3. «+» в кольце открывает меню открытия
-  r = await openRing(`(async () => {
-    const rad = document.getElementById('radial');
-    rad.querySelector('[data-act="open"]').click();
-    await new Promise(r2 => setTimeout(r2, 450));
-    const m = document.querySelector('.ctxmenu');
-    return JSON.stringify({
-      ringClosed: rad.hidden,
-      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim()) : [],
-    });
-  })()`);
-  t('«+» открывает меню открытия',
-    JSON.stringify(r.labels) === JSON.stringify(['Открыть .md', 'Открыть папку']),
-    JSON.stringify(r.labels));
-
-  // 4. «Экспорт» в кольце открывает обычное меню экспорта у самой кнопки
-  r = await openRing(`(async () => {
-    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
-    const c = document.getElementById('content');
-    const box = c.getBoundingClientRect();
-    await window.__mdvTest.openRingIn('content', Math.round(box.left + box.width / 2), Math.round(box.top + 200));
-    await new Promise(r2 => setTimeout(r2, 350));
-    const rad = document.getElementById('radial');
-    const btn = rad.querySelector('[data-act="export"]');
-    const br = btn.getBoundingClientRect();
-    btn.click();
-    await new Promise(r2 => setTimeout(r2, 450));
-    const m = document.querySelector('.ctxmenu');
-    const mr = m ? m.getBoundingClientRect() : { left: -1, right: -1, top: -1, bottom: -1 };
-    return JSON.stringify({
-      ringClosed: rad.hidden,
-      labels: m ? [...m.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.trim()) : [],
-      btn: [Math.round(br.left), Math.round(br.top), Math.round(br.bottom)],
-      menu: [Math.round(mr.left), Math.round(mr.top)],
-      // меню открылось рядом с кнопкой, а не в правом верхнем углу тулбара
-      nearButton: Math.abs(mr.top - br.bottom) < 120 && Math.abs(mr.left - br.left) < 160,
-    });
-  })()`);
-  t('«Экспорт» открывает меню у кнопки', r.nearButton === true,
-    'кнопка ' + r.btn + ' меню ' + r.menu);
-  t('в меню экспорта пять пунктов', (r.labels || []).length === 5, JSON.stringify(r.labels));
-  t('пункты экспорта те же',
-    ['Сохранить MD', 'Сохранить HTML', 'Печать / PDF…'].every((x) => (r.labels || []).includes(x)),
-    JSON.stringify(r.labels));
-
-  // 5. Кольцо в правке: карандаша нет, есть «Сохранить» и «Отмена»
-  r = await openRing(`(async () => {
-    document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
-    const M = window.__mdvTest;
-    const t = M.active();
-    t.mode = 'edit'; t.dirty = true;
-    M.renderActive();
-    await new Promise(r2 => setTimeout(r2, 400));
-    const ed = document.getElementById('editor');
-    const box = ed.getBoundingClientRect();
-    /*
-     * Жест собираем здесь, а не через openRingIn: выделение надо поставить
-     * МЕЖДУ нажатием и отпусканием. Настоящий mousedown ставит каретку по
-     * координатам и схлопывает выделение, а кольцо собирается на mouseup —
-     * то есть уже после того, как выделение должно появиться.
-     */
-    ed.dispatchEvent(new MouseEvent('mousedown', {
-      bubbles: true, cancelable: true, clientX: Math.round(box.left + 160),
-      clientY: Math.round(box.top + 90), button: 2 }));
-    ed.focus();
-    ed.setSelectionRange(0, 25);
-    ed.dispatchEvent(new MouseEvent('mouseup', {
-      bubbles: true, cancelable: true, clientX: Math.round(box.left + 160),
-      clientY: Math.round(box.top + 90), button: 2 }));
-    await new Promise(r2 => setTimeout(r2, 400));
-    const rad = document.getElementById('radial');
-    const btns = [...rad.querySelectorAll('.radial-btn')];
-    return JSON.stringify({
-      acts: btns.map(b => b.dataset.act),
-      disabled: btns.map(b => (b.disabled ? 1 : 0)),
-      // Выделение нужно, чтобы буфер обмена ожил: без него копировать и
-      // вырезать нечего даже в правке.
-      clipOff: ['copy', 'cut', 'paste'].filter((a) => btns.find((b) => b.dataset.act === a)
-        && btns.find((b) => b.dataset.act === a).disabled).length,
-      editTop: ['save', 'cancel'].every((a) => {
-        const b = btns.find((x) => x.dataset.act === a);
-        if (!b) return false;
-        const q = b.getBoundingClientRect();
-        const c = rad.getBoundingClientRect();
-        return q.top + q.height / 2 < c.top + c.height / 2;
-      }),
-      clipBottom: ['copy', 'cut', 'paste'].every((a) => {
-        const b = btns.find((x) => x.dataset.act === a);
-        if (!b) return false;
-        const q = b.getBoundingClientRect();
-        const c = rad.getBoundingClientRect();
-        return q.top + q.height / 2 > c.top + c.height / 2;
-      }),
-    });
-  })()`);
-  t('в правке карандаша нет', !r.acts.includes('mode'), JSON.stringify(r.acts));
-  t('в правке есть «Сохранить» и «Отмена»',
-    r.acts.includes('save') && r.acts.includes('cancel'), JSON.stringify(r.acts));
-  t('«Отмена» активна при несохранённых правках',
-    r.disabled[r.acts.indexOf('cancel')] === 0, JSON.stringify(r.disabled));
-  t('в правке с выделением буфер обмена активен', r.clipOff === 0, String(r.clipOff));
-  t('«Сохранить» и «Отмена» сверху кольца', r.editTop === true);
-  t('буфер обмена снизу кольца', r.clipBottom === true);
-  t('«Сохранить» активна при несохранённых правках',
-    r.disabled[r.acts.indexOf('save')] === 0, JSON.stringify(r.disabled));
-
-  // 6. «Сохранить» из кольца уходит в режим просмотра
-  r = await openRing(`(async () => {
-    const M = window.__mdvTest;
-    const rad = document.getElementById('radial');
-    rad.querySelector('[data-act="save"]').click();
-    await new Promise(r2 => setTimeout(r2, 700));
-    return JSON.stringify({
-      mode: M.active().mode,
-      ringHidden: rad.hidden,
-      dockGone: !document.getElementById('modeDock'),
-      dirty: M.active().dirty,
-    });
-  })()`);
-  t('«Сохранить» из кольца вернула в просмотр', r.mode === 'read', r.mode);
-  t('«Сохранить» сняла флаг правок', r.dirty === false);
-  t('док режима спрятан после сохранения', r.dockGone === true);
-
-  // 7. Закрытие кольца
-  r = await openRing(`(async () => {
-    const M = window.__mdvTest;
-    const c = document.getElementById('content');
-    const box = c.getBoundingClientRect();
-    const open = async () => {
-      await window.__mdvTest.openRingIn('content', Math.round(box.left + box.width / 2), Math.round(box.top + 200));
-      await new Promise(r2 => setTimeout(r2, 350));
-      return !document.getElementById('radial').hidden;
-    };
-    const out = {};
-    out.first = await open();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 250));
-    out.afterEsc = document.getElementById('radial').hidden;
-    out.second = await open();
-    document.getElementById('statusbar')
-      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    await new Promise(r2 => setTimeout(r2, 250));
-    out.afterClickOutside = document.getElementById('radial').hidden;
-    out.third = await open();
-    c.scrollTop += 40;
-    c.dispatchEvent(new WheelEvent('wheel', { deltaY: 10, bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 300));
-    out.afterWheel = document.getElementById('radial').hidden;
-    return JSON.stringify(out);
-  })()`);
-
-  t('кольцо открывается', r.first === true);
-  t('Esc закрывает кольцо', r.afterEsc === true);
-
-  t('клик мимо закрывает кольцо', r.second === true && r.afterClickOutside === true);
-  t('прокрутка закрывает кольцо', r.third === true && r.afterWheel === true);
-
-  // Клик по центру кольца — тоже закрытие: это пустое место внутри кольца,
-  // выбирать там нечего. Подложка обязана ничего не ловить, иначе клик
-  // проваливался бы в заметку и правил бы текст под кольцом.
+  // 2. Выбор по направлению: в режиме «зажать и вести» расстояние не важно
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
-    const out = {};
-    const at = (x, y) => {
-      const el = document.elementFromPoint(x, y);
-      return el ? (el.id || el.className || el.tagName) : 'нет';
-    };
-    const open = async () => {
-      await window.__mdvTest.openRingIn('content', Math.round(box.left + box.width / 2), Math.round(box.top + 200));
-      await new Promise(r2 => setTimeout(r2, 350));
-      return !document.getElementById('radial').hidden;
-    };
-    out.opened = await open();
+    const px = Math.round(box.left + box.width / 2), py = Math.round(box.top + 220);
+    // Каждая проба начинается с закрытого кольца: правый клик при открытом
+    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    c.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, clientX: px, clientY: py, button: 2 }));
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: px + 30, clientY: py + 30, button: 2 }));
+    await new Promise(r2 => setTimeout(r2, 350));
     const rad = document.getElementById('radial');
-    const ctr = rad.getBoundingClientRect();
-    out.hitCentre = at(Math.round(ctr.left), Math.round(ctr.top));
-    c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true,
-      clientX: Math.round(ctr.left), clientY: Math.round(ctr.top) }));
-    await new Promise(r2 => setTimeout(r2, 250));
-    out.afterCentreClick = rad.hidden;
-    // и повторно открыть — кольцо не залипло
-    out.reopened = await open();
+    const q = rad.getBoundingClientRect();
+    const at = (x, y) => {
+      const h = M.radialPick(Math.round(x), Math.round(y));
+      return h ? h.dataset.act : null;
+    };
+    const out = { far: {}, near: {} };
+    // Далеко за кольцом, но по направлению
+    out.far.up = at(q.left, q.top - 240);
+    out.far.right = at(q.left + 300, q.top);
+    out.far.left = at(q.left - 300, q.top);
+    out.far.down = at(q.left, q.top + 240);
+    // Радиус кольца = 122, значит 240 — точно за ним
+    out.outsideIsFar = 240 > 122;
     return JSON.stringify(out);
   })()`));
-  t('в центр кольца попадает сама заметка', r.hitCentre === 'content',
-    String(r.hitCentre));
-  t('клик по центру кольца закрывает его', r.opened === true && r.afterCentreClick === true);
-  t('после этого кольцо открывается снова', r.reopened === true);
+  t('вверх выбирается правка', r.far.up === 'mode', String(r.far.up));
+  t('вправо выбирается экспорт', r.far.right === 'export', String(r.far.right));
+  t('влево выбирается открытие', r.far.left === 'open', String(r.far.left));
+  t('вниз выбирается буфер обмена', /^copy$|^cut$|^paste$/.test(String(r.far.down)),
+    String(r.far.down));
+  t('точки проверки — за пределами кольца', r.outsideIsFar === true);
+
+  // 3. В обычном режиме за кольцом ничего не выбирается
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    // Каждая проба начинается с закрытого кольца: правый клик при открытом
+    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
+    await new Promise(r2 => setTimeout(r2, 350));
+    const out = {};
+    out.opened = !document.getElementById('radial').hidden;
+    const q = document.getElementById('radial').getBoundingClientRect();
+    out.far = M.radialPick(Math.round(q.left + 300), Math.round(q.top));
+    out.near = M.radialPick(Math.round(q.left + 90), Math.round(q.top));
+    out.dragging = document.getElementById('radial').classList.contains('dragging');
+    return JSON.stringify({
+      opened: out.opened,
+      far: out.far ? out.far.dataset.act : null,
+      near: out.near ? out.near.dataset.act : null,
+      dragging: out.dragging,
+    });
+  })()`));
+  t('в обычном режиме кольцо открыто', r.opened === true);
+  t('в обычном режиме мимо кольца ничего не выбрано', r.far === null, String(r.far));
+  t('в обычном режиме внутри кольца выбирается', r.near === 'export', String(r.near));
+  t('в обычном режиме кольцо не «перетаскиваемое»', r.dragging === false);
+
+  // 4. Подпись следует за выбором и ничего не обрезана
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    const rad = document.getElementById('radial');
+    const q = rad.getBoundingClientRect();
+    const sec = rad.querySelector('[data-act="open"]');
+    const out2 = { opened: !rad.hidden, before: M.radialPick(Math.round(q.left - 90), Math.round(q.top)) };
+    out2.beforeAct = out2.before ? out2.before.dataset.act : null;
+    await new Promise(r2 => setTimeout(r2, 250));
+    const lab = document.getElementById('radialLabel');
+    const l = lab.getBoundingClientRect();
+    const dot = sec.querySelector('.rd-dot').getBoundingClientRect();
+    const cs = getComputedStyle(lab);
+    return JSON.stringify({
+      text: lab.textContent,
+      on: cs.opacity === '1',
+      oneLine: lab.offsetHeight < 30,
+      // Подпись не маскирована, в отличие от сектора
+      mask: cs.maskImage || cs.webkitMaskImage || 'none',
+      clip: cs.clipPath,
+      insideWindow: l.left >= 0 && l.right <= innerWidth,
+      nearDot: Math.abs(l.top - (dot.bottom + 6)) < 14,
+      opened: out2.opened, beforeAct: out2.beforeAct,
+    });
+  })()`));
+  t('подпись показывается при выборе', r.on === true && r.beforeAct === 'open',
+    r.text);
+  t('подпись в одну строку', r.oneLine === true);
+  t('подпись не обрезана маской сектора',
+    r.mask === 'none' && r.clip === 'none', r.mask + ' / ' + r.clip);
+  t('подпись стоит под значком', r.nearDot === true);
+  t('подпись помещается в окно', r.insideWindow === true);
+
+  // 5. Кольцо у края экрана остаётся целиком в окне
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    // Каждая проба начинается с закрытого кольца: правый клик при открытом
+    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    await M.openRingIn('content', box.left + 4, box.top + 4);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    const q = rad.getBoundingClientRect();
+    const secs = [...rad.querySelectorAll('.radial-sector')];
+    return JSON.stringify({
+      inside: q.left >= 0 && q.top >= 0 && q.right <= innerWidth && q.bottom <= innerHeight,
+      ringBox: [Math.round(q.left), Math.round(q.top)],
+      killsInside: (() => {
+        const k = rad.querySelector('.radial-kill').getBoundingClientRect();
+        return k.left >= 0 && k.top >= 0 && k.right <= innerWidth && k.bottom <= innerHeight;
+      })(),
+      count: secs.length,
+    });
+  })()`));
+  t('у самого края кольцо не уезжает за окно', r.inside === true, JSON.stringify(r.ringBox));
+  t('зона отмены тоже в окне', r.killsInside === true);
+  t('секторов столько же', r.count >= 5, String(r.count));
+
+  // 6. Клик по сектору работает (маска не съедает попадания)
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    // Каждая проба начинается с закрытого кольца: правый клик при открытом
+    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
+    await new Promise(r2 => setTimeout(r2, 400));
+    const rad = document.getElementById('radial');
+    const q = rad.getBoundingClientRect();
+    const sec = rad.querySelector('[data-act="open"]');
+    // целимся в самый край сектора, а не в значок
+    // Сектор — это клип по углу плюс маска-кольцо. Проверяем попадание в
+    // разных радиусах: у самого края кольца, посередине и у внешней границы.
+    const probe = (dx, dy) => {
+      const e = document.elementFromPoint(Math.round(q.left + dx), Math.round(q.top + dy));
+      const s2 = e ? e.closest('.radial-sector') : null;
+      return s2 ? s2.dataset.act : 'нет';
+    };
+    const edgeIs = [probe(-100, 0), probe(-90, 0), probe(-60, 0), probe(0, -100),
+      probe(100, 0), probe(0, 100)].join('|');
+    sec.click();
+    await new Promise(r2 => setTimeout(r2, 450));
+    return JSON.stringify({
+      edgeIs,
+      labels: document.querySelectorAll('.ctxmenu-label').length,
+    });
+  })()`));
+  t('секторы кликабельны по всей толщине кольца',
+    r.edgeIs === 'open|open|open|mode|export|cut', r.edgeIs);
+  t('клик по сектору открывает его меню', r.labels === 2, String(r.labels));
+
+  await js(`(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown',
+      { key: 'Escape', bubbles: true }));
+    return 1;
+  })()`);
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    return 1;
+  })()`);
+
+  // ------------------------------------------- меню экспорта: иконка слева
+  r = JSON.parse(await js(`(async () => {
+    const out = {};
+    const M = window.__mdvTest;
+    await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])},
+      { newTab: true });
+    await new Promise(r2 => setTimeout(r2, 500));
+    const c = document.getElementById('content');
+    const box = c.getBoundingClientRect();
+    // Каждая проба начинается с закрытого кольца: правый клик при открытом
+    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
+    await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
+    await new Promise(r2 => setTimeout(r2, 400));
+    document.getElementById('radial').querySelector('[data-act="export"]').click();
+    await new Promise(r2 => setTimeout(r2, 450));
+    const m = document.querySelector('.ctxmenu');
+    const items = [...m.querySelectorAll('.ctxmenu-item')];
+    out.open = !!m;
+    out.count = items.length;
+    out.allRows = items.every((b) => {
+      const icon = b.querySelector('.ctxmenu-label .ico');
+      if (!icon) return false;
+      const bi = icon.getBoundingClientRect();
+      const bb = b.getBoundingClientRect();
+      return bi.right <= bb.left + bb.width && bi.top >= bb.top - 1 && bi.bottom <= bb.bottom + 1;
+    });
+    const one = items[0];
+    const lab = one ? one.querySelector('.ctxmenu-label') : null;
+    const ico = one ? one.querySelector('.ico') : null;
+    out.labels = items.map((b) => b.textContent.trim());
+    if (lab && ico) {
+      const lb = lab.getBoundingClientRect();
+      const ib = ico.getBoundingClientRect();
+      out.iconLeft = ib.right <= lb.left + lb.width && ib.left < lb.left + lb.width;
+      out.iconSize = Math.round(one.querySelector('.ico-svg').getBoundingClientRect().width);
+    }
+    out.height = one ? Math.round(one.getBoundingClientRect().height) : 0;
+    return JSON.stringify(out);
+  })()`));
+
+  t('меню экспорта открывается', r.open === true);
+  t('в меню пять пунктов', r.count === 5, String(r.count));
+  t('иконка и надпись в одной строке', r.allRows === true, JSON.stringify(r.labels));
+  t('иконка слева от надписи', r.iconLeft === true);
+  t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
+
+  await js(`(async () => {
+    const M = window.__mdvTest;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+    for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
+    return 1;
+  })()`);
+
 
   // --------------------------------------------------- отмена и повтор
   console.log('\n== отмена и повтор ==');
@@ -3613,12 +3581,15 @@ const SILENCE_CONFIRM = `(() => {
       const r = document.getElementById('radial').getBoundingClientRect();
       return [Math.round(r.left), Math.round(r.top)];
     };
+    // Точка — центр плашки значка. Центр сектора не годится: сектор это
+    // квадрат во всю подложку, и его середина совпадает с центром кольца.
     const midOf = (act) => {
-      const b = document.querySelector('#radial [data-act="' + act + '"]').getBoundingClientRect();
+      const b = document.querySelector('#radial [data-act="' + act + '"] .rd-dot')
+        .getBoundingClientRect();
       return [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)];
     };
     const selNow = () => {
-      const s = document.querySelector('#radial .radial-btn.sel');
+      const s = document.querySelector('#radial .radial-sector.sel');
       return s ? s.dataset.act : null;
     };
     // Правый клик целиком: нажатие, отпускание, и системное меню, которое
@@ -3666,6 +3637,9 @@ const SILENCE_CONFIRM = `(() => {
     out.opened = ringOpen();
     // отпускание в центре ничего не выбрало
     out.sel = selNow();
+    out.dragAtEnd = M.radialDragState();
+    out.err = window.__err;
+    out.ringLog = (window.__ringLog || []).join(' | ');
     out.mode = M.active().mode;
     // левая кнопка выбирает
     const pen = midOf('mode');
@@ -3681,6 +3655,74 @@ const SILENCE_CONFIRM = `(() => {
   t('левая кнопка выбирает действие', r.afterClick === 'edit', r.afterClick);
   t('после выбора кольцо закрыто', r.closed === true);
 
+  // 2a. Правый клик при уже открытом кольце закрывает его — и НЕ открывает
+  // заново. Раньше кольцо исчезало и тут же появлялось снова, то есть закрыть
+  // его было нечем.
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    const out = {};
+    await click(c, x, y);
+    out.firstOpen = ringOpen();
+    // ещё один правый клик по заметке
+    await click(c, x, y);
+    await new Promise(r2 => setTimeout(r2, 400));
+    out.closedBySecondClick = !ringOpen();
+    out.againOpened = ringOpen();
+    // и правый клик по самому кольцу
+    await click(c, x, y);
+    await new Promise(r2 => setTimeout(r2, 350));
+    const rad = document.getElementById('radial');
+    const sec = rad.querySelector('[data-act="export"] .rd-dot');
+    const q = sec.getBoundingClientRect();
+    right(sec, q.left + q.width / 2, q.top + q.height / 2, 'mousedown');
+    right(sec, q.left + q.width / 2, q.top + q.height / 2, 'mouseup');
+    sec.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
+      clientX: Math.round(q.left + q.width / 2), clientY: Math.round(q.top + q.height / 2) }));
+    await new Promise(r2 => setTimeout(r2, 450));
+    out.closedByClickOnRing = !ringOpen();
+    out.hidden = document.getElementById('radial').hidden;
+    return JSON.stringify(out);
+  })()`));
+  t('кольцо открылось', r.firstOpen === true);
+  t('повторный правый клик закрывает кольцо', r.closedBySecondClick === true);
+  t('повторный правый клик не открывает новое кольцо', r.againOpened === false);
+  t('правый клик по самому кольцу закрывает его', r.closedByClickOnRing === true);
+  t('после закрытия кольцо скрыто', r.hidden === true);
+
+  // 2b. Распознавание срабатывает по наведению, до клика
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    ${GESTURE}
+    const c = document.getElementById('content');
+    const b = c.getBoundingClientRect();
+    const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    await click(c, x, y);
+    const q = document.getElementById('radial').getBoundingClientRect();
+    const out = { opened: ringOpen(), before: selNow() };
+    // наводим на сектор экспорта — ещё без всяких кнопок
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: Math.round(q.left + 100), clientY: Math.round(q.top) }));
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.afterHover = selNow();
+    out.dragging = document.getElementById('radial').classList.contains('dragging');
+    // Режим заметки здесь не важен: важно, что наведение ничего не изменило.
+    const before = M.active().mode;
+    await new Promise(r2 => setTimeout(r2, 250));
+    out.sameMode = M.active().mode === before;
+    out.stillOpen = ringOpen();
+    return JSON.stringify(out);
+  })()`));
+  t('кольцо открыто', r.opened === true);
+  t('до наведения ничего не выбрано', r.before === null, String(r.before));
+  t('наведение выбирает сектор', r.afterHover === 'export', String(r.afterHover));
+  t('наведение не превращается в «зажать и вести»', r.dragging === false);
+  t('наведение ничего не выполняет', r.sameMode === true);
+  t('наведение кольцо не закрывает', r.stillOpen === true);
+
   // 3. Зажать и вести: кольцо открывается само, выбирает то, над чем отпустили
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
@@ -3691,6 +3733,9 @@ const SILENCE_CONFIRM = `(() => {
     const b = c.getBoundingClientRect();
     const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
     const out = {};
+    const beforeMode = M.active().mode;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
     right(c, x, y, 'mousedown');
     out.afterDown = ringOpen();
     document.dispatchEvent(new MouseEvent('mousemove', {
@@ -3710,17 +3755,33 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 200));
     out.selOnPencil = selNow();
     const pb = document.querySelector('#radial [data-act="mode"]');
-    out.selScaled = getComputedStyle(pb).transform !== 'none';
-    out.tipShown = getComputedStyle(pb.querySelector('.rd-tip')).opacity === '1';
+    // Сектор выделяется заливкой и рамкой плашки, а не увеличением.
+    out.selFill = getComputedStyle(pb).backgroundColor;
+    out.selBorder = getComputedStyle(pb.querySelector('.rd-dot')).borderTopColor;
+    // Подпись теперь одна и следует за выбором.
+    const lab = document.getElementById('radialLabel');
+    out.tipText = lab ? lab.textContent : '';
+    out.tipShown = !!lab && getComputedStyle(lab).opacity === '1';
     // отпускаем и шлём следом системное меню, как это делает Chromium
+    window.__err = null;
+    window.addEventListener('error', (ev) => {
+      window.__err = (ev.message || '') + ' @ ' + (ev.filename || '') + ':' + (ev.lineno || '');
+    }, { once: true });
+    out.dragBeforeUp = M.radialDragState();
     right(document, pen[0], pen[1], 'mouseup');
+    out.dragAfterUp = M.radialDragState();
     document.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
       clientX: pen[0], clientY: pen[1] }));
     await new Promise(r2 => setTimeout(r2, 600));
     out.mode = M.active().mode;
     out.closed = !ringOpen();
-    out.rings = document.querySelectorAll('#radial .radial-btn').length;
+    out.rings = document.querySelectorAll('#radial .radial-sector').length;
     out.hidden = document.getElementById('radial').hidden;
+    out.flag = M.radialFlag();
+    out.drag = !!M.radialDragging();
+    out.path = M.active().path;
+    out.modal = !!document.querySelector('.modal-back');
+    out.modeBefore = beforeMode;
     return JSON.stringify(out);
   })()`));
   t('при нажатии кольца ещё нет', r.afterDown === false);
@@ -3729,9 +3790,13 @@ const SILENCE_CONFIRM = `(() => {
   t('кольцо помечено как перетаскиваемое', r.dragging === true);
   t('в центре ничего не выбрано', r.selInCentre === null, String(r.selInCentre));
   t('над карандашом выбран карандаш', r.selOnPencil === 'mode', String(r.selOnPencil));
-  t('выбранный значок увеличен', r.selScaled === true);
-  t('у выбранного значка подпись видна', r.tipShown === true);
-  t('отпускание выбрало действие', r.mode === 'edit', r.mode);
+  t('выбранный сектор залит', /127,\s*162,\s*247/.test(String(r.selFill)), r.selFill);
+  t('у выбранного значка подпись видна', r.tipShown === true && /Правка/.test(r.tipText),
+    r.tipText);
+  t('отпускание выбрало действие', r.mode === 'edit',
+    JSON.stringify({ mode: r.mode, flag: r.flag, drag: r.drag, hidden: r.hidden,
+      beforeUp: JSON.stringify(r.dragBeforeUp), afterUp: JSON.stringify(r.dragAfterUp),
+      atEnd: JSON.stringify(r.dragAtEnd), err: r.err, log: r.ringLog }));
   // Регресс, о котором сообщили: после отпускания кольцо открывалось заново,
   // потому что следом приходил contextmenu и открывал второе кольцо.
   t('после отпускания кольцо закрыто и не открылось заново',
@@ -3746,6 +3811,8 @@ const SILENCE_CONFIRM = `(() => {
     const c = document.getElementById('content');
     const b = c.getBoundingClientRect();
     const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
     right(c, x, y, 'mousedown');
     document.dispatchEvent(new MouseEvent('mousemove', {
       bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));
@@ -3767,6 +3834,8 @@ const SILENCE_CONFIRM = `(() => {
     const c = document.getElementById('content');
     const b = c.getBoundingClientRect();
     const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
     right(c, x, y, 'mousedown');
     document.dispatchEvent(new MouseEvent('mousemove', {
       bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));
@@ -3787,6 +3856,8 @@ const SILENCE_CONFIRM = `(() => {
     const c = document.getElementById('content');
     const b = c.getBoundingClientRect();
     const x = Math.round(b.left + b.width / 2), y = Math.round(b.top + 220);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 200));
     right(c, x, y, 'mousedown');
     document.dispatchEvent(new MouseEvent('mousemove', {
       bubbles: true, clientX: x + 30, clientY: y + 30, button: 2 }));

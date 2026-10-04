@@ -1189,153 +1189,164 @@ kbd {
 
 
 /* ================= Круговое меню заметки =================
-   Правый клик внутри заметки открывает кольцо кнопок вокруг точки клика.
-   Раскладка по секциям: сверху буфер обмена, снизу правка, справа экспорт,
-   слева открытие.
+   Правый клик внутри заметки открывает кольцо вокруг точки клика.
 
-   Кнопки раскладываются координатами (--x, --y), а НЕ через
-   rotate + translate. С rotate кнопка вертикально стояла на боку, а её
-   иконка и подпись поворачивались вместе с ней: у правой кнопки подпись
-   уезжала набок, у нижней — вбок, и прочитать их было нельзя. Координаты
-   дают круг с правильной геометрией и оставляют содержимое кнопки
-   вертикальным при любом угле. */
+   Кольцо поделено на СЕКТОРЫ, а не на круглые кнопки: попадать в кружок
+   диаметром 42px неудобно, а сектор в 34 градуса простить невозможно. Целится
+   направление, а не точка.
+
+   Раскладка (углы в градусах, 0 — право, по часовой):
+     -141 … -39  правка: карандаш / сохранить / отмена   (сверху)
+     -39 …  39   экспорт                                 (справа)
+      39 … 141   буфер обмена                            (снизу)
+     141 … 219   открыть файл или папку                  (слева)
+
+   В центре — красная зона отмены: отпустить или кликнуть в ней значит
+   закрыть, ничего не сделав. Раньше отмена была «отпусти в центре, но
+   попробуй догадаться», и люди промахивались по кнопкам вместо отмены.
+ */
 .radial {
     position: fixed; z-index: 80;
     width: 0; height: 0;
 }
 
 /*
- * Подложка — КОЛЬЦО, а не кружок: окружность, по которой и разложены
- * кнопки. Кружок в середине выглядел пустым пятном и занимал место,
- * которого нет. Размер задан по радиусу кнопок плюс запас под их край.
- */
-/*
- * Размер подложки — по радиусу кнопок плюс их половина и запас. Радиус
- * вырос до 92px: при 78px и разбросе 27° соседи в верхней секции стояли в
- * 37px друг от друга при кнопке в 42px, то есть налезали друг на друга.
+ * Подложка — полупрозрачный диск: он приглушает текст под кольцом, и кольцо
+ * читается как отдельный слой. Ничего не ловит: клик в центре и мимо кольца
+ * должен закрывать меню, а не попадать в заметку.
  */
 .radial::before {
     content: ''; position: absolute; left: -126px; top: -126px;
     width: 252px; height: 252px; border-radius: 50%;
-    background: rgba(22, 22, 30, .72);
-    border: 1px solid var(--border);
-    box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
-    /* Подложка ничего не ловит: клик в центре кольца должен закрывать меню,
-       а не попадать в круг. */
+    background: rgba(22, 22, 30, .82);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, .55);
     pointer-events: none;
     opacity: 0; transition: opacity .12s ease;
 }
 .radial.on::before { opacity: 1; }
 
-.radial-btn {
-    position: absolute;
-    left: var(--x, 0px); top: var(--y, 0px);
-    margin: -21px 0 0 -21px;
-    width: 42px; height: 42px;
-    display: inline-flex; align-items: center; justify-content: center;
-    padding: 0; border-radius: 50%; cursor: pointer;
-    background: var(--bg-soft); border: 1px solid var(--border);
-    color: var(--fg); box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+/* Обводка по внешнему краю кольца. Отдельным слоем, а не рамкой у секторов:
+   у секторов маска срезает и рамку, а кольцо без обводки читается как
+   расплывшееся пятно. */
+.radial::after {
+    content: ''; position: absolute; left: -126px; top: -126px;
+    width: 252px; height: 252px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%,
+        transparent 0 118px, var(--border) 118px, var(--border) 121px, transparent 121px);
+    pointer-events: none;
+    opacity: 0; transition: opacity .12s ease;
+}
+.radial.on::after { opacity: 1; }
+
+/*
+ * Сектор — квадрат, срезанный клипом в сектор и маской в кольцо.
+ *
+ * Квадрат заметно больше видимого кольца (480px против 244px), и это важно:
+ * клип рисует сектор ТРЕУГОЛЬНИКОМ, и его дальняя сторона — хорда. При
+ * маленьком квадрате хорда у широкого сектора проходит ближе к центру, чем
+ * внешний край кольца, и сектор срезался углом: у «Сохранить» с дугой в 102
+ * градуса край уезжал внутрь с 121px до 94px, и по кольцу мимо него было
+ * не попасть. Большой квадрат отодвигает хорду за пределы кольца, и внешний
+ * край задаёт только маска.
+ *
+ * Маска в пикселях: она не зависит от размера квадрата и режет и попадание
+ * мыши тоже, поэтому между зоной отмены и кольцом щели не остаётся.
+ */
+.radial-sector {
+    position: absolute; left: 50%; top: 50%;
+    width: 480px; height: 480px;
+    margin: -240px 0 0 -240px;
+    padding: 0; border: 0; cursor: pointer;
+    background: rgba(190, 200, 235, .06);
+    color: var(--fg);
+    clip-path: polygon(50% 50%, var(--p0), var(--p1));
+    mask: radial-gradient(circle at 50% 50%,
+        transparent 0 44px, #000 44px, #000 121px, transparent 121px);
     opacity: 0;
-    transition: opacity .12s ease, background .12s, border-color .12s, transform .1s ease;
+    transition: opacity .12s ease, background .1s ease;
 }
-.radial-btn .ico-svg { width: 19px; height: 19px; }
-.radial-btn:hover:not(:disabled) { background: var(--bg-select); border-color: var(--comment); }
-.radial-btn:hover:not(:disabled) { z-index: 2; }
-.radial.on .radial-btn { opacity: 1; }
+.radial.on .radial-sector { opacity: 1; }
+.radial-sector:hover:not(:disabled) { background: rgba(190, 200, 235, .1); }
+.radial-sector:disabled { cursor: default; color: var(--comment); }
+
+/* Выбранный сектор: распознавание срабатывает по направлению, то есть намного
+   раньше, чем курсор доедет до самого сектора. */
+.radial-sector.sel { background: rgba(127, 162, 247, .2); }
+
+.radial-sector .ico-svg { width: 19px; height: 19px; }
+
+/* Значок в секторе: круглая плашка для вида, цель — весь сектор. */
+.radial-sector .rd-dot {
+    position: absolute; left: 50%; top: 50%;
+    width: 40px; height: 40px; margin: -20px 0 0 -20px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    transform: translate(var(--mx), var(--my));
+    transition: background .1s ease, border-color .1s ease;
+}
+.radial-sector:hover:not(:disabled) .rd-dot,
+.radial-sector.sel .rd-dot { background: var(--bg-select); border-color: var(--comment); }
+.radial-sector.sel .rd-dot { border-color: var(--blue); }
+.radial-sector:disabled .rd-dot { opacity: .55; }
+
+/* Цветовые семейства секторов */
+.radial-sector.r-save .ico-svg { stroke: var(--green); }
+.radial-sector.r-save:hover:not(:disabled) .rd-dot,
+.radial-sector.r-save.sel .rd-dot { border-color: var(--green); }
+.radial-sector.r-cancel .ico-svg { stroke: var(--red); }
+.radial-sector.r-cancel:hover:not(:disabled) .rd-dot,
+.radial-sector.r-cancel.sel .rd-dot { border-color: var(--red); }
+.radial-sector.r-export:hover:not(:disabled) .rd-dot,
+.radial-sector.r-export.sel .rd-dot { border-color: var(--blue); }
+.radial-sector.r-open:hover:not(:disabled) .rd-dot,
+.radial-sector.r-open.sel .rd-dot { border-color: var(--cyan); }
 
 /*
- * Неактивная кнопка.
+ * Подпись — ОТДЕЛЬНЫЙ слой, а не элемент внутри сектора.
  *
- * Буфер обмена виден всегда, но копировать без выделения нечего, а
- * вырезать и вставить вне поля правки некуда. Такие кнопки остаются на своих
- * местах и просто гаснут: кольцо не меняет форму от выделения, и палец
- * попадает туда же, куда привык.
+ * У сектора стоит маска, срезающая кольцо из квадрата, и маска режет всех
+ * потомков: подпись внутри сектора обрезалась по краю и уезжала за кольцо.
+ * Здесь подпись отдельная и ничем не ограничена.
  *
- * Гасим только значок и рамку, но не прозрачность кнопки целиком: при
- * opacity .3 кнопка на тёмном фоне почти исчезала и выглядела как «иконка
- * не нажимается», а не как «сейчас нельзя».
+ * Подпись одна и следует за выбором: в обычном режиме она появляется при
+ * наведении, в режиме «зажать и вести» — при выборе сектора.
  */
-.radial-btn:disabled { cursor: default; color: var(--comment); }
-.radial-btn:disabled .ico-svg { stroke: var(--comment); }
-.radial-btn:disabled.r-save,
-.radial-btn:disabled.r-save .ico-svg { stroke: var(--comment); }
-.radial-btn:disabled.r-cancel,
-.radial-btn:disabled.r-cancel .ico-svg { stroke: var(--comment); }
-.radial-btn:disabled:hover { background: var(--bg-soft); border-color: var(--border); }
-
-/* Задержка по кольцу: кнопки появляются по часовой стрелке от верхней. */
-.radial.on .radial-btn:nth-child(1) { transition-delay: 0ms; }
-.radial.on .radial-btn:nth-child(2) { transition-delay: 15ms; }
-.radial.on .radial-btn:nth-child(3) { transition-delay: 30ms; }
-.radial.on .radial-btn:nth-child(4) { transition-delay: 45ms; }
-.radial.on .radial-btn:nth-child(5) { transition-delay: 60ms; }
-.radial.on .radial-btn:nth-child(6) { transition-delay: 75ms; }
-.radial.on .radial-btn:nth-child(7) { transition-delay: 90ms; }
-.radial.on .radial-btn:nth-child(8) { transition-delay: 105ms; }
-
-/* Цветовые семейства: правка — зелёная и красная, экспорт и открытие —
-   синие акценты при наведении. */
-/*
- * Подложки здесь плотные, без альфы.
- *
- * Наведение на «Сохранить» и «Отменить» делало фон rgba(158,206,106,.3).
- * На тёмной подложке кольца это читалось как «кнопка стала прозрачной»:
- * подсветка лишь подмешивала зелёный к тёмному, и кнопка на глаз не
- * становилась заметнее — ровно наоборот. Все остальные состояния кольца
- * (обычное, наведение, выбранное) уже непрозрачные, и эти были исключением.
- */
-.radial-btn.r-save {
-    background: #1d2a1c; border-color: rgba(158, 206, 106, .5); color: var(--green);
-}
-.radial-btn.r-save .ico-svg { stroke: var(--green); }
-.radial-btn.r-save:hover:not(:disabled) {
-    background: #2f452c; border-color: var(--green);
-    box-shadow: 0 0 0 3px rgba(158, 206, 106, .22), 0 4px 14px rgba(0, 0, 0, .5);
-}
-.radial-btn.r-cancel {
-    background: #2a1b21; border-color: rgba(247, 118, 142, .45); color: var(--red);
-}
-.radial-btn.r-cancel .ico-svg { stroke: var(--red); }
-.radial-btn.r-cancel:hover:not(:disabled) {
-    background: #452a32; border-color: var(--red);
-    box-shadow: 0 0 0 3px rgba(247, 118, 142, .22), 0 4px 14px rgba(0, 0, 0, .5);
-}
-.radial-btn.r-export:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
-.radial-btn.r-open:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); }
-
-/*
- * Подпись кнопки: всегда снизу, всегда горизонтально, всегда в одну строку.
- * Положение задано в неповёрнутой системе координат, поэтому одинаково у всех
- * кнопок кольца — раньше «снизу» означало «в сторону от центра кольца».
- */
-.radial-btn .rd-tip {
-    position: absolute; left: 50%; top: calc(100% + 7px);
-    transform: translateX(-50%);
+.radial-label {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(calc(var(--mx, 0px) - 50%), calc(var(--my, 0px) + 27px));
     white-space: nowrap; pointer-events: none;
     padding: 2px 7px; border-radius: 5px;
     background: var(--bg-popup); border: 1px solid var(--border);
     color: var(--fg-dark); font-size: 11px;
     opacity: 0; transition: opacity .1s;
 }
-.radial-btn:hover .rd-tip,
-.radial-btn.sel .rd-tip { opacity: 1; }
+.radial-label.on { opacity: 1; }
 
 /*
- * Выбранная кнопка в режиме «зажать правую кнопку и вести»: подпись видна
- * сразу, до отпускания, и сама кнопка подсвечена и увеличена.
+ * Красная зона отмены в центре.
+ *
+ * Отдельная кнопка, а не пустое место: пустота ничего не сообщает, а человек
+ * без подсказки не знает, что отмена здесь. Крестик в центре говорит прямо:
+ * нажми сюда — ничего не произойдёт.
  */
-.radial-btn.sel {
-    background: var(--bg-select);
-    border-color: var(--blue);
-    color: var(--fg);
-    transform: scale(1.16);
-    z-index: 2;
+.radial-kill {
+    position: absolute; left: 50%; top: 50%;
+    width: 88px; height: 88px; margin: -44px 0 0 -44px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; border-radius: 50%; cursor: pointer;
+    background: rgba(247, 118, 142, .14);
+    border: 1px solid rgba(247, 118, 142, .45);
+    color: var(--red);
+    opacity: 0;
+    transition: opacity .12s ease, background .1s ease, border-color .1s ease;
 }
-.radial-btn.sel .ico-svg { stroke: var(--fg); }
-/* Увеличивать надо только кольцо целиком, иначе кнопки наезжают на соседние. */
-.radial.dragging::before { transform: scale(1.04); }
+.radial.on .radial-kill { opacity: 1; }
+.radial-kill .ico-svg { width: 20px; height: 20px; stroke: var(--red); }
+.radial-kill:hover, .radial-kill.sel {
+    background: rgba(247, 118, 142, .3); border-color: var(--red);
+}
 
 @media (prefers-reduced-motion: reduce) {
-    .radial-btn, .radial::before { transition: none; }
+    .radial-sector, .radial-kill, .radial::before { transition: none; }
 }

@@ -1834,6 +1834,7 @@ function toggleEditMode() {
   const t = active();
   if (!t || !t.path) return;
   if (t.mode === 'edit') return;
+  closeRadial();
   t.mode = 'edit';
   renderActive();
   resetUndo(t);
@@ -2316,9 +2317,9 @@ el.btnNewTab.oncontextmenu = (e) => {
  * выглядело это как «иконка сломалась».
  */
 const RADIAL_LAYOUT = [
-  // Правка сверху, буфер обмена снизу. Секции поменялись местами по просьбе:
-  // правка — то, за чем чаще тянутся, и она должна быть под рукой сверху, а
-  // буфер обмена внизу, где до него тянутся реже.
+  // Правка сверху, буфер обмена снизу. Секции кольца делятся дугами, а не
+  // кнопками на окружности: в круглый кружок попадать неудобно, в сектор —
+  // легко. Отдельно стоящие действия занимают свои дуги целиком.
   { act: 'mode', slot: 'top', icon: 'pencil', tip: 'Правка (Ctrl+E)' },
   { act: 'save', slot: 'top', icon: 'save', tip: 'Сохранить (Ctrl+S)', cls: 'r-save' },
   { act: 'cancel', slot: 'top', icon: 'x', tip: 'Отменить правки (Esc)', cls: 'r-cancel' },
@@ -2332,19 +2333,32 @@ const RADIAL_LAYOUT = [
 let radialOpen = false;
 /** Идёт ли «зажать и вести»: точка нажатия и признак, что кольцо уже открыто. */
 let radialDrag = null;
-
 /**
- * Радиус кольца в пикселях: столько от центра до кнопки.
+ * Правый клик при уже открытом кольце: закрыть и НЕ открывать новое.
  *
- * 92px, а не 78: при меньшем радиусе и разбросе 27° кнопки верхней и нижней
- * секций вставали в 37px друг от друга при собственной ширине 42px и
- * налезали друг на друга.
+ * Отдельный флаг, потому что закрытие происходит на нажатии, а решение
+ * «открыть ли кольцо» принимается на отпускании. Без флага отпускание после
+ * закрытия тут же открывало второе кольцо — то есть закрытие было бесполезным.
  */
-const RADIAL_R = 92;
-/** Разброс соседей по секции в градусах. */
-const RADIAL_GAP = 34;
-/** Насколько кольцо удерживается от края окна, чтобы подписи не срезало. */
-const RADIAL_KEEP = 136;
+let radialCancelPress = false;
+
+/** Радиус красной зоны отмены в центре. */
+const RADIAL_KILL_R = 44;
+/** Радиус значка внутри кольца. */
+const RADIAL_MID = 88;
+/** Внешний радиус кольца: дальше сектора не видно. */
+const RADIAL_OUT = 122;
+/** Отступ от края окна, чтобы кольцо и подписи не срезало. */
+const RADIAL_KEEP = 150;
+/** Дуги секций в градусах: 0 — право, по часовой. Сумма = 360. */
+const RADIAL_ARCS = {
+  top: [-141, -39],
+  right: [-39, 39],
+  bottom: [39, 141],
+  left: [141, 219],
+};
+/** Насколько сдвинулся курсор, прежде чем жест признаётся перетаскиванием. */
+const DRAG_PX = 14;
 
 /** Есть ли что копировать или вырезать. */
 function hasSelection() {
@@ -2357,14 +2371,13 @@ function hasSelection() {
 /**
  * Что кольцо показывает.
  *
- * Буфер обмена показывается ВСЕГДА, в любом режиме: три его кнопки стоят на
+ * Буфер обмена показывается ВСЕГДА, в любом режиме: три его сектора стоят на
  * своих местах и просто гаснут, когда действие сейчас невозможно. Иначе
- * кольцо меняло форму от заметки к заметке и от выделения к отсутствию
- * выделения, и приходилось искать глазами, где кнопка вообще.
+ * кольцо меняло форму от выделения к отсутствию выделения, и приходилось
+ * искать глазами, где сектор вообще.
  *
  * Правка, наоборот, меняется по режиму: в чтении карандаш, в правке «Сохранить»
- * и «Отмена». Здесь зависимость не от наличия правок, а от самого режима, и
- * показывать неработающую кнопку незачем.
+ * и «Отмена». Зависимость тут не от наличия правок, а от самого режима.
  */
 function radialVisible(act) {
   const t = active();
@@ -2380,11 +2393,11 @@ function radialVisible(act) {
 }
 
 /**
- * Что из показанного нажимается прямо сейчас.
+ * Что из показанного работает прямо сейчас.
  *
  * Копировать нечего без выделения, вырезать и вставлять некуда вне поля
- * правки. Такие кнопки остаются на месте, но гаснут: место в кольце не
- * меняется, и палец, привыкший к одному и тому же, попадает туда же.
+ * правки. Такие сектора остаются на месте, но гаснут: место в кольце не
+ * меняется, и рука, привыкшая к одному и тому же, попадает туда же.
  */
 function radialEnabled(act) {
   const t = active();
@@ -2397,50 +2410,197 @@ function radialEnabled(act) {
   return true;
 }
 
+/**
+ * Точка сектора в процентах квадрата сектора.
+ *
+ * Квадрат сектора много больше видимого кольца — см. комментарий к
+ * .radial-sector. Поэтому и точки берутся по его краю: хорда треугольника
+ * оказывается за пределами кольца, и внешний край задаёт только маска.
+ */
+function polarPct(deg) {
+  const r = deg * Math.PI / 180;
+  return { x: (50 + 50 * Math.cos(r)).toFixed(3) + '%', y: (50 + 50 * Math.sin(r)).toFixed(3) + '%' };
+}
+
 /** Собрать кольцо под текущее состояние заметки. */
 function buildRadial() {
   const acts = RADIAL_LAYOUT.filter((i) => radialVisible(i.act));
-  // Центрируем каждую секцию: одна кнопка встаёт строго вверх или вниз,
-  // три — симметрично вокруг 90°.
-  const spread = (slot, base) => {
-    const list = acts.filter((i) => i.slot === slot);
+
+  // Каждая дуга делится между своими действиями поровну. Одна «Сохранить»
+  // получает всю верхнюю дугу в 102 градуса, три сектора буфера обмена — по
+  // 34, и место в кольце остаётся тем же при любом составе.
+  const groups = new Map();
+  for (const i of acts) {
+    if (!groups.has(i.slot)) groups.set(i.slot, []);
+    groups.get(i.slot).push(i);
+  }
+  for (const [slot, list] of groups) {
+    const [from, to] = RADIAL_ARCS[slot];
+    const step = (to - from) / list.length;
     list.forEach((i, k) => {
-      i.angle = list.length === 1 ? base : base + (k - (list.length - 1) / 2) * RADIAL_GAP;
+      i.a0 = from + k * step;
+      i.a1 = from + (k + 1) * step;
+      i.mid = (i.a0 + i.a1) / 2;
     });
-  };
-  spread('top', -90);
-  spread('bottom', 90);
-  acts.forEach((i) => { if (i.slot === 'right') i.angle = 0; });
-  acts.forEach((i) => { if (i.slot === 'left') i.angle = 180; });
+  }
 
   el.radial.innerHTML = '';
   for (const item of acts) {
     const b = document.createElement('button');
-    b.className = 'radial-btn' + (item.cls ? ' ' + item.cls : '');
+    b.className = 'radial-sector' + (item.cls ? ' ' + item.cls : '');
     b.type = 'button';
     b.dataset.act = item.act;
-    // Положение — координатами от центра, а не поворотом: повёрнутая кнопка
-    // уносила за собой иконку и подпись, они вставали набок.
-    const rad = item.angle * Math.PI / 180;
-    b.style.setProperty('--x', Math.round(Math.cos(rad) * RADIAL_R) + 'px');
-    b.style.setProperty('--y', Math.round(Math.sin(rad) * RADIAL_R) + 'px');
+    // Границы сектора храним и в разметке: по ним же работает выбор по
+    // направлению, и брать их каждый раз из CSS-переменных нельзя.
+    b.dataset.a0 = item.a0.toFixed(3);
+    b.dataset.a1 = item.a1.toFixed(3);
+    const p0 = polarPct(item.a0);
+    const p1 = polarPct(item.a1);
+    b.style.setProperty('--p0', p0.x + ' ' + p0.y);
+    b.style.setProperty('--p1', p1.x + ' ' + p1.y);
+    const rad = item.mid * Math.PI / 180;
+    b.style.setProperty('--mx', Math.round(Math.cos(rad) * RADIAL_MID) + 'px');
+    b.style.setProperty('--my', Math.round(Math.sin(rad) * RADIAL_MID) + 'px');
     b.title = item.tip;
-    b.innerHTML = ICONS.icon(item.icon) + '<span class="rd-tip">' + item.tip + '</span>';
+    b.setAttribute('aria-label', item.tip);
+    b.innerHTML = '<span class="rd-dot">' + ICONS.icon(item.icon) + '</span>';
+    item.tipRef = item.tip;
+    item.midRef = { x: b.style.getPropertyValue('--mx'), y: b.style.getPropertyValue('--my') };
     b.disabled = !radialEnabled(item.act);
     b.onclick = () => radialAct(item.act);
     el.radial.append(b);
   }
+
+  const kill = document.createElement('button');
+  kill.className = 'radial-kill';
+  kill.type = 'button';
+  kill.dataset.act = 'kill';
+  kill.title = 'Отмена (Esc)';
+  kill.setAttribute('aria-label', 'Закрыть без действия');
+  kill.innerHTML = ICONS.icon('x');
+  kill.onclick = () => closeRadial();
+  el.radial.append(kill);
+
+  /*
+   * Подпись одна и следует за выбором. Внутри сектора ей нельзя: у сектора
+   * маска, срезающая кольцо из квадрата, и маска режет всех потомков — подпись
+   * обрезалась бы по краю.
+   */
+  radialLabel = document.createElement('span');
+  radialLabel.className = 'radial-label';
+  radialLabel.id = 'radialLabel';
+  el.radial.append(radialLabel);
 }
 
+/** Подпись кольца: следует за выбранным сектором. */
+let radialLabel = null;
+
+function radialSetLabel(tip, x, y) {
+  if (!radialLabel) return;
+  if (!tip) { radialLabel.classList.remove('on'); return; }
+  radialLabel.textContent = tip;
+  radialLabel.style.setProperty('--mx', x);
+  radialLabel.style.setProperty('--my', y);
+  radialLabel.classList.add('on');
+}
+
+/** Углы в (-180, 180]. */
+function normDeg(d) {
+  return ((d + 180) % 360 + 360) % 360 - 180;
+}
+
+/** Попадает ли угол в сектор с границами a0…a1 (дуга может переходить через ±180). */
+function inArc(a, a0, a1) {
+  const x = normDeg(a);
+  const lo = normDeg(a0);
+  const hi = normDeg(a1);
+  return lo <= hi ? (x >= lo && x < hi) : (x >= lo || x < hi);
+}
+
+/**
+ * Что выбрано под точкой (x, y).
+ *
+ * В режиме «зажать и вести» выбор идёт ТОЛЬКО ПО НАПРАВЛЕНИЮ: расстояние не
+ * важно, поэтому курсор вправо выбирает экспорт, даже если он далеко за кольцом.
+ * Так можно вести мышь быстро, не целясь в рамку.
+ *
+ * В обычном режиме расстояние важно: мышь мимо кольца должна означать «закрыть»,
+ * а не «случайно выбрать».
+ */
+function radialPick(x, y) {
+  if (!el.radial || !radialOpen) return null;
+  const box = el.radial.getBoundingClientRect();
+  const cx = box.left + box.width / 2;
+  const cy = box.top + box.height / 2;
+  const dx = x - cx;
+  const dy = y - cy;
+  const dist = Math.hypot(dx, dy);
+  const dragging = el.radial.classList.contains('dragging');
+
+  let hit = null;
+  if (dist < RADIAL_KILL_R) {
+    hit = el.radial.querySelector('.radial-kill');
+  } else if (dragging || dist <= RADIAL_OUT) {
+    const a = Math.atan2(dy, dx) * 180 / Math.PI;
+    for (const b of el.radial.querySelectorAll('.radial-sector')) {
+      if (inArc(a, +b.dataset.a0, +b.dataset.a1)) { hit = b; break; }
+    }
+  }
+  for (const b of el.radial.querySelectorAll('.radial-sector, .radial-kill')) {
+    b.classList.toggle('sel', b === hit);
+  }
+  if (!hit) {
+    radialSetLabel(null);
+  } else if (hit.classList.contains('radial-kill')) {
+    radialSetLabel('Закрыть', '0px', '52px');
+  } else {
+    radialSetLabel(hit.title, hit.style.getPropertyValue('--mx'),
+      hit.style.getPropertyValue('--my'));
+  }
+  return hit;
+}
+
+function radialClearPick() {
+  for (const b of el.radial.querySelectorAll('.radial-sector, .radial-kill')) {
+    b.classList.remove('sel');
+  }
+}
+
+function openRadial(x, y) {
+  if (!el.radial) return;
+  buildRadial();
+  // Держим кольцо целиком на экране: у края заметки часть секторов уезжала бы
+  // за окно, и выбрать их было бы нельзя.
+  const cx = Math.max(RADIAL_KEEP, Math.min(x, innerWidth - RADIAL_KEEP));
+  const cy = Math.max(RADIAL_KEEP, Math.min(y, innerHeight - RADIAL_KEEP));
+  el.radial.style.left = cx + 'px';
+  el.radial.style.top = cy + 'px';
+  el.radial.hidden = false;
+  radialOpen = true;
+  // Кадр без класса .on, потом добавляем: без этого переход opacity не
+  // проиграет и кольцо просто появится готовым.
+  requestAnimationFrame(() => el.radial.classList.add('on'));
+}
+
+function closeRadial() {
+  if (!el.radial) return;
+  el.radial.classList.remove('on');
+  el.radial.classList.remove('dragging');
+  radialClearPick();
+  radialSetLabel(null);
+  el.radial.hidden = true;
+  radialOpen = false;
+  radialDrag = null;
+}
 
 function radialAct(act) {
   if (act === 'export') { radialToMenu('export'); return; }
   if (act === 'open') { radialToMenu('open'); return; }
   closeRadial();
   if (act === 'mode') { toggleEditMode(); return; }
-  // Именно exitEdit(true), а не save(): кнопка в кольце — это «покинуть
+  // Именно exitEdit(true), а не save(): сектор в кольце — это «покинуть
   // правку», и выйти надо даже когда сохранять нечего. Ctrl+S остаётся
-  // save(): там «Изменений нет» — правильный ответ, и выходить незачем.
+  // save(): там «Изменений нет» — правильный ответ.
   if (act === 'save') { exitEdit(true); return; }
   if (act === 'cancel') { exitEdit(false); return; }
   if (act === 'copy' || act === 'cut' || act === 'paste') { radialClipboard(act); return; }
@@ -2479,13 +2639,16 @@ function radialClipboard(act) {
 }
 
 /**
- * Export и «+» не закрывают кольцо, а раскрывают обычное меню у самой
- * кнопки. Иначе кольцо исчезло бы раньше, чем палец доедет до вложенного
+ * Export и «+» не закрывают кольцо, а раскрывают обычное меню у самого
+ * сектора. Иначе кольцо исчезло бы раньше, чем палец доедет до вложенного
  * меню, и нажать было бы не на что.
  */
 function radialToMenu(which) {
-  const btn = el.radial.querySelector('[data-act="' + which + '"]');
-  const r = btn ? btn.getBoundingClientRect() : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2 };
+  const sec = el.radial.querySelector('[data-act="' + which + '"]');
+  const dot = sec ? sec.querySelector('.rd-dot') : null;
+  const r = dot ? dot.getBoundingClientRect() : {
+    left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2,
+  };
   closeRadial();
   if (which === 'export') {
     showContextMenu(r.left - 4, r.bottom + 8, [
@@ -2504,61 +2667,79 @@ function radialToMenu(which) {
   }
 }
 
-/* ------------------------------------------------ режим «зажать и вести»
-
- * Второй режим кольца: правую кнопку не отпускают, а ведут к нужному
- * значку и отпускают над ним. Выбор происходит по наведению, поэтому
- * выбранный значок подсвечивается сразу — иначе при быстром движении не
- * видно, что именно сейчас выбрано.
+/*
+ * Правый клик в заметке: кольцо без переключателя, режим определяется самим
+ * жестом.
  *
- * Порог в DRAG_PX нужен, чтобы обычный правый клик без перемещения (он и в
- * этом режиме должен открывать кольцо) не считался перетаскиванием.
+ *   ПКМ         -> открыть меню, ЛКМ -> выбрать действие;
+ *   зажать ПКМ  -> открыть меню, отпустить -> выбрать действие.
  *
- * Отпускание в центре кольца и вне его — отмена: выбирать там нечего, и
- * закрытие честнее, чем срабатывание наугад.
+ * Порядок событий в Chromium для правой кнопки: mousedown -> contextmenu ->
+ * mouseup. Поэтому решение принимается на mouseup:
+ *   - курсор отошёл дальше DRAG_PX — человек ВЁЛ кольцо, выбираем тем, в
+ *     какую сторону он смотрит;
+ *   - не двигался — обычный правый клик, открываем кольцо и ждём левой кнопки.
+ *
+ * Правый клик при уже открытом кольце закрывает его и ничего не открывает:
+ * иначе закрыление было бесполезным — кольцо исчезало и тут же появлялось
+ * снова.
  */
-const DRAG_PX = 14;
-
-/** Значок под точкой (x, y) или null. Подсветку обновляем на месте. */
-function radialPick(x, y) {
-  const btns = el.radial.querySelectorAll('.radial-btn');
-  let hit = null;
-  for (const b of btns) {
-    const r = b.getBoundingClientRect();
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) { hit = b; break; }
+function radialDown(e) {
+  if (e.button !== 2) return;
+  // Гасим стандартное выделение мышью: пока человек ведёт курсор к кольцу,
+  // он не должен выделять текст под ним.
+  e.preventDefault();
+  if (radialOpen) {
+    radialCancelPress = true;
+    closeRadial();
+    return;
   }
-  for (const b of btns) b.classList.toggle('sel', b === hit);
-  return hit;
+  /*
+   * Свежий жест снимает любой недособранный флаг. Раньше флаг ставил ещё и
+   * обработчик вне кольца, а тот срабатывал на клике ПО САМОМУ кольцу, где
+   * radialDown уже не вызывается, — и флаг оставался висеть до следующего
+   * жеста. Тот следующий жест справедливо выглядел отменой и ничего не
+   * делал.
+   */
+  radialCancelPress = false;
+  if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
+  radialDrag = { x: e.clientX, y: e.clientY, opened: false };
 }
 
-function radialClearPick() {
-  for (const b of el.radial.querySelectorAll('.radial-btn')) b.classList.remove('sel');
+function radialMove(e) {
+  if (radialDrag) {
+    if (!radialDrag.opened) {
+      const far = Math.abs(e.clientX - radialDrag.x) > DRAG_PX
+        || Math.abs(e.clientY - radialDrag.y) > DRAG_PX;
+      if (!far) return;
+      radialDrag.opened = true;
+      openRadial(radialDrag.x, radialDrag.y);
+      el.radial.classList.add('dragging');
+    }
+    radialPick(e.clientX, e.clientY);
+    return;
+  }
+  // Кольцо открыто и ждёт левую кнопку: подсветка появляется сразу, как только
+  // курсор вошёл в сектор, а не по клику.
+  if (radialOpen) radialPick(e.clientX, e.clientY);
 }
 
-function openRadial(x, y) {
-  if (!el.radial) return;
-  buildRadial();
-  // Держим кольцо целиком на экране: у края заметки часть кнопок уезжала бы
-  // за окно, и нажать на них было бы нельзя.
-  const cx = Math.max(RADIAL_KEEP, Math.min(x, innerWidth - RADIAL_KEEP));
-  const cy = Math.max(RADIAL_KEEP, Math.min(y, innerHeight - RADIAL_KEEP));
-  el.radial.style.left = cx + 'px';
-  el.radial.style.top = cy + 'px';
-  el.radial.hidden = false;
-  radialOpen = true;
-  // Кадр без класса .on, потом добавляем: без этого переход opacity не
-  // проиграет и кольцо просто появится готовым.
-  requestAnimationFrame(() => el.radial.classList.add('on'));
-}
-
-function closeRadial() {
-  if (!el.radial) return;
-  el.radial.classList.remove('on');
-  el.radial.classList.remove('dragging');
-  radialClearPick();
-  el.radial.hidden = true;
-  radialOpen = false;
+function radialUp(e) {
+  const eat = radialCancelPress;
+  radialCancelPress = false;
+  if (!radialDrag) return;
+  const d = radialDrag;
   radialDrag = null;
+  if (eat) return;
+  // Отпустили, не поведя мышь: обычный правый клик, кольцо ждёт левую кнопку.
+  if (!d.opened) {
+    openRadial(d.x, d.y);
+    return;
+  }
+  const hit = radialPick(e.clientX, e.clientY);
+  const act = hit ? hit.dataset.act : null;
+  closeRadial();
+  if (act && act !== 'kill') radialAct(act);
 }
 
 // ------------------------------------------------------- временный файл / папка
@@ -3045,6 +3226,9 @@ el.toTop.onclick = () => el.content.scrollTo({ top: 0, behavior: 'smooth' });
  */
 function endEdit(t) {
   if (!t || t.mode !== 'edit') return;
+  // Кольцо закрываем: оно собрано под прежний режим заметки, и оставить его
+  // открытым значит показать «Сохранить» в заметке, которая уже не в правке.
+  closeRadial();
   t.mode = 'read';
   t.dirty = false;
   t.html = null;
@@ -3284,66 +3468,6 @@ function revealFile() {
  * Своё preventDefault здесь обязателен: иначе поверх кольца появится ещё и
  * системное меню Chromium, и два меню окажутся на одном месте.
  */
-/*
- * Правый клик в заметке: кольцо без переключателя, режим определяется самим
- * жестом.
- *
- * Решает не настройка, а то, что человек сделал с кнопкой:
- *   ПКМ → открыть меню, ЛКМ → выбрать действие;
- *   зажать ПКМ → открыть меню, отпустить ПКМ → выбрать действие.
- *
- * Порядок событий в Chromium на Windows для правой кнопки:
- *   mousedown → contextmenu → mouseup.
- * Поэтому решение принимается на mouseup, а не на contextmenu:
- *   - если курсор за это время отошёл дальше DRAG_PX, человек ВЁЛ кольцо —
- *     выбираем тем, над чем отпустил;
- *   - если не двигался — это обычный правый клик, открываем кольцо и ждём
- *     левой кнопки.
- *
- * Почему не так, как было: кольцо открывалось прямо в обработчике
- * contextmenu, то есть сразу при нажатии. Тогда «зажать и вести» работало
- * через запоздалый mouseup, а после действия кольцо открывалось заново —
- * contextmenu приходил следом и открывал второе кольцо поверх закрытого.
- * Теперь contextmenu на заметке просто подавлен, и кольцо появляется
- * ровно одно и только по решению mouseup.
- */
-function radialDown(e) {
-  if (e.button !== 2) return;
-  if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
-  // Гасим стандартное выделение мышью: пока человек ведёт курсор к кольцу,
-  // он не должен выделять текст под ним.
-  e.preventDefault();
-  radialDrag = { x: e.clientX, y: e.clientY, opened: false };
-}
-
-function radialMove(e) {
-  if (!radialDrag || radialDrag.opened) {
-    if (radialDrag && radialDrag.opened) radialPick(e.clientX, e.clientY);
-    return;
-  }
-  const far = Math.abs(e.clientX - radialDrag.x) > DRAG_PX
-    || Math.abs(e.clientY - radialDrag.y) > DRAG_PX;
-  if (!far) return;
-  radialDrag.opened = true;
-  openRadial(radialDrag.x, radialDrag.y);
-  el.radial.classList.add('dragging');
-  radialPick(e.clientX, e.clientY);
-}
-
-function radialUp(e) {
-  if (!radialDrag) return;
-  const d = radialDrag;
-  radialDrag = null;
-  // Отпустили в центре кольца или мимо него: выбора нет, значит закрытие.
-  if (!d.opened) {
-    openRadial(d.x, d.y);
-    return;
-  }
-  const hit = radialPick(e.clientX, e.clientY);
-  closeRadial();
-  if (hit) radialAct(hit.dataset.act);
-}
-
 el.content.addEventListener('mousedown', radialDown);
 el.editor.addEventListener('mousedown', radialDown);
 document.addEventListener('mousemove', radialMove);
@@ -3366,6 +3490,23 @@ el.editor.addEventListener('contextmenu', (e) => e.preventDefault());
  */
 document.addEventListener('mousedown', (e) => {
   if (!radialOpen) return;
+  /*
+   * Правый клик — особый случай: он должен ЗАКРЫТЬ кольцо, и закрытие не
+   * должно тут же открыть новое. Поэтому гасим жест флагом: решение «открыть
+   * ли кольцо» принимается на отпускании, и без флага отпускание после
+   * закрытия открывало бы второе кольцо поверх закрытого.
+   */
+  if (e.button === 2) {
+    // Правый клик мимо кольца разбирает radialDown — он и ставит флаг, и
+    // закрывает кольцо. Здесь только случай клика ПО САМУМУ кольцу: до
+    // radialDown дело не доходит, а закрыть надо.
+    if (el.radial.contains(e.target)) {
+      radialCancelPress = true;
+      closeRadial();
+      e.preventDefault();
+    }
+    return;
+  }
   if (el.radial.contains(e.target)) return;
   if (e.target.closest && e.target.closest('.ctxmenu')) return;
   closeRadial();
