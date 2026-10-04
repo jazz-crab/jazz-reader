@@ -2710,9 +2710,13 @@ const SILENCE_CONFIRM = `(() => {
     const out = {};
     out.focusAtStart = M.paneFocus();
 
-    // Заглянули в правую панель
+    // Заглянули в правую панель.
+    //
+    // Читаем фокус сразу, без паузы: обработчик mousedown синхронный, а любая
+    // пауза означала гонку — за 200ms успевает сработать что угодно, что
+    // переключает вкладку (selectTab и openSecond намеренно возвращают фокус
+    // влево). Именно из-за этого проверка падала через раз.
     panel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 200));
     out.focusAfterClick = M.paneFocus();
 
     // Теперь открываем новую заметку: она обязана оказаться СПРАВА
@@ -2728,7 +2732,6 @@ const SILENCE_CONFIRM = `(() => {
 
     // Вернулись в левую панель — следующая вкладка должна уйти влево
     main.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    await new Promise(r2 => setTimeout(r2, 200));
     out.focusBack = M.paneFocus();
     const rightNow = content2.textContent.slice(0, 30);
     await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[4])}, { newTab: true });
