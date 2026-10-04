@@ -3548,12 +3548,46 @@ const SILENCE_CONFIRM = `(() => {
       // Зона отмены осталась полупрозрачной
       killAlpha: kill ? alpha(getComputedStyle(kill).backgroundColor) : -1,
       ringSize: Math.round(q.width),
+      // Цвет подложки против цвета полосы вкладок: кольцо должно стоять в
+      // одном ряду с интерфейсом.
+      discBg: bg.backgroundColor,
+      topbarBg: getComputedStyle(document.getElementById('tabbar')).backgroundColor,
+      /*
+       * Край заливки сектора против края подложки.
+       *
+       * Числа маски идут подряд: 0, 44, 44, ВНЕШНИЙ, ВНЕШНИЙ. Внешний радиус
+       * обязан совпадать у обоих концов (тогда круглый) и с радиусом
+       * подложки (тогда полоски чистого фона по краю нет).
+       *
+       * Считываем без обратных слэшей намеренно: в строке-шаблоне Node \s
+       * превращается в «s», и регулярка молча перестаёт совпадать — так
+       * проверка выглядела бы работающей, но ничего бы не проверяла.
+       */
+      maskRadii: (() => {
+        const sec = document.querySelector('#radial .radial-sector');
+        if (!sec) return [];
+        const cs2 = getComputedStyle(sec);
+        const mask = cs2.maskImage || cs2.webkitMaskImage || '';
+        return (mask.match(/[0-9.]+px/g) || []).map((x) => Math.round(parseFloat(x)));
+      })(),
+      discRadius: Math.round(parseFloat(bg.width) / 2),
     });
   })()`));
   t('фон кольца непрозрачный', r.opened === true && r.ringAlpha === 1, r.ringBg);
   t('рамки по краю кольца нет', r.noEdgeLayer === true);
   t('зона отмены полупрозрачная', r.killFound === true && r.killAlpha > 0
     && r.killAlpha < 1, String(r.killAlpha));
+  // Рамка приходила отсюда: клин сектора красился до 121px, а подложка была
+  // 126px, и по краю оставалась полоска чистого фона подложки без заливки —
+  // на фоне заметки она читалась как обводка кольца.
+  t('подложка кольца того же цвета, что тулбары',
+    r.discBg === r.topbarBg, r.discBg + ' против ' + r.topbarBg);
+  t('у маски сектора пять радиусов', (r.maskRadii || []).length === 5,
+    JSON.stringify(r.maskRadii));
+  t('заливка секторов доходит до края подложки',
+    r.maskRadii[3] === r.discRadius, r.maskRadii[3] + ' против ' + r.discRadius);
+  t('по краю кольца нет обводки',
+    r.maskRadii[3] === r.maskRadii[4], r.maskRadii[3] + '/' + r.maskRadii[4]);
 
   // 4. Подпись следует за выбором и ничего не обрезана
   r = JSON.parse(await js(`(async () => {
