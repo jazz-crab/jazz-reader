@@ -2675,8 +2675,16 @@ function radialToMenu(which) {
     left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2,
   };
   closeRadial();
+  /*
+   * Меню открывается так, чтобы его ПЕРВЫЙ пункт стоял ровно под нажатой
+   * иконкой: левый край меню совпадает с левым краем значка, верх — под его
+   * низом. Раньше «Экспорт» уезжал вправо от значка, а «Открыть» вбок, и
+   * пункты оказывались мимо того, что нажали.
+   */
+  const x = r.left;
+  const y = r.bottom + 6;
   if (which === 'export') {
-    showContextMenu(r.left - 4, r.bottom + 8, [
+    showContextMenu(x, y, [
       { label: 'Сохранить MD', icon: 'file-down', act: () => downloadMd() },
       { label: 'Сохранить HTML', icon: 'file-code', act: () => downloadHtml() },
       { label: 'Печать / PDF…', icon: 'printer', act: () => api.print() },
@@ -2685,7 +2693,7 @@ function radialToMenu(which) {
       { label: 'Скопировать путь', icon: 'copy', act: () => copyPath() },
     ], { width: 258, height: 214, anchorRect: r });
   } else {
-    showContextMenu(r.right + 8, r.top - 6, [
+    showContextMenu(x, y, [
       { label: 'Открыть .md', icon: 'file-text', hint: 'Ctrl+O', act: openFileDialog },
       { label: 'Открыть папку', icon: 'folder-open', hint: 'Ctrl+Shift+O', act: openFolderDialog },
     ], { width: 248, height: 84, anchorRect: r });
