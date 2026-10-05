@@ -2242,13 +2242,13 @@ function download(name, text, mime) {
  */
 const EXPORT_FORMATS = [
   { id: 'md', label: 'MD', icon: 'file-text', plain: true, color: 'var(--blue)',
-    hint: 'исходный текст заметки' },
+    hint: tr('export.hintSource') },
   { id: 'txt', label: 'TXT', icon: 'file-down', plain: true, color: 'var(--green)',
-    hint: 'то же без разметки' },
+    hint: tr('export.hintPlain') },
   { id: 'html', label: 'HTML', icon: 'file-code', plain: false, color: 'var(--magenta)',
-    hint: 'один файл, шрифты внутри' },
+    hint: tr('export.hintSingleFile') },
   { id: 'pdf', label: 'PDF', icon: 'printer', plain: false, color: 'var(--orange)',
-    hint: 'для печати и отправки' },
+    hint: tr('export.hintPrint') },
 ];
 
 /*
@@ -2288,12 +2288,12 @@ function exportFontLabel(name) {
  */
 function exportDialog(preset) {
   const t = active();
-  if (!t || !t.path) { toast('Нет открытой заметки'); return; }
-  if (t.mode === 'edit' && t.dirty) { toast('Сначала сохрани (Ctrl+S)'); return; }
+  if (!t || !t.path) { toast(tr('export.noNote')); return; }
+  if (t.mode === 'edit' && t.dirty) { toast(tr('export.saveFirst')); return; }
 
   let closeModal = () => back.remove();
   const back = modalShell();
-  const box = modalBox('Экспорт', 860, 620);
+  const box = modalBox(tr('export.title'), 860, 620);
   box.classList.add('exp-box');
 
   // Настройки слева, предпросмотр справа.
@@ -2368,7 +2368,7 @@ function exportDialog(preset) {
   }
 
   // ---------------------------------------------------------------- формат
-  const fmtCard = addCard('Формат');
+  const fmtCard = addCard(tr('export.format'));
   const fmtSeg = segmented(EXPORT_FORMATS.map((f) => ({
     id: f.id, label: f.label, icon: f.icon, color: f.color,
   })), state.format, (id) => {
@@ -2379,10 +2379,10 @@ function exportDialog(preset) {
   fmtCard.addControl(fmtSeg);
 
   // ---------------------------------------------------------------- палитра
-  const palCard = addCard('Палитра');
+  const palCard = addCard(tr('export.palette'));
   const palSeg = segmented([
-    { id: 'colour', label: 'Цветное', cls: 'tinted', color: nextExportTint() },
-    { id: 'bw', label: 'Чёрно-белая', cls: 'bw' },
+    { id: 'colour', label: tr('export.colour'), cls: 'tinted', color: nextExportTint() },
+    { id: 'bw', label: tr('export.bw'), cls: 'bw' },
   ], state.bw ? 'bw' : 'colour', (id) => {
     state.bw = id === 'bw';
     palSeg.sync(id);
@@ -2405,7 +2405,7 @@ function exportDialog(preset) {
     paintRange(sizeIn);
     syncAll();
   };
-  sizeCard = addCard('Размер шрифта', sizeOut);
+  sizeCard = addCard(tr('export.fontSize'), sizeOut);
   sizeCard.addControl(sizeIn);
 
   // ------------------------------------------------------------------ шрифт
@@ -2413,13 +2413,13 @@ function exportDialog(preset) {
   fontSel.className = 'exp-select';
   fontSel.disabled = true;
   const fontLoading = document.createElement('option');
-  fontLoading.textContent = 'Читаем системные шрифты…';
+  fontLoading.textContent = tr('export.loadingFonts');
   fontSel.append(fontLoading);
   fontSel.onchange = () => {
     state.font = fontSel.value || 'JetBrainsMono';
     syncAll();
   };
-  const fontCard = addCard('Шрифт');
+  const fontCard = addCard(tr('export.font'));
   fontCard.addControl(fontSel);
   const fillFonts = (names) => {
     fontSel.innerHTML = '';
@@ -2440,7 +2440,7 @@ function exportDialog(preset) {
   // ------------------------------------------------------------- предпросмотр
   const cap = document.createElement('div');
   cap.className = 'exp-cap';
-  cap.textContent = 'Предпросмотр';
+  cap.textContent = tr('export.preview');
   const prev = document.createElement('div');
   prev.className = 'exp-preview';
   const doc = document.createElement('article');
@@ -2477,7 +2477,7 @@ function exportDialog(preset) {
     } else {
       doc.innerHTML = MDV.renderMd(t.raw, t.baseUrl);
     }
-    ok.textContent = 'Экспортировать';
+    ok.textContent = tr('export.doIt');
   }
 
   // ----------------------------------------------------------------- кнопки
@@ -2485,7 +2485,7 @@ function exportDialog(preset) {
   row.className = 'modal-row';
   const cancel = document.createElement('button');
   cancel.className = 'dlgbtn';
-  cancel.textContent = 'Отмена';
+  cancel.textContent = tr('btn.cancel');
   cancel.onclick = () => closeModal(false);
   const ok = document.createElement('button');
   ok.className = 'dlgbtn dlgbtn-primary';
@@ -2518,32 +2518,32 @@ function exportDialog(preset) {
     // Пока окно открыто, вкладку могли закрыть по Ctrl+W — тогда экспортируем
     // не то.
     if (!tab || tab.path !== t.path) { closeModal(false); return; }
-    if (tab.mode === 'edit' && tab.dirty) { toast('Сначала сохрани (Ctrl+S)'); closeModal(false); return; }
+    if (tab.mode === 'edit' && tab.dirty) { toast(tr('export.saveFirst')); closeModal(false); return; }
 
     const base = t.name.replace(/\.md$/i, '');
     busy = true;
     ok.disabled = true;
-    ok.textContent = 'Готовим…';
+    ok.textContent = tr('export.preparing');
     try {
       if (state.format === 'md') {
         download(t.name, t.raw, 'text/markdown');
-        toast('Сохранено: ' + t.name, 'ok');
+        toast(tr('status.saved') + t.name, 'ok');
       } else if (state.format === 'txt') {
         const file = base + '.txt';
         download(file, MDV.mdToText(t.raw), 'text/plain');
-        toast('Сохранено: ' + file, 'ok');
+        toast(tr('status.saved') + file, 'ok');
       } else {
         const body = MDV.renderMd(t.raw, t.baseUrl);
         const opts = { font: state.font, size: state.size, bw: state.bw };
         const res = state.format === 'html'
           ? await api.exportHtml({ title: t.name, body, opts })
           : await api.exportPdf({ title: t.name, body, opts });
-        toast('Сохранено: ' + res.path + ' (' + fmtSize(res.bytes) + ')', 'ok');
+        toast(tr('status.saved') + res.path + ' (' + fmtSize(res.bytes) + ')', 'ok');
         api.reveal(res.path);
       }
       closeModal(false);
     } catch (e) {
-      status('Ошибка экспорта: ' + (e.message || e), 'err');
+      status(tr('export.error') + (e.message || e), 'err');
       busy = false;
       ok.disabled = false;
       syncAll();
@@ -2558,7 +2558,7 @@ function openFind() {
   const bar = document.createElement('div');
   bar.style.cssText = 'position:absolute;top:8px;right:22px;z-index:70;display:flex;gap:5px;align-items:center;'
     + 'background:#1f2335;border:1px solid #2f3b54;border-radius:8px;padding:5px 7px;font-family:"Segoe UI",sans-serif';
-  bar.innerHTML = '<input style="width:190px;padding:4px 8px;border-radius:5px;background:#1a1b26;border:1px solid #2f3b54;color:#c0caf5;font-size:12px" placeholder="Найти…">'
+  bar.innerHTML = tr('find.placeholderInput')
     + '<span class="cnt" style="color:#565f89;font-size:11px;min-width:44px;text-align:center"></span>'
     + '<button class="pv" style="background:#24283b;border:1px solid #2f3b54;color:#a9b1d6;border-radius:5px;padding:3px 8px;cursor:pointer">&#8593;</button>'
     + '<button class="nx" style="background:#24283b;border:1px solid #2f3b54;color:#a9b1d6;border-radius:5px;padding:3px 8px;cursor:pointer">&#8595;</button>'
@@ -2618,7 +2618,7 @@ function runFind(q) {
     try { range.surroundContents(m); } catch { continue; }
     bar.marks.push(m);
   }
-  bar.box.querySelector('.cnt').textContent = bar.marks.length + ' найдено';
+  bar.box.querySelector('.cnt').textContent = bar.marks.length + tr('find.found');
   if (bar.marks.length) stepFind(1);
 }
 
