@@ -4,6 +4,9 @@
  * ========================================================================== */
 
 const api = window.mdv;
+const { MDV_I18N } = window;
+/** Перевод строки: сокращение, потому что вызовов будет очень много. */
+const t = (key, params) => MDV_I18N.t(key, params);
 
 /** SVG-иконки Lucide (модуль генерирует scripts/vendor.js). */
 const ICONS = window.MDV_ICONS;
@@ -3520,6 +3523,8 @@ const SETTINGS_DEFAULT = {
   zoom: 1,
   columnWidth: 900,
   autosave: false,
+  // '' — «как в системе». Конкретные языки: 'ru', 'en'.
+  lang: '',
 };
 
 // updateZoom считает размер от 15px при 100%. Настройка «Размер текста»
@@ -3536,6 +3541,10 @@ function paintRange(inp) {
 }
 
 async function loadSettings() {
+  // navigator.language — то же самое, чем app.getLocale() в главном процессе,
+  // но берётся раньше: язык системы нужен для первого кадра, до запроса
+  // настроек по IPC.
+  MDV_I18N.setSystemLocale(navigator.language || (navigator.languages && navigator.languages[0]) || '');
   let saved = {};
   try { saved = (await api.settingsGet()) || {}; } catch { saved = {}; }
   const merged = Object.assign({}, SETTINGS_DEFAULT);
@@ -3572,6 +3581,10 @@ function isBlankTab() {
 function applySettings(s) {
   const root = document.documentElement;
   root.style.setProperty('--content-max-width', s.columnWidth + 'px');
+  // Атрибут lang нужен не только экранным читалкам: от него зависят
+  // переносы, форма курсира и правила :lang() в разметке.
+  MDV_I18N.setLocale(s.lang || 'auto');
+  root.lang = MDV_I18N.tag();
   // Размер текста идёт через setZoom, чтобы ползунок в настройках и кнопки
   // масштаба в тулбаре всегда показывали одно и то же.
   setZoom(s.zoom);
@@ -3591,7 +3604,7 @@ function settingsDialog() {
   // Окно было 470×460, а в него набилось четыре карточки с длинными
   // подсказками: содержимое уходило под нижний край и окно приходилось
   // прокручивать. Стало просторнее — подсказки видны целиком.
-  const box = modalBox('Настройки', 560, 720);
+  const box = modalBox(t('settings.title'), 560, 720);
 
   const rows = [];
 
@@ -3656,7 +3669,7 @@ function settingsDialog() {
   };
   font.oninput = syncFont;
   syncFont();
-  addCard('Размер текста', fontOut, 'Тот же масштаб, что и в тулбаре.').addControl(font);
+  addCard(t('settings.font.label'), fontOut, t('settings.font.hint')).addControl(font);
 
   // Ширина колонки
   const widthOut = document.createElement('span');
@@ -3674,7 +3687,7 @@ function settingsDialog() {
   };
   width.oninput = syncWidth;
   syncWidth();
-  addCard('Ширина колонки', widthOut, 'Узкая колонка читается спокойнее.').addControl(width);
+  addCard(t('settings.width.label'), widthOut, t('settings.width.hint')).addControl(width);
 
   // Автосохранение. Настоящий <input type=checkbox> прячем, а рисуем
   // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
@@ -3688,8 +3701,44 @@ function settingsDialog() {
   knob.className = 'knob';
   auto.append(autoIn, knob);
   autoIn.onchange = () => previewSettings({ autosave: autoIn.checked });
-  addCard('Автосохранение', null,
-    'Выход из правки сразу пишет файл — кнопка «Сохранить» не нужна.').addControl(auto);
+  addCard(t('settings.autosave.label'), null,
+    t('settings.autosave.hint')).addControl(auto);
+
+  /*
+   * Язык интерфейса. Не select по двум пунктам, а список из трёх состояний:
+   * «Как в системе» отдельно от конкретного языка, потому что это разные
+   * вещи — «Русский» это требование, а «Как в системе» это отсутствие
+   * требования.
+   *
+   * Значение уходит в общий settings.json тем же путём, что зум и ширина
+   * колонки, а главному процессу по IPC-сигналу, чтобы он пересобрал своё
+   * меню: там строки тоже живут, и без сигнала они остались бы на старом
+   * языке до перезапуска.
+   */
+  const langSel = document.createElement('select');
+  langSel.className = 'set-select';
+  for (const [val, key] of [['', 'settings.lang.auto'], ['ru', 'settings.lang.ru'], ['en', 'settings.lang.en']]) {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = t(key);
+    langSel.append(opt);
+  }
+  langSel.value = MDV_I18N.locale;
+  langSel.onchange = async () => {
+    // Значение сохраняется раньше, чем приходит сигнал: главный процесс
+    // перечитывает файл, и к моменту чтения запись должна быть уже на диске.
+    await previewSettings({ lang: langSel.value });
+    try { await api.setLang(); } catch { /* главный процесс перечитает при старте */ }
+
+    // Окно настроек приходится переоткрывать: подписи в нём ставятся один раз
+    // при сборке, через t(), и держат язык, на котором окно открылось. Без
+    // переоткрытия человек выбрал язык, окно осталось на старом — и переключатель
+    // выглядит сломанным. Значения уже сохранены, так что новое окно
+    // открывается с теми же настройками, просто на новом языке.
+    closeModal(false);
+    settingsDialog();
+  };
+  addCard(t('settings.lang.label'), null, t('settings.lang.hint')).addControl(langSel);
 
   /*
    * Откатывать предпросмотр больше нечего: изменения сохраняются сразу, и
@@ -3704,19 +3753,20 @@ function settingsDialog() {
   // правку. Здесь возвращаются исходные значения — как в новой установке.
   const def = document.createElement('button');
   def.className = 'dlgbtn';
-  def.textContent = 'По умолчанию';
+  def.textContent = t('settings.default');
   def.onclick = () => {
     const d = SETTINGS_DEFAULT;
     font.value = String(zoomToPx(d.zoom));
     width.value = String(d.columnWidth);
     autoIn.checked = d.autosave;
+    langSel.value = d.lang || '';
     syncFont();
     syncWidth();
     previewSettings(Object.assign({}, currentSettings, d));
   };
   const ok = document.createElement('button');
   ok.className = 'dlgbtn dlgbtn-primary';
-  ok.textContent = 'Готово';
+  ok.textContent = t('settings.done');
   // Значения уже сохранены по ходу работы с окном, поэтому кнопка только
   // закрывает. Всё равно пишем их раз: закрытие может прийти по Esc или
   // клику мимо, и значения ползунков — источник истины.
@@ -3725,6 +3775,7 @@ function settingsDialog() {
       zoom: pxToZoom(+font.value),
       columnWidth: +width.value,
       autosave: autoIn.checked,
+      lang: langSel.value,
     });
     closeModal(false);
   };

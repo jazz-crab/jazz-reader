@@ -133,6 +133,10 @@ const SILENCE_CONFIRM = `(() => {
   const port = await freePort();
   const child = spawn(electron, [
     ROOT, '--remote-debugging-port=' + port, '--no-sandbox', '--disable-gpu',
+    // Язык зафиксирован: иначе подписи зависят от локали машины,
+    // и проверки ниже падают на любом нерусском Windows.
+    '--lang=ru',
+
     // Окно не показываем: тесты не должны выскакивать поверх работы.
     '--jazzreader-hidden',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -834,15 +838,17 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('«Настройки» открывают модальное окно', r.shown === true);
-  // Полей стало четыре: добавился переключатель режима кольца.
-  // Режим кольца переключателем больше не задаётся: кольцо само разбирается,
-  // что человек сделал с правой кнопкой. Карточек осталось три.
-  t('в настройках 3 поля', r.rows === 3, JSON.stringify(r.labels));
+  // Карточек четыре: размер текста, ширина колонки, автосохранение и язык.
+  // Переключателя режима кольца нет — кольцо само разбирается, что человек
+  // сделал с правой кнопкой.
+  t('в настройках 4 поля', r.rows === 4, JSON.stringify(r.labels));
   t('переключателя режима кольца в настройках нет',
     !(r.labels || []).some((x) => /Кольцо/.test(x)), JSON.stringify(r.labels));
   t('есть «Размер текста»', (r.labels || []).some((l) => /Размер текста/.test(l)), JSON.stringify(r.labels));
   t('есть «Ширина колонки»', (r.labels || []).some((l) => /Ширина колонки/.test(l)));
   t('есть «Автосохранение»', (r.labels || []).some((l) => /Автосохранение/.test(l)));
+  t('есть «Язык интерфейса»', (r.labels || []).some((l) => /Язык интерфейса/.test(l)),
+    JSON.stringify(r.labels));
   t('два ползунка и один чекбокс', r.rangeCount === 2 && r.hasCheckbox === true);
   t('размер текста применён сразу', parseFloat(r.cssDuring) > parseFloat('15.00px'),
     r.cssDuring + ' (было ' + (r.before && r.before.zoom) + ')');
@@ -4620,8 +4626,59 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
+  /*
+   * Переключение языка — в самом конце набора, потому что блок открывает окно
+   * настроек, а оно переоткрывается при смене языка. Проверяем результат, а не
+   * наличие элемента: нарисованный <select>, который ничего не делает, проходит
+   * любой тест на существование.
+   */
+  r = JSON.parse(await js(`(async () => {
+    const M = window.__mdvTest;
+    document.querySelector('.modal-back')?.remove();
+    const labels = () => [...document.querySelectorAll('.set-label')].map(x => x.textContent.trim());
+    const buttons = () => [...document.querySelectorAll('.dlgbtn')].map(b => b.textContent);
+    const sel = () => document.querySelector('.set-select');
+
+    M.settingsDialog();
+    await new Promise(r2 => setTimeout(r2, 300));
+    const before = { labels: labels(), lang: document.documentElement.lang, options: sel() ? sel().options.length : 0 };
+
+    // Меняем язык и ждём, пока окно переоткроется само: подписи в нём
+    // выставляются при сборке, поэтому сразу после change ещё старые.
+    sel().value = 'en';
+    sel().dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 900));
+    const en = { labels: labels(), buttons: buttons(), lang: document.documentElement.lang, locale: MDV_I18N.locale };
+
+    sel().value = 'ru';
+    sel().dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 900));
+    const back = { labels: labels(), buttons: buttons(), lang: document.documentElement.lang, locale: MDV_I18N.locale };
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise(r2 => setTimeout(r2, 400));
+    return JSON.stringify({ before, en, back, closed: !document.querySelector('.modal-back') });
+  })()`));
+
+  t('в настройках есть переключатель языка', r.before.options === 3, String(r.before.options));
+  t('окно настроек открылось на русском', r.before.lang === 'ru', r.before.lang);
+  t('подписи перевелись на английский', r.en.labels.some((l) => l === 'Text size'),
+    JSON.stringify(r.en.labels));
+  t('кнопки перевелись на английский', r.en.buttons.some((b) => b === 'Default'),
+    JSON.stringify(r.en.buttons));
+  t('<html lang> стал en', r.en.lang === 'en', r.en.lang);
+  t('в настройках прописано en', r.en.locale === 'en', r.en.locale);
+  t('обратно на русский', r.back.labels.some((l) => l === 'Размер текста'),
+    JSON.stringify(r.back.labels));
+  t('кнопки вернулись', r.back.buttons.some((b) => b === 'Готово'),
+    JSON.stringify(r.back.buttons));
+  t('<html lang> снова ru', r.back.lang === 'ru', r.back.lang);
+  t('окно настроек закрылось', r.closed === true);
+
   console.log('\nитого: ' + pass + ' ok, ' + fail + ' FAIL\n');
   c.close();
+
+
   cleanup();
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('tabs.js упал:', e && e.stack || e); process.exit(1); });

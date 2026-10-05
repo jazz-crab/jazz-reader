@@ -131,6 +131,10 @@ function evaluate(wsUrl, expression) {
     '--remote-debugging-port=' + port,
     '--no-sandbox',
     '--disable-gpu',
+    // Язык зафиксирован: иначе подписи зависят от локали машины,
+    // и проверки ниже падают на любом нерусском Windows.
+    '--lang=ru',
+
     // Окно не показываем: тесты не должны выскакивать поверх работы.
     '--jazzreader-hidden',
     sample,

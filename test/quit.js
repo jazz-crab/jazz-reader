@@ -167,16 +167,31 @@ async function main() {
   // --- 3. Статика: хоткей и структура диалога ---------------------------
   const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
   t('пункт «Выход» на Ctrl+Q',
-    /label: 'Выход', accelerator: 'CmdOrCtrl\+Q'/.test(mainSrc));
+    /label: t\('menu\.file\.quit'\), accelerator: 'CmdOrCtrl\+Q'/.test(mainSrc));
   t('у пункта «Выход» нет role: quit',
     !/label: 'Выход'[^\n]*role: 'quit'/.test(mainSrc));
   t('диалог системный, с галочкой',
     /dialog\.showMessageBox\(/.test(mainSrc)
-    && /checkboxLabel: 'Не показывать больше'/.test(mainSrc));
+    && /checkboxLabel: t\('quit\.neverAgain'\)/.test(mainSrc));
   t('у диалога два ответа',
-    /buttons: \['Закрыть', 'Отмена'\]/.test(mainSrc));
+    /buttons: \[t\('quit\.close'\), t\('quit\.cancel'\)\]/.test(mainSrc));
   t('крестик в рамке равносилен «Отмена»', /cancelId: 1/.test(mainSrc));
-  t('заголовок диалога — «Закрыть?»', /title: 'Закрыть\?'/.test(mainSrc));
+  t('заголовок диалога — «Закрыть?»', /title: t\('quit\.title'\)/.test(mainSrc));
+  // Ключи диалога выхода обязаны существовать в обоих словарях: проверка
+  // исходника на t('quit.title') иначе проходит, даже если перевода нет.
+  const dictRu = require(path.join(ROOT, 'src', 'i18n', 'ru.js'));
+  const dictEn = require(path.join(ROOT, 'src', 'i18n', 'en.js'));
+  for (const k of ['quit.title', 'quit.message', 'quit.close', 'quit.cancel',
+    'quit.neverAgain', 'quit.detailDirty', 'quit.detailClean',
+    'menu.file.quit', 'error.startup']) {
+    t('ключ есть в обоих словарях: ' + k, dictRu[k] != null && dictEn[k] != null);
+  }
+  // Формы множественного числа обязаны покрывать one/few/many: иначе русский
+  // диалог про несохранённые правки молча отдаст английский.
+  t('quit.detailDirty покрывает русские формы',
+    dictRu['quit.detailDirty'] && dictRu['quit.detailDirty'].one
+    && dictRu['quit.detailDirty'].few && dictRu['quit.detailDirty'].many);
+
   t('настройка вопроса читается и пишется',
     /ipc\.setting\('quitAsk'\)/.test(mainSrc)
     && /ipc\.setting\('quitAsk', false\)/.test(mainSrc));

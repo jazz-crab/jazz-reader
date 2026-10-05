@@ -1,9 +1,18 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const ipc = require('./ipc');
+
+// Тот же i18n-рантайм, что и в renderer: словарями владеет src/i18n, здесь он
+// нужен до первого окна — заголовок окна и диалог об ошибке создаются раньше,
+// чем renderer что-либо загрузит.
+const i18n = require('./src/i18n/index.js');
+i18n.setSystemLocale(app.getLocale());
+
+/** Перевод строки: короткое имя, потому что используется в каждом меню. */
+const t = (key, params) => i18n.t(key, params);
 
 // Множественные экземпляры — намеренно НЕ используем requestSingleInstanceLock().
 // Каждый запуск = отдельный процесс со своим окном и своим набором вкладок,
@@ -126,7 +135,7 @@ function reportFatal(where, err) {
   fatalShown = true;
   try {
     dialog.showErrorBox(
-      'JazzReader — ошибка при запуске',
+      t('error.startup'),
       `${where}\n\n${text}\n\n` +
       `Подробности: ${logPath || '(лог недоступен)'}\n` +
       'Если окно с приложением не появилось — пришлите этот файл, разберёмся.'
@@ -264,17 +273,17 @@ async function requestQuit() {
   const dirty = await dirtyTabs();
   log('выход: спрашиваем подтверждение, несохранённых ' + dirty);
   const detail = dirty
-    ? 'В ' + dirty + ' заметк' + plural(dirty) + ' есть несохранённые правки — они пропадут.'
-    : 'Несохранённых правок нет.';
+    ? t('quit.detailDirty', { count: dirty })
+    : t('quit.detailClean');
   const res = await dialog.showMessageBox(targetWindowSafe(), {
     type: 'question',
-    title: 'Закрыть?',
-    message: 'Закрыть JazzReader?',
+    title: t('quit.title'),
+    message: t('quit.message'),
     detail,
-    buttons: ['Закрыть', 'Отмена'],
+    buttons: [t('quit.close'), t('quit.cancel')],
     defaultId: 0,
-    cancelId: 1,          // крестик в рамке равносилен «Отмена»
-    checkboxLabel: 'Не показывать больше',
+    cancelId: 1,          // крестик в рамке равносилен отмене
+    checkboxLabel: t('quit.neverAgain'),
     noLink: true,
   });
   if (res.checkboxChecked) {
@@ -287,98 +296,115 @@ async function requestQuit() {
   app.quit();
 }
 
-/** 1 заметка / 2 заметки / 5 заметок. */
-function plural(n) {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'е';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'ах';
-  return 'ах';
+/**
+ * Применить сохранённый выбор языка.
+ *
+ * Отдельная функция, потому что вызывается в двух местах: на старте и при
+ * смене языка из окна настроек. Само значение живёт в settings.json рядом с
+ * зумом и шириной колонки — отдельный файл ради одного значения не нужен.
+ */
+async function applyLangSetting() {
+  try {
+    await ipc.setting('lang', i18n.setLocale(await ipc.setting('lang')));
+  } catch (e) {
+    // Файл настроек может быть недоступен (read-only каталог, битый JSON).
+    // Тогда остаётся язык системы — приложение обязано запуститься в любом
+    // случае, выбор языка не повод падать.
+    i18n.setLocale('auto');
+    log('язык: настройка недоступна, беру язык системы (' + e.message + ')');
+  }
+  return i18n.lang;
 }
+
+/** Пересобрать меню и заголовок после смены языка, не перезапуская приложение. */
+// Renderer сначала пишет значение в settings.json сам (общий путь настроек),
+// а сюда приходит сигнал «перечитай и пересобери меню».
+ipcMain.handle('mdv:setLang', async () => {
+  const lang = await applyLangSetting();
+  buildMenu();
+  return lang;
+});
+
+// Раньше здесь жила функция plural(): mod10/mod100, три варианта окончания.
+// Формы теперь выбирает Intl.PluralRules внутри i18n, и словарь хранит все
+// нужные окончания рядом с текстом — поэтому код перевода не должен знать
+// про язык вообще.
 
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
-      label: 'Файл',
+      label: t('menu.file'),
       submenu: [
-        { label: 'Открыть файл…', accelerator: 'CmdOrCtrl+O', click: () => send('mdv:menu', 'open-file') },
-        { label: 'Открыть папку…', accelerator: 'CmdOrCtrl+Shift+O', click: () => send('mdv:menu', 'open-folder') },
+        { label: t('menu.file.open'), accelerator: 'CmdOrCtrl+O', click: () => send('mdv:menu', 'open-file') },
+        { label: t('menu.file.openFolder'), accelerator: 'CmdOrCtrl+Shift+O', click: () => send('mdv:menu', 'open-folder') },
         { type: 'separator' },
-        { label: 'Сохранить', accelerator: 'CmdOrCtrl+S', click: () => send('mdv:menu', 'save') },
-        { label: 'Скачать MD', click: () => send('mdv:menu', 'download-md') },
-        { label: 'Скачать HTML', click: () => send('mdv:menu', 'download-html') },
-        { label: 'Печать / PDF…', accelerator: 'CmdOrCtrl+P', click: () => send('mdv:menu', 'print') },
+        { label: t('menu.file.save'), accelerator: 'CmdOrCtrl+S', click: () => send('mdv:menu', 'save') },
+        { label: t('menu.file.downloadMd'), click: () => send('mdv:menu', 'download-md') },
+        { label: t('menu.file.downloadHtml'), click: () => send('mdv:menu', 'download-html') },
+        { label: t('menu.file.print'), accelerator: 'CmdOrCtrl+P', click: () => send('mdv:menu', 'print') },
         { type: 'separator' },
         // CmdOrCtrl+Q вместо role: 'quit': роль закрывает приложение молча,
         // минуя подтверждение.
-        { label: 'Выход', accelerator: 'CmdOrCtrl+Q', click: () => requestQuit() },
+        { label: t('menu.file.quit'), accelerator: 'CmdOrCtrl+Q', click: () => requestQuit() },
       ],
     },
     {
-      label: 'Правка',
+      label: t('menu.edit'),
       submenu: [
-        { role: 'undo', label: 'Отменить' },
-        { role: 'redo', label: 'Повторить' },
+        { role: 'undo', label: t('menu.edit.undo') },
+        { role: 'redo', label: t('menu.edit.redo') },
         { type: 'separator' },
-        { role: 'cut', label: 'Вырезать' },
-        { role: 'copy', label: 'Копировать' },
-        { role: 'paste', label: 'Вставить' },
-        { role: 'selectAll', label: 'Выделить всё' },
+        { role: 'cut', label: t('menu.edit.cut') },
+        { role: 'copy', label: t('menu.edit.copy') },
+        { role: 'paste', label: t('menu.edit.paste') },
+        { role: 'selectAll', label: t('menu.edit.selectAll') },
         { type: 'separator' },
-        { label: 'Найти в тексте', accelerator: 'CmdOrCtrl+F', click: () => send('mdv:menu', 'find') },
+        { label: t('menu.edit.find'), accelerator: 'CmdOrCtrl+F', click: () => send('mdv:menu', 'find') },
       ],
     },
     {
-      label: 'Вид',
+      label: t('menu.view'),
       submenu: [
-        { label: 'Проводник', accelerator: 'CmdOrCtrl+B', click: () => send('mdv:menu', 'toggle-sidebar') },
-        { label: 'Оглавление', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('mdv:menu', 'toggle-toc') },
+        { label: t('menu.view.sidebar'), accelerator: 'CmdOrCtrl+B', click: () => send('mdv:menu', 'toggle-sidebar') },
+        { label: t('menu.view.toc'), accelerator: 'CmdOrCtrl+Shift+B', click: () => send('mdv:menu', 'toggle-toc') },
         { type: 'separator' },
-        { label: 'Режим правки', accelerator: 'CmdOrCtrl+E', click: () => send('mdv:menu', 'toggle-mode') },
-        { label: 'Отменить правки', accelerator: 'Escape', click: () => send('mdv:menu', 'cancel-edit') },
+        { label: t('menu.view.editMode'), accelerator: 'CmdOrCtrl+E', click: () => send('mdv:menu', 'toggle-mode') },
+        { label: t('menu.view.cancelEdit'), accelerator: 'Escape', click: () => send('mdv:menu', 'cancel-edit') },
         { type: 'separator' },
-        { label: 'Назад', accelerator: 'Alt+Left', click: () => send('mdv:menu', 'back') },
-        { label: 'Вперёд', accelerator: 'Alt+Right', click: () => send('mdv:menu', 'forward') },
+        { label: t('menu.view.back'), accelerator: 'Alt+Left', click: () => send('mdv:menu', 'back') },
+        { label: t('menu.view.forward'), accelerator: 'Alt+Right', click: () => send('mdv:menu', 'forward') },
         { type: 'separator' },
-        { role: 'resetZoom', label: 'Масштаб 100%' },
-        { role: 'zoomIn', label: 'Увеличить' },
-        { role: 'zoomOut', label: 'Уменьшить' },
+        { role: 'resetZoom', label: t('menu.view.zoomReset') },
+        { role: 'zoomIn', label: t('menu.view.zoomIn') },
+        { role: 'zoomOut', label: t('menu.view.zoomOut') },
         { type: 'separator' },
-        { label: 'Перезагрузить с диска', accelerator: 'F5', click: () => send('mdv:menu', 'reload') },
-        { role: 'togglefullscreen', label: 'Полный экран' },
-        { role: 'toggleDevTools', label: 'Инструменты разработчика' },
+        { label: t('menu.view.reload'), accelerator: 'F5', click: () => send('mdv:menu', 'reload') },
+        { role: 'togglefullscreen', label: t('menu.view.fullscreen') },
+        { role: 'toggleDevTools', label: t('menu.view.devtools') },
       ],
     },
     {
-      label: 'Переход',
+      label: t('menu.go'),
       submenu: [
-        { label: 'Новая вкладка', accelerator: 'CmdOrCtrl+T', click: () => send('mdv:menu', 'new-tab') },
-        { label: 'Закрыть вкладку', accelerator: 'CmdOrCtrl+W', click: () => send('mdv:menu', 'close-tab') },
+        { label: t('menu.go.newTab'), accelerator: 'CmdOrCtrl+T', click: () => send('mdv:menu', 'new-tab') },
+        { label: t('menu.go.closeTab'), accelerator: 'CmdOrCtrl+W', click: () => send('mdv:menu', 'close-tab') },
         { type: 'separator' },
         // Акселераторы у этих двух пунктов намеренно НЕ заданы: Windows считает
         // Ctrl+Tab системной комбинацией и съедает её раньше меню. Перехват
         // делает globalShortcut (registerTabShortcuts), он шлёт то же действие.
-        { label: 'Следующая вкладка', click: () => send('mdv:menu', 'next-tab') },
-        { label: 'Предыдущая вкладка', click: () => send('mdv:menu', 'prev-tab') },
+        { label: t('menu.go.nextTab'), click: () => send('mdv:menu', 'next-tab') },
+        { label: t('menu.go.prevTab'), click: () => send('mdv:menu', 'prev-tab') },
       ],
     },
     {
-      label: 'Справка',
+      label: t('menu.help'),
       submenu: [{
-        label: 'О программе',
+        label: t('menu.help.about'),
         click: () => require('electron').dialog.showMessageBox(win, {
           type: 'info', title: 'JazzReader',
           message: 'JazzReader ' + app.getVersion(),
-          detail: 'Офлайн-читалка Markdown с поддержкой LaTeX (KaTeX).\n'
-            + 'Работает без сети, файлы остаются на диске.\n\n'
-            + 'Ctrl+O — открыть .md\nCtrl+Shift+O — открыть папку\n'
-            + 'Ctrl+E — правка; выход — кнопками «Сохранить»/«Отменить»\n'
-            + 'Ctrl+S — сохранить / скачать MD\n'
-            + 'Ctrl+Tab — следующая вкладка, Ctrl+Shift+Tab — предыдущая\n'
-            + 'ПКМ по вкладке — закрыть вкладки\n'
-            + 'Alt+← / Alt+→ — назад / вперёд\n'
-            + 'F5 — перезагрузить файл с диска',
-          buttons: ['Ок'],
+          detail: t('about.detail'),
+          buttons: [t('about.ok')],
         }),
       }],
     },
@@ -436,14 +462,17 @@ app.on('will-quit', releaseTabShortcuts);
  * запуске его не существует.
  */
 if (HIDDEN) {
-  const { ipcMain } = require('electron');
   ipcMain.handle('mdv:testQuit', () => { requestQuit(); return true; });
 }
 
 app.whenReady()
-  .then(() => {
+  .then(async () => {
     logPath = resolveLogPath();
     log(`--- старт JazzReader ${app.getVersion()} · electron ${process.versions.electron} · ${process.platform}/${process.arch} · portable=${app.isPackaged}`);
+
+    // Язык читаем до меню: иначе первое окно открылось бы на языке системы,
+    // а выбранный — только после перезапуска.
+    await applyLangSetting();
 
     ipc.register();
     buildMenu();
@@ -458,7 +487,7 @@ app.whenReady()
   .catch((err) => {
     // Раньше здесь был bare .then() — любая ошибка становилась unhandledRejection
     // без окна и без вывода. Теперь это явная ошибка с диалогом и кодом возврата 1.
-    reportFatal('Не удалось создать окно', err);
+    reportFatal(t('error.windowFailed'), err);
     app.exit(1);
   });
 

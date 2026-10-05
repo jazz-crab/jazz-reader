@@ -1509,3 +1509,31 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
     .radial-sector, .radial-kill, .radial::before { transition: none; }
 }
+
+/* Выпадающий список в окне настроек. Системный select в тёмной теме выглядит
+   чужеродно: белая стрелка и серый фон поверх TokyoNight. Рамка и стрелка
+   нарисованы вручную, но сами варианты остаются системными — иначе выпадающий
+   список откроется мимо темы, и это заметнее, чем сам контрол.
+
+   Токены только те, что уже есть в :root: --bg-alt, --fg, --border, --blue.
+   Радиуса в палитре нет вообще: скругления в теме задаются литералами, как
+   и в .btn, поэтому здесь тоже литерал. */
+.set-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-alt);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 30px 6px 10px;
+  font: inherit;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% + 1px), calc(100% - 11px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.set-select:hover { border-color: var(--blue); }
+.set-select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.set-select option { background: var(--bg-alt); color: var(--fg); }

@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('mdv', {
   recentClear: () => ipcRenderer.invoke('mdv:recentClear'),
   settingsGet: () => ipcRenderer.invoke('mdv:settingsGet'),
   settingsSet: (patch) => ipcRenderer.invoke('mdv:settingsSet', patch),
+  /**
+   * Сигнал главному процессу: язык сменился, пересобери меню.
+   * Значение к этому моменту уже записано в settings.json — renderer
+   * шлёт его первым, а главный процесс перечитывает файл, а не аргумент.
+   */
+  setLang: () => ipcRenderer.invoke('mdv:setLang'),
   print: () => ipcRenderer.invoke('mdv:print'),
   exportHtml: (payload) => ipcRenderer.invoke('mdv:exportHtml', payload),
   /** PDF без системного диалога печати: готовый файл в Загрузках. */
