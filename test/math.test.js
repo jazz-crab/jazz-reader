@@ -112,9 +112,11 @@ t('[x] без пробела не трогаем', !/mdv-task/.test(h), h);
 h = MDV.renderMd('- `[x]` в коде\n');
 t('[x] в inline-коде не стал иконкой', !/mdv-task-wrap/.test(h), h);
 
-// реальный файл из заметок пользователя
-const REAL = 'sample.md';
-if (fs.existsSync(REAL)) {
+// A real note from someone's own library, to check the renderer on
+// something we did not write. Point MDV_REAL_NOTE at a .md file; skipped
+// when unset or missing.
+const REAL = process.env.MDV_REAL_NOTE || '';
+if (REAL && fs.existsSync(REAL)) {
   const src = fs.readFileSync(REAL, 'utf8');
   const h2 = MDV.renderMd(src);
   t('реальный файл: нет нативных checkbox', !/type="checkbox"/.test(h2));

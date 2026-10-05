@@ -1,16 +1,16 @@
 'use strict';
 /*
- * Регрессия на «тихий» запуск: главный процесс поднимается, окно создаётся,
- * контент реально отрисован.
+ * Regression test for the "silent start": the main process comes up, the window
+ * is created, and the content is actually painted.
  *
- * Именно этот тест ловит баг, из-за которого portable-exe с MDView
- * «запускался и молчал»: setTitleBarOverlay() бросал исключение внутри
- * app.whenReady().then() без catch, окно не создавалось, процесс висел
- * бесконечно — и все тесты проходили, потому что renderMd/KaTeX проверялись
- * в Node, а main.js на Windows вообще никто не запускал.
+ * This is the test that catches the bug where a packaged build would "launch
+ * and say nothing": setTitleBarOverlay() threw inside app.whenReady().then()
+ * with no catch, so no window was created, the process just hung forever - and
+ * every other test still passed, because renderMd/KaTeX ran in plain Node and
+ * main.js was never launched on Windows at all.
  *
- * Тест чёрный: поднимаем настоящий Electron, цепляемся к нему по CDP и смотрим
- * на живой DOM. Работает на Windows/macOS; на Linux нужен xvfb (xvfb-run -a).
+ * Black-box: starts a real Electron, attaches over CDP and looks at the live DOM.
+ * Works on Windows/macOS; on Linux it needs xvfb (xvfb-run -a).
  *
  *   node test/startup.js
  */

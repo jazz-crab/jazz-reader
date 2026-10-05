@@ -1,7 +1,7 @@
 {
   "name": "jazz-reader",
   "version": "1.0.14",
-  "description": "JazzReader — офлайн-читалка Markdown (порт github.com/jazz-crab/jazz-reader) с поддержкой LaTeX/KaTeX",
+  "description": "JazzReader — офлайн-читалка Markdown с поддержкой LaTeX/KaTeX",
   "main": "main.js",
   "author": "jazz-crab",
   "license": "GPL-3.0",

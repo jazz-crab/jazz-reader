@@ -370,7 +370,7 @@ function buildMenu() {
           type: 'info', title: 'JazzReader',
           message: 'JazzReader ' + app.getVersion(),
           detail: 'Офлайн-читалка Markdown с поддержкой LaTeX (KaTeX).\n'
-            + 'Порт инструмента github.com/jazz-crab/jazz-reader/.\n\n'
+            + 'Работает без сети, файлы остаются на диске.\n\n'
             + 'Ctrl+O — открыть .md\nCtrl+Shift+O — открыть папку\n'
             + 'Ctrl+E — правка; выход — кнопками «Сохранить»/«Отменить»\n'
             + 'Ctrl+S — сохранить / скачать MD\n'

@@ -15,6 +15,12 @@ const path = require('path');
 
 const electron = require('electron');
 const ROOT = path.join(__dirname, '..');
+
+// Directory with the sample notes the tests drive the UI against. It has to
+// contain AAA.md, BBB.md and DDD.md. Not part of the repo: point at it with
+// MDV_SAMPLE_DIR. Without it these blocks are skipped rather than silently
+// run against nothing.
+const SAMPLE = process.env.MDV_SAMPLE_DIR || '';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0, fail = 0;
@@ -559,8 +565,8 @@ const SILENCE_CONFIRM = `(() => {
   // Контекстное меню файла в дереве
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    const D = 'keysample/';
-    await M.addFolder('keysample/');
+    const D = ${JSON.stringify(SAMPLE)};
+    await M.addFolder(${JSON.stringify(SAMPLE)});
     await new Promise(r2 => setTimeout(r2, 300));
     document.querySelector('.ctxmenu')?.remove();
     const row = [...document.querySelectorAll('#paneFiles .tree-item')]
@@ -587,7 +593,7 @@ const SILENCE_CONFIRM = `(() => {
   // Отложенный просмотр: вкладка появляется, фокус остаётся
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    const D = 'keysample/';
+    const D = ${JSON.stringify(SAMPLE)};
     document.querySelector('.ctxmenu')?.remove();
     await M.openPath(D + 'AAA.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 250));
@@ -751,7 +757,7 @@ const SILENCE_CONFIRM = `(() => {
     const M = window.__mdvTest;
     await M.clearRecents();
     document.querySelector('.ctxmenu')?.remove();
-    const D = 'keysample/';
+    const D = ${JSON.stringify(SAMPLE)};
     await M.openPath(D + 'AAA.md', { newTab: true });
     await M.openPath(D + 'BBB.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 400));
