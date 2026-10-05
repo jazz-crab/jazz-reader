@@ -118,8 +118,8 @@ const onlyEn = enKeys.filter((k) => !ruKeys.includes(k));
 t('ключи словарей совпадают (' + ruKeys.length + ' шт.)', onlyRu.length === 0 && onlyEn.length === 0,
   'только в ru: ' + onlyRu.join(', ') + ' | только в en: ' + onlyEn.join(', '));
 t('у ключей есть префикс домена',
-  ruKeys.every((k) => /^(menu|about|quit|error|settings)\./.test(k)),
-  ruKeys.filter((k) => !/^(menu|about|quit|error|settings)\./.test(k)).join(', '));
+  ruKeys.every((k) => /^(menu|about|quit|error|settings|unit|btn|status|tab|discard|clip|tree|toc|export|find|panel|zoom|mode|file|folder|project|recent|ring|search|view)\./.test(k)),
+  ruKeys.filter((k) => !/^(menu|about|quit|error|settings|unit|btn|status|tab|discard|clip|tree|toc|export|find|panel|zoom|mode|file|folder|project|recent|ring|search|view)\./.test(k)).join(', '));
 
 console.log('\nитого: ' + pass + ' ok, ' + fail + ' FAIL\n');
 process.exit(fail ? 1 : 0);

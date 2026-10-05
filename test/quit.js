@@ -167,16 +167,16 @@ async function main() {
   // --- 3. Статика: хоткей и структура диалога ---------------------------
   const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
   t('пункт «Выход» на Ctrl+Q',
-    /label: t\('menu\.file\.quit'\), accelerator: 'CmdOrCtrl\+Q'/.test(mainSrc));
+    /label: tr\('menu\.file\.quit'\), accelerator: 'CmdOrCtrl\+Q'/.test(mainSrc));
   t('у пункта «Выход» нет role: quit',
     !/label: 'Выход'[^\n]*role: 'quit'/.test(mainSrc));
   t('диалог системный, с галочкой',
     /dialog\.showMessageBox\(/.test(mainSrc)
-    && /checkboxLabel: t\('quit\.neverAgain'\)/.test(mainSrc));
+    && /checkboxLabel: tr\('quit\.neverAgain'\)/.test(mainSrc));
   t('у диалога два ответа',
-    /buttons: \[t\('quit\.close'\), t\('quit\.cancel'\)\]/.test(mainSrc));
+    /buttons: \[tr\('quit\.close'\), tr\('quit\.cancel'\)\]/.test(mainSrc));
   t('крестик в рамке равносилен «Отмена»', /cancelId: 1/.test(mainSrc));
-  t('заголовок диалога — «Закрыть?»', /title: t\('quit\.title'\)/.test(mainSrc));
+  t('заголовок диалога — «Закрыть?»', /title: tr\('quit\.title'\)/.test(mainSrc));
   // Ключи диалога выхода обязаны существовать в обоих словарях: проверка
   // исходника на t('quit.title') иначе проходит, даже если перевода нет.
   const dictRu = require(path.join(ROOT, 'src', 'i18n', 'ru.js'));

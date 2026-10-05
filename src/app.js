@@ -5,8 +5,14 @@
 
 const api = window.mdv;
 const { MDV_I18N } = window;
-/** Перевод строки: сокращение, потому что вызовов будет очень много. */
-const t = (key, params) => MDV_I18N.t(key, params);
+/*
+ * Перевод строки. Короткое имя, потому что вызовов будет очень много.
+ *
+ * Не t(): в этом файле t — это вкладка, и таких мест несколько десятков.
+ * Одноимённая функция молча перекрывала переменную, и `t.name` в диалогах
+ * отдавал имя функции вместо имени файла.
+ */
+const tr = (key, params) => MDV_I18N.t(key, params);
 
 /** SVG-иконки Lucide (модуль генерирует scripts/vendor.js). */
 const ICONS = window.MDV_ICONS;
@@ -166,9 +172,9 @@ function status(msg, kind) {
 }
 
 function fmtSize(b) {
-  if (b < 1024) return b + ' Б';
-  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' КБ';
-  return (b / 1048576).toFixed(1) + ' МБ';
+  if (b < 1024) return b + tr('unit.b');
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + tr('unit.kb');
+  return (b / 1048576).toFixed(1) + tr('unit.mb');
 }
 
 function basname(p) {
@@ -217,7 +223,7 @@ function askConfirm(title, okText, opts) {
   if (o.xButton !== false) {
     const x = document.createElement('button');
     x.className = 'dlg-x';
-    x.title = 'Закрыть';
+    x.title = tr('btn.close');
     x.innerHTML = ICONS.icon('x');
     x.onclick = () => done(o.closeIsNo ? false : null);
     head.append(x);
@@ -243,8 +249,8 @@ function askConfirm(title, okText, opts) {
     b.textContent = label;
     return b;
   };
-  const no = mk(o.cancelText || 'Отмена', '');
-  const yes = mk(okText || 'ОК', o.okClass || '');
+  const no = mk(o.cancelText || tr('btn.cancel'), '');
+  const yes = mk(okText || tr('btn.ok'), o.okClass || '');
   no.onclick = () => done(false);
   yes.onclick = () => done(true);
   row.append(no, yes);
@@ -341,7 +347,7 @@ function wireModal(back, focusTarget) {
 /**
  * Короткий алиас status(). Второй аргумент ОБЯЗАТЕЛЬНО пробрасываем:
  * раньше toast(msg) принимал только текст, и все вызовы вида
- * toast('Сохранено: ...', 'ok') молча теряли цвет — сообщение выводилось
+ * toast(tr('status.savedEllipsis'), 'ok') молча теряли цвет — сообщение выводилось
  * серым вместо зелёного.
  */
 function toast(msg, kind) { status(msg, kind); }
@@ -370,14 +376,14 @@ function nextPaint() {
 }
 
 function showLoading(text, sub) {
-  el.loadingText.textContent = text || 'Открываю…';
+  el.loadingText.textContent = text || tr('status.opening');
   el.loadingSub.textContent = sub || '';
   el.loading.hidden = false;
 }
 
 function hideLoading() {
   el.loading.hidden = true;
-  el.loadingText.textContent = 'Открываю…';
+  el.loadingText.textContent = tr('status.opening');
   el.loadingSub.textContent = '';
 }
 
@@ -386,7 +392,7 @@ function hideLoading() {
 function newTab() {
   const id = ++seq;
   tabs.set(id, {
-    id, path: null, name: 'Новая вкладка', raw: '', html: null,
+    id, path: null, name: tr('tab.new'), raw: '', html: null,
     dirty: false, mode: 'read', baseUrl: '', encoding: '', size: 0,
     // blank: пользователь явно попросил новую пустую вкладку -> показывать
     // дефолтную заглушку, даже если папка уже открыта.
@@ -410,12 +416,12 @@ async function closeTab(id, opts) {
   if (t.dirty) {
     if (opts && opts.silent) return false;
     const answer = await askConfirm(
-      'Сохранить правки?',
-      'Сохранить',
+      tr('discard.title'),
+      tr('btn.save'),
       {
-        note: 'В «' + t.name + '» есть несохранённые изменения.',
+        note: tr('discard.inFile') + t.name + tr('discard.hasChanges'),
         okClass: 'primary',
-        cancelText: 'Закрыть без сохранения',
+        cancelText: tr('discard.withoutSaving'),
         closeIsNo: false,
       }
     );
@@ -504,12 +510,12 @@ async function closeAll() {
     const t = tabs.get(k);
     if (t && t.dirty) {
       const answer = await askConfirm(
-        'Сохранить правки?',
-        'Сохранить',
+        tr('discard.title'),
+        tr('btn.save'),
         {
-          note: 'В «' + t.name + '» есть несохранённые изменения.',
+          note: tr('discard.inFile') + t.name + tr('discard.hasChanges'),
           okClass: 'primary',
-          cancelText: 'Закрыть без сохранения',
+          cancelText: tr('discard.withoutSaving'),
           closeIsNo: false,
         }
       );
@@ -3604,7 +3610,7 @@ function settingsDialog() {
   // Окно было 470×460, а в него набилось четыре карточки с длинными
   // подсказками: содержимое уходило под нижний край и окно приходилось
   // прокручивать. Стало просторнее — подсказки видны целиком.
-  const box = modalBox(t('settings.title'), 560, 720);
+  const box = modalBox(tr('settings.title'), 560, 720);
 
   const rows = [];
 
@@ -3669,7 +3675,7 @@ function settingsDialog() {
   };
   font.oninput = syncFont;
   syncFont();
-  addCard(t('settings.font.label'), fontOut, t('settings.font.hint')).addControl(font);
+  addCard(tr('settings.font.label'), fontOut, tr('settings.font.hint')).addControl(font);
 
   // Ширина колонки
   const widthOut = document.createElement('span');
@@ -3687,7 +3693,7 @@ function settingsDialog() {
   };
   width.oninput = syncWidth;
   syncWidth();
-  addCard(t('settings.width.label'), widthOut, t('settings.width.hint')).addControl(width);
+  addCard(tr('settings.width.label'), widthOut, tr('settings.width.hint')).addControl(width);
 
   // Автосохранение. Настоящий <input type=checkbox> прячем, а рисуем
   // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
@@ -3701,8 +3707,8 @@ function settingsDialog() {
   knob.className = 'knob';
   auto.append(autoIn, knob);
   autoIn.onchange = () => previewSettings({ autosave: autoIn.checked });
-  addCard(t('settings.autosave.label'), null,
-    t('settings.autosave.hint')).addControl(auto);
+  addCard(tr('settings.autosave.label'), null,
+    tr('settings.autosave.hint')).addControl(auto);
 
   /*
    * Язык интерфейса. Не select по двум пунктам, а список из трёх состояний:
@@ -3720,7 +3726,7 @@ function settingsDialog() {
   for (const [val, key] of [['', 'settings.lang.auto'], ['ru', 'settings.lang.ru'], ['en', 'settings.lang.en']]) {
     const opt = document.createElement('option');
     opt.value = val;
-    opt.textContent = t(key);
+    opt.textContent = tr(key);
     langSel.append(opt);
   }
   langSel.value = MDV_I18N.locale;
@@ -3738,7 +3744,7 @@ function settingsDialog() {
     closeModal(false);
     settingsDialog();
   };
-  addCard(t('settings.lang.label'), null, t('settings.lang.hint')).addControl(langSel);
+  addCard(tr('settings.lang.label'), null, tr('settings.lang.hint')).addControl(langSel);
 
   /*
    * Откатывать предпросмотр больше нечего: изменения сохраняются сразу, и
@@ -3753,7 +3759,7 @@ function settingsDialog() {
   // правку. Здесь возвращаются исходные значения — как в новой установке.
   const def = document.createElement('button');
   def.className = 'dlgbtn';
-  def.textContent = t('settings.default');
+  def.textContent = tr('settings.default');
   def.onclick = () => {
     const d = SETTINGS_DEFAULT;
     font.value = String(zoomToPx(d.zoom));
@@ -3766,7 +3772,7 @@ function settingsDialog() {
   };
   const ok = document.createElement('button');
   ok.className = 'dlgbtn dlgbtn-primary';
-  ok.textContent = t('settings.done');
+  ok.textContent = tr('settings.done');
   // Значения уже сохранены по ходу работы с окном, поэтому кнопка только
   // закрывает. Всё равно пишем их раз: закрытие может прийти по Esc или
   // клику мимо, и значения ползунков — источник истины.
@@ -3883,13 +3889,13 @@ async function exitEdit(saveIt) {
      * null — крестик или Esc: вопрос закрыт, ответ не дан, остаёмся в правке.
      */
     const answer = await askConfirm(
-      'Сохранить правки?',
-      'Сохранить',
+      tr('discard.title'),
+      tr('btn.save'),
       {
-        note: 'В «' + t.name + '» есть несохранённые изменения. '
-            + 'Без сохранения они будут потеряны.',
+        note: tr('discard.inFile') + t.name + tr('discard.tailHasChanges')
+            + tr('discard.willBeLost'),
         okClass: 'primary',
-        cancelText: 'Отменить',
+        cancelText: tr('btn.discard'),
         closeIsNo: false,
       }
     );
@@ -3915,7 +3921,7 @@ async function exitEdit(saveIt) {
   t.html = null;
   renderTabs();
   renderActive();
-  status('Правки отменены', 'warn');
+  status(tr('status.editsDiscarded'), 'warn');
 }
 
 /* ------------------------------------------------------- отмена и повтор

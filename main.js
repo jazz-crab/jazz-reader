@@ -11,8 +11,10 @@ const ipc = require('./ipc');
 const i18n = require('./src/i18n/index.js');
 i18n.setSystemLocale(app.getLocale());
 
-/** Перевод строки: короткое имя, потому что используется в каждом меню. */
-const t = (key, params) => i18n.t(key, params);
+/* Короткое имя tr, а не t: короткие однобуквенные имена в этом файле
+ * уже заняты (t здесь — вкладка в сообщениях), и перекрытие молча ломает
+ * разбор выражений вида t.name. */
+const tr = (key, params) => i18n.t(key, params);
 
 // Множественные экземпляры — намеренно НЕ используем requestSingleInstanceLock().
 // Каждый запуск = отдельный процесс со своим окном и своим набором вкладок,
@@ -135,7 +137,7 @@ function reportFatal(where, err) {
   fatalShown = true;
   try {
     dialog.showErrorBox(
-      t('error.startup'),
+      tr('error.startup'),
       `${where}\n\n${text}\n\n` +
       `Подробности: ${logPath || '(лог недоступен)'}\n` +
       'Если окно с приложением не появилось — пришлите этот файл, разберёмся.'
@@ -273,17 +275,17 @@ async function requestQuit() {
   const dirty = await dirtyTabs();
   log('выход: спрашиваем подтверждение, несохранённых ' + dirty);
   const detail = dirty
-    ? t('quit.detailDirty', { count: dirty })
-    : t('quit.detailClean');
+    ? tr('quit.detailDirty', { count: dirty })
+    : tr('quit.detailClean');
   const res = await dialog.showMessageBox(targetWindowSafe(), {
     type: 'question',
-    title: t('quit.title'),
-    message: t('quit.message'),
+    title: tr('quit.title'),
+    message: tr('quit.message'),
     detail,
-    buttons: [t('quit.close'), t('quit.cancel')],
+    buttons: [tr('quit.close'), tr('quit.cancel')],
     defaultId: 0,
     cancelId: 1,          // крестик в рамке равносилен отмене
-    checkboxLabel: t('quit.neverAgain'),
+    checkboxLabel: tr('quit.neverAgain'),
     noLink: true,
   });
   if (res.checkboxChecked) {
@@ -333,78 +335,78 @@ ipcMain.handle('mdv:setLang', async () => {
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
-      label: t('menu.file'),
+      label: tr('menu.file'),
       submenu: [
-        { label: t('menu.file.open'), accelerator: 'CmdOrCtrl+O', click: () => send('mdv:menu', 'open-file') },
-        { label: t('menu.file.openFolder'), accelerator: 'CmdOrCtrl+Shift+O', click: () => send('mdv:menu', 'open-folder') },
+        { label: tr('menu.file.open'), accelerator: 'CmdOrCtrl+O', click: () => send('mdv:menu', 'open-file') },
+        { label: tr('menu.file.openFolder'), accelerator: 'CmdOrCtrl+Shift+O', click: () => send('mdv:menu', 'open-folder') },
         { type: 'separator' },
-        { label: t('menu.file.save'), accelerator: 'CmdOrCtrl+S', click: () => send('mdv:menu', 'save') },
-        { label: t('menu.file.downloadMd'), click: () => send('mdv:menu', 'download-md') },
-        { label: t('menu.file.downloadHtml'), click: () => send('mdv:menu', 'download-html') },
-        { label: t('menu.file.print'), accelerator: 'CmdOrCtrl+P', click: () => send('mdv:menu', 'print') },
+        { label: tr('menu.file.save'), accelerator: 'CmdOrCtrl+S', click: () => send('mdv:menu', 'save') },
+        { label: tr('menu.file.downloadMd'), click: () => send('mdv:menu', 'download-md') },
+        { label: tr('menu.file.downloadHtml'), click: () => send('mdv:menu', 'download-html') },
+        { label: tr('menu.file.print'), accelerator: 'CmdOrCtrl+P', click: () => send('mdv:menu', 'print') },
         { type: 'separator' },
         // CmdOrCtrl+Q вместо role: 'quit': роль закрывает приложение молча,
         // минуя подтверждение.
-        { label: t('menu.file.quit'), accelerator: 'CmdOrCtrl+Q', click: () => requestQuit() },
+        { label: tr('menu.file.quit'), accelerator: 'CmdOrCtrl+Q', click: () => requestQuit() },
       ],
     },
     {
-      label: t('menu.edit'),
+      label: tr('menu.edit'),
       submenu: [
-        { role: 'undo', label: t('menu.edit.undo') },
-        { role: 'redo', label: t('menu.edit.redo') },
+        { role: 'undo', label: tr('menu.edit.undo') },
+        { role: 'redo', label: tr('menu.edit.redo') },
         { type: 'separator' },
-        { role: 'cut', label: t('menu.edit.cut') },
-        { role: 'copy', label: t('menu.edit.copy') },
-        { role: 'paste', label: t('menu.edit.paste') },
-        { role: 'selectAll', label: t('menu.edit.selectAll') },
+        { role: 'cut', label: tr('menu.edit.cut') },
+        { role: 'copy', label: tr('menu.edit.copy') },
+        { role: 'paste', label: tr('menu.edit.paste') },
+        { role: 'selectAll', label: tr('menu.edit.selectAll') },
         { type: 'separator' },
-        { label: t('menu.edit.find'), accelerator: 'CmdOrCtrl+F', click: () => send('mdv:menu', 'find') },
+        { label: tr('menu.edit.find'), accelerator: 'CmdOrCtrl+F', click: () => send('mdv:menu', 'find') },
       ],
     },
     {
-      label: t('menu.view'),
+      label: tr('menu.view'),
       submenu: [
-        { label: t('menu.view.sidebar'), accelerator: 'CmdOrCtrl+B', click: () => send('mdv:menu', 'toggle-sidebar') },
-        { label: t('menu.view.toc'), accelerator: 'CmdOrCtrl+Shift+B', click: () => send('mdv:menu', 'toggle-toc') },
+        { label: tr('menu.view.sidebar'), accelerator: 'CmdOrCtrl+B', click: () => send('mdv:menu', 'toggle-sidebar') },
+        { label: tr('menu.view.toc'), accelerator: 'CmdOrCtrl+Shift+B', click: () => send('mdv:menu', 'toggle-toc') },
         { type: 'separator' },
-        { label: t('menu.view.editMode'), accelerator: 'CmdOrCtrl+E', click: () => send('mdv:menu', 'toggle-mode') },
-        { label: t('menu.view.cancelEdit'), accelerator: 'Escape', click: () => send('mdv:menu', 'cancel-edit') },
+        { label: tr('menu.view.editMode'), accelerator: 'CmdOrCtrl+E', click: () => send('mdv:menu', 'toggle-mode') },
+        { label: tr('menu.view.cancelEdit'), accelerator: 'Escape', click: () => send('mdv:menu', 'cancel-edit') },
         { type: 'separator' },
-        { label: t('menu.view.back'), accelerator: 'Alt+Left', click: () => send('mdv:menu', 'back') },
-        { label: t('menu.view.forward'), accelerator: 'Alt+Right', click: () => send('mdv:menu', 'forward') },
+        { label: tr('menu.view.back'), accelerator: 'Alt+Left', click: () => send('mdv:menu', 'back') },
+        { label: tr('menu.view.forward'), accelerator: 'Alt+Right', click: () => send('mdv:menu', 'forward') },
         { type: 'separator' },
-        { role: 'resetZoom', label: t('menu.view.zoomReset') },
-        { role: 'zoomIn', label: t('menu.view.zoomIn') },
-        { role: 'zoomOut', label: t('menu.view.zoomOut') },
+        { role: 'resetZoom', label: tr('menu.view.zoomReset') },
+        { role: 'zoomIn', label: tr('menu.view.zoomIn') },
+        { role: 'zoomOut', label: tr('menu.view.zoomOut') },
         { type: 'separator' },
-        { label: t('menu.view.reload'), accelerator: 'F5', click: () => send('mdv:menu', 'reload') },
-        { role: 'togglefullscreen', label: t('menu.view.fullscreen') },
-        { role: 'toggleDevTools', label: t('menu.view.devtools') },
+        { label: tr('menu.view.reload'), accelerator: 'F5', click: () => send('mdv:menu', 'reload') },
+        { role: 'togglefullscreen', label: tr('menu.view.fullscreen') },
+        { role: 'toggleDevTools', label: tr('menu.view.devtools') },
       ],
     },
     {
-      label: t('menu.go'),
+      label: tr('menu.go'),
       submenu: [
-        { label: t('menu.go.newTab'), accelerator: 'CmdOrCtrl+T', click: () => send('mdv:menu', 'new-tab') },
-        { label: t('menu.go.closeTab'), accelerator: 'CmdOrCtrl+W', click: () => send('mdv:menu', 'close-tab') },
+        { label: tr('menu.go.newTab'), accelerator: 'CmdOrCtrl+T', click: () => send('mdv:menu', 'new-tab') },
+        { label: tr('menu.go.closeTab'), accelerator: 'CmdOrCtrl+W', click: () => send('mdv:menu', 'close-tab') },
         { type: 'separator' },
         // Акселераторы у этих двух пунктов намеренно НЕ заданы: Windows считает
         // Ctrl+Tab системной комбинацией и съедает её раньше меню. Перехват
         // делает globalShortcut (registerTabShortcuts), он шлёт то же действие.
-        { label: t('menu.go.nextTab'), click: () => send('mdv:menu', 'next-tab') },
-        { label: t('menu.go.prevTab'), click: () => send('mdv:menu', 'prev-tab') },
+        { label: tr('menu.go.nextTab'), click: () => send('mdv:menu', 'next-tab') },
+        { label: tr('menu.go.prevTab'), click: () => send('mdv:menu', 'prev-tab') },
       ],
     },
     {
-      label: t('menu.help'),
+      label: tr('menu.help'),
       submenu: [{
-        label: t('menu.help.about'),
+        label: tr('menu.help.about'),
         click: () => require('electron').dialog.showMessageBox(win, {
           type: 'info', title: 'JazzReader',
           message: 'JazzReader ' + app.getVersion(),
-          detail: t('about.detail'),
-          buttons: [t('about.ok')],
+          detail: tr('about.detail'),
+          buttons: [tr('about.ok')],
         }),
       }],
     },
@@ -487,7 +489,7 @@ app.whenReady()
   .catch((err) => {
     // Раньше здесь был bare .then() — любая ошибка становилась unhandledRejection
     // без окна и без вывода. Теперь это явная ошибка с диалогом и кодом возврата 1.
-    reportFatal(t('error.windowFailed'), err);
+    reportFatal(tr('error.windowFailed'), err);
     app.exit(1);
   });
 
