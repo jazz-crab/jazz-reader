@@ -1,328 +1,361 @@
-# JazzReader — офлайн-читалка Markdown с LaTeX
+[English](README.md) | [Русский](README_ru.md)
 
-Порт веб-инструмента [`github.com/jazz-crab/jazz-reader/`](https://github.com/jazz-crab/jazz-reader/) в
-десктопное Electron-приложение для Windows.
+# JazzReader
 
-Оригинал — читалка `.md` в стиле TokyoNight (режимы чтение/правка, оглавление
-слева). Здесь она работает локально, без сервера и без сети, и **умеет рендерить
-LaTeX через KaTeX** — в оригинале формулы не поддерживались вообще.
+An offline Markdown reader with LaTeX. A desktop app for Windows built on
+Electron, styled after TokyoNight.
 
-## Что умеет
+It runs entirely locally: no server, no network, no accounts. Your notes stay
+plain `.md` files on your own disk — no database, no lock-in.
 
-- **Рендер Markdown** — `marked` v15, локально.
-- **LaTeX** — `$$…$$`, `$…$`, `\[…\]`, `\(…\)`. Кириллица в `\text{Ом}` работает,
-  поддерживаются `\frac`, `\boxed`, `\begin{aligned}`, `\parallel`, запятые-разделители
-  `{,}`, `\Longrightarrow` и прочее.
-- **Режим правки** — raw-режим, все спецсимволы видны; `Ctrl+S` пишет файл
-  (атомарно: временный файл + `rename`).
-- **Вкладки** — каждый новый файл открывается в отдельной вкладке.
-- **Открытие** — `Ctrl+O` файл, `Ctrl+Shift+O` папка, drag-and-drop файла **или папки**.
-- **Дерево папок** — рекурсивный список **только `.md`**, сгруппированный по
-  подкаталогам, с фильтром по имени. Папок можно открыть несколько.
-- **Оглавление** — строится по `h1`–`h4`, scroll-spy подсвечивает текущий раздел.
-- **История** — `Alt+←` / `Alt+→` (и кнопки-стрелки): назад/вперёд по ссылкам и
-  разделам; когда история документа исчерпана — переключение вкладок, как в браузере.
-- **Скачивание** — MD, автономный HTML одним файлом (шрифты KaTeX вшиты
-  base64), печать/PDF.
-- **Поиск** — `Ctrl+F`, подсветка всех совпадений с переходом по `Enter`/стрелкам.
-- **Код** — кнопка копирования, автоподпись языка.
-- **Клик по формуле** — показывает её LaTeX-исходник в строке состояния.
-- **Мультиинстанс** — можно запустить несколько копий и держать в них разные проекты.
+**The main difference from most Markdown readers:** LaTeX formulas. `$$…$$`,
+`$…$`, `\[…\]`, `\(…\)`, Cyrillic inside `\text{…}`, `\frac`, `\boxed`,
+`\begin{aligned}`, `\parallel`, `{,}` spacing commas, `\Longrightarrow` and more —
+rendered by KaTeX, locally.
 
-## Горячие клавиши
+## Features
+
+- **Markdown rendering** — `marked` v15, local.
+- **LaTeX** — via KaTeX, see above.
+- **Edit mode** — raw mode with every special character visible; `Ctrl+S` writes
+  the file atomically (temp file plus `rename`).
+- **Tabs** — every new file opens in its own tab; tabs can be reordered by drag,
+  duplicated, scrolled, and closed from a right-click menu.
+- **Opening** — `Ctrl+O` for a file, `Ctrl+Shift+O` for a folder, drag-and-drop
+  of a file **or** a folder, plus a "Recents" dialog.
+- **Folder tree** — a recursive list of **`.md` only**, grouped into
+  subdirectories, with a name filter. Several folders can be open at once.
+- **Table of contents** — built from `h1`–`h4`, with a scroll-spy highlighting
+  the current section.
+- **History** — `Alt+←` / `Alt+→` (or the arrow buttons): back/forward through
+  links and sections; once a document's history runs out, the same keys cycle
+  tabs like in a browser.
+- **Export** — Markdown, a self-contained HTML file (KaTeX fonts inlined as
+  base64), printing and PDF.
+- **Search** — `Ctrl+F`, highlights every match and walks them with `Enter` or
+  the arrow keys.
+- **Code** — a copy button and automatic language detection.
+- **Click a formula** — shows its LaTeX source in the status bar.
+- **Radial menu** — right-click: open, export, path, edit, cancel, save, and the
+  clipboard trio. Also works with the "hold right button and drag" mode.
+- **Multiple instances** — run several copies and keep different projects in
+  each.
+
+## Keyboard shortcuts
 
 | | |
 |---|---|
-| `Ctrl+O` | открыть `.md` |
-| `Ctrl+Shift+O` | открыть папку |
-| `Ctrl+T` / `Ctrl+W` | новая / закрыть вкладку |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | следующая / предыдущая вкладка |
-| `Alt+←` / `Alt+→` | назад / вперёд |
-| `Ctrl+E` | режим правки |
-| `Ctrl+S` | сохранить (в правке) / скачать `.md` (в чтении) |
-| `Ctrl+F` | поиск |
-| `Ctrl+B` | панель файлов/оглавление |
-| `Ctrl+P` | печать / PDF |
-| `F5` | перезагрузить файл с диска |
+| `Ctrl+O` | open a `.md` file |
+| `Ctrl+Shift+O` | open a folder |
+| `Ctrl+T` / `Ctrl+W` | new / close tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | next / previous tab |
+| `Alt+←` / `Alt+→` | back / forward |
+| `Ctrl+E` | edit mode |
+| `Ctrl+S` | save (in edit mode) / download `.md` (in reading mode) |
+| `Ctrl+F` | search |
+| `Ctrl+B` | files pane / table of contents |
+| `Ctrl+Shift+B` | table of contents |
+| `Ctrl+P` | print / PDF |
+| `Ctrl+Q` | quit (with a confirmation) |
+| `Ctrl+Space` | radial menu (for keyboard-only use) |
+| `F5` | reload the file from disk |
 
-## Почему так сделано
+## Why it is built this way
 
-**Формулы вырезаются ДО `marked`, а не рендерятся после.** `marked` — это markdown,
-и он портит LaTeX: `\\` → `\`, `\{` → `{`, `\_` → `_`. KaTeX такое не осилит, поэтому
-авторендер «после markdown» даёт битые формулы. Здесь `src/md.js` сначала вырезает
-формулы в безопасные плейсхолдеры (код — fenced и inline — копируется дословно и в
-подстановку не попадает), потом идёт `marked.parse()`, и только затем плейсхолдеры
-заменяются на `katex.renderToString`.
+**Formulas are extracted BEFORE `marked`, not rendered after it.** `marked` is a
+Markdown parser and it mangles LaTeX: `\\` → `\`, `\{` → `{`, `\_` → `_`. KaTeX
+cannot cope with the result, so an "after Markdown" auto-renderer produces broken
+formulas. Here `src/md.js` first lifts formulas out into safe placeholders (code,
+fenced and inline, is copied verbatim and never substituted), then `marked.parse()`
+runs, and only afterwards are the placeholders replaced with
+`katex.renderToString`.
 
-**TikZ/circuitikz не рендерится** — KaTeX его не поддерживает. В заметках он
-встречается только внутри блоков ```` ```tikz ````, поэтому показывается как код.
-Поддержка настоящего TikZ потребовала бы LaTeX-движка (не Electron).
+**TikZ/circuitikz is not rendered** — KaTeX does not support it. In notes it
+usually appears inside ```` ```tikz ```` blocks, so it shows up as code. Real TikZ
+would need a separate LaTeX engine, i.e. a rewrite of the shell.
 
-**Всё локально.** Ни CDN, ни сети: `marked`, `KaTeX`, Nerd Font и шрифты KaTeX
-лежат в `src/vendor` и `src/fonts`. Нужен офлайн — так и сделано.
+**Everything is local.** No CDN, no network: `marked`, `KaTeX` and the fonts live
+in `src/vendor` and `src/fonts`. Offline is a requirement, so that is how it is
+built.
 
-## Сборка
+## Building
 
-Собирать надо **на Windows**. Раньше `.exe` собирались на Linux кросс-компиляцией
-через wine — это работало, но баг запуска проявлялся только в Windows-сборке, и
-проверить её на месте было нечем (см. «Тихий запуск» ниже).
-
-```bash
-npm install          # поставит electron + electron-builder и скопирует KaTeX в src/vendor
-npm start            # запуск
-npm run dist         # сборка Setup + Portable
-npm run dist:dir     # только распакованная папка dist\win-unpacked (быстро, для отладки)
-```
-
-Готовые файлы в `dist/`:
-
-| файл | размер | что это |
-|---|---|---|
-| `JazzReader-Setup-1.0.14-x64.exe` | ~72.1 МБ | установщик (папка на выбор, ярлыки на стол и в «Пуск») |
-| `JazzReader-Portable-1.0.14-x64.exe` | ~71.9 МБ | портативный, распаковать и запустить |
-
-Подпись не настроена, так что SmartScreen покажет «Windows protected your PC» →
-«Подробнее» → «Выполнить в любом случае». Если exe скачан из браузера, у него
-есть метка Mark-of-the-Web; при запуске вручную с диска Windows может тихо
-отказаться его запускать — снять метку: `Unblock-File .\JazzReader-Portable-*.exe`.
-
-### Тихий запуск: почему exe «ничего не делал»
-
-Если `JazzReader.exe` запускается, процесс жив, а окна нет — это тот самый баг, что
-был в сборке 1.0.0 с MDView. `main.js` вызывал `win.setTitleBarOverlay()` без
-включения overlay в конструкторе `BrowserWindow`. Electron бросает
-`Titlebar overlay is not enabled`, исключение уходит в `app.whenReady().then()`
-без `catch`, превращается в unhandled rejection — и `createWindow()` обрывается
-на середине, **окно не создаётся вообще**. При этом:
-
-- Electron собран как GUI-подсистемное приложение, поэтому `stdout`/`stderr`
-  не попадают в консоль, из которой его запустили, — «0 информации в cmd» это
-  ожидаемо, а не признак поломки;
-- процесс при этом остаётся жив (GPU, renderer, сетевые процессы), так что
-  в диспетчере задач он выглядит как работающий.
-
-Почему это не поймали тесты: `renderMd`/KaTeX проверялись в Node, а
-`main.js` на Windows вообще не запускался — сборка делалась на Linux, где ветка
-`process.platform === 'win32'` не выполняется.
-
-Теперь в `main.js` overlay включается в конструкторе окна, а старт обёрнут так,
-что промах больше не может стать тихим:
-
-- лог в `jazzreader.log` рядом с exe (в `userData`, если каталог не для записи);
-- `dialog.showErrorBox` + код возврата 1, если окно создать не удалось;
-- обработчики `uncaughtException` / `unhandledRejection`;
-- окно показывается по `ready-to-show` **или** по таймауту в 6 с;
-- `did-fail-load` пишется в лог.
-
-Регрессия закрыта тестом `test/startup.js` (`npm run test:startup`) — он
-поднимает настоящий Electron и проверяет живой DOM.
-
-### Размер сборки
-
-Портативный exe — 71.9 МБ, и это почти целиком Chromium, а не приложение.
-Ниже всё измерено на сборке 1.0.14, а не пересказано из старой:
-
-| что | распакованный | комментарий |
-|---|---|---|
-| `JazzReader.exe` | 180.0 МБ | сам Electron — тут и живут почти все 72 МБ |
-| `locales/*.pak` (2 шт.) | 1.4 МБ | было 55 файлов на 40.3 МБ; вырезано через `electronLanguages: ["ru","en-US"]` |
-| `app.asar` | 3.1 МБ | **весь наш код, шрифты и KaTeX** |
-| `ffmpeg.dll` | 2.8 МБ | медиакодеки; **нельзя вырезать**, см. ниже |
-| `LICENSES.chromium.html` | 8.7 МБ | лицензии Chromium, оставлены |
-| прочее (icudtl, .pak, GL/Vulkan) | ~36 МБ | сам браузер |
-
-Итого было 274.6 МБ распакованных и 82.1 МБ в exe, стало 232.3 МБ и 71.9 МБ
-(`compression: "maximum"` + вырезанные локали).
-
-Чего дальше ужать нельзя: `JazzReader.exe` — один файл, и внутри него весь Chromium.
-Дальше только смена рантайма (Tauri использует системный WebView2 и даёт
-3–8 МБ, но это переписывание оболочки, а не сборки).
-
-`scripts/after-pack.js` — пример места, где такие вещи делаются: electron-builder
-не умеет исключать файлы рантайма через `files` (тот фильтр действует только на
-исходники приложения). Хук вырезает лишние локали как страховку к
-`electronLanguages`.
-
-**Не вырезать `ffmpeg.dll`.** Проверено: Chromium грузит его на старте ради
-медиа-стека, даже когда читалка Markdown не воспроизводит ни одного видео.
-Без него процесс падает **до** выполнения `main.js` — ни окна, ни лога, ни
-байта в `stderr`, то есть выглядит ровно как тот «тихий запуск». Лишние 2.8 МБ
-не стоят такого риска.
-
-### Иконка
-
-`build/icon/icon.svg` — исходник, «MD» в теме TokyoNight (`#7aa2f7 → #7dcfff` по
-горизонтали на плашке `#16161e`). Иконка нужна только на этапе сборки, в asar она не
-попадает. Пересобрать PNG-слои и `.ico`:
+Build on **Windows**. `.exe` files used to be cross-compiled on Linux through
+wine — that worked, but the startup bug only ever showed up in the Windows build
+and there was no way to check it in place (see "The silent start" below).
 
 ```bash
-npm run icons         # POSIX: нужны rsvg-convert и python3 (Pillow)
+npm install          # installs electron + electron-builder and copies KaTeX into src/vendor
+npm start            # run
+npm run dist         # build Setup + Portable
+npm run dist:dir     # only the unpacked dist\win-unpacked folder (fast, for debugging)
+npm run icons        # rebuild the app icon from build/icon/icon.svg
 ```
 
-На Windows скрипт не запустится (это `.sh`) — иконки в репозитории уже готовы,
-менять их придётся на сервере или в WSL.
+Build output in `dist/` (measured on 1.0.14):
 
-Слои 16/20/24px рисуются с увеличенным кеглем (`SMALL_SCALE` в `make-icons.sh`):
-в пропорциональном виде капитель на 16px вырождается в 4 пикселя и не читается.
-Лайаут зашит в SVG по метрикам инка, а не «на глаз», — при правке текста прогони
-`npm run icons` и `test/icon.test.js`.
+| file | size | what it is |
+|---|---|---|
+| `JazzReader-Setup-1.0.14-x64.exe` | ~72.1 MB | installer (picks a folder, desktop and Start Menu shortcuts) |
+| `JazzReader-Portable-1.0.14-x64.exe` | ~71.9 MB | portable, unpack and run |
 
-## Иконки и шрифт
+The binary is not signed, so SmartScreen will say "Windows protected your PC" →
+"More info" → "Run anyway". If the exe was downloaded from a browser it carries
+a Mark-of-the-Web tag, and Windows may then quietly refuse to start it from disk —
+remove the tag with `Unblock-File .\JazzReader-Portable-*.exe`.
 
-Иконки — **инлайновый SVG из [Lucide](https://lucide.dev)**, модуль `src/icons.js`
-генерирует `scripts/vendor.js` из пакета `lucide-static`. Список иконок — константа
-`USED_ICONS` в `vendor.js`, там же и список начертаний/сабсетов шрифта.
+### The silent start: why the exe "did nothing"
 
-Раньше иконки были глифами Font Awesome (`&#xf07b;` и подобные) из
-JetBrainsMono **Nerd** Font: они рисовались только если загрузился иконочный
-шрифт, а сам шрифт весил 4 × ~1 МБ. Теперь SVG не зависит ни от шрифта, ни от
-сети, красится через `currentColor` и наследует цвет кнопки.
+If `JazzReader.exe` starts, the process is alive, and no window appears, that is
+the bug from the very first build, 1.0.0. `main.js` called
+`win.setTitleBarOverlay()` without enabling overlay in the `BrowserWindow`
+constructor. Electron throws `Titlebar overlay is not enabled`, the exception
+lands in `app.whenReady().then()` with no `catch`, becomes an unhandled rejection,
+and `createWindow()` dies halfway through — **the window is never created at all**.
+Meanwhile:
 
-Иконки в разметке: `<span class="ico" data-i="folder-open"></span>` — разметку
-подставляет `MDV_ICONS.hydrate()` при старте. Динамические иконки —
+- Electron is built as a GUI-subsystem app, so `stdout`/`stderr` do not reach the
+  console you launched it from — "no output in cmd" is expected, not a symptom of
+  breakage;
+- the process stays alive anyway (GPU, renderer, network processes), so in Task
+  Manager it looks like it is working.
+
+Why no test caught it: `renderMd`/KaTeX were checked in Node, and `main.js` was
+never launched on Windows at all — the build happened on Linux, where the
+`process.platform === 'win32'` branch never executes.
+
+Now the overlay is enabled in the window constructor, and startup is wrapped so a
+miss can no longer be silent:
+
+- a log in `jazzreader.log` next to the exe (or in `userData` if the directory is
+  not writable);
+- `dialog.showErrorBox` plus exit code 1 if the window cannot be created;
+- handlers for `uncaughtException` / `unhandledRejection`;
+- the window is shown on `ready-to-show` **or** after a 6 s timeout;
+- `did-fail-load` goes to the log.
+
+The regression is covered by `test/startup.js` (`npm run test:startup`) — it
+starts a real Electron and inspects the live DOM.
+
+### Build size
+
+The portable exe is 71.9 MB, and almost all of that is Chromium rather than the
+app. Everything below was measured on 1.0.14:
+
+| what | unpacked | note |
+|---|---|---|
+| `JazzReader.exe` | 180.0 MB | Electron itself — nearly all 72 MB live here |
+| `locales/*.pak` (2 files) | 1.4 MB | was 55 files at 40.3 MB; cut via `electronLanguages: ["ru","en-US"]` |
+| `app.asar` | 3.1 MB | **all of our code, fonts and KaTeX** |
+| `ffmpeg.dll` | 2.8 MB | media codecs; **must not be removed**, see below |
+| `LICENSES.chromium.html` | 8.7 MB | Chromium licences, kept |
+| the rest (icudtl, .pak, GL/Vulkan) | ~36 MB | the browser itself |
+
+That is down from 274.6 MB unpacked and 82.1 MB in the exe to 232.3 MB and 71.9 MB
+(`compression: "maximum"` plus trimmed locales).
+
+`scripts/after-pack.js` shows where this kind of thing goes: electron-builder
+cannot exclude runtime files through `files` (that filter only covers the app's own
+sources). The hook strips extra locales as a backstop for `electronLanguages`.
+
+**Do not remove `ffmpeg.dll`.** Verified: Chromium loads it at startup for the
+media stack, even when a Markdown reader never plays a single video. Without it
+the process dies **before** `main.js` runs — no window, no log, not a byte in
+`stderr`, which looks exactly like that "silent start". 2.8 MB is not worth that
+risk.
+
+### App icon
+
+`build/icon/icon.svg` is the source: "JR" in JetBrains Mono ExtraBold, TokyoNight
+colours (`#7aa2f7 → #7dcfff` horizontally on a `#16161e` plate). The icon is only
+needed at build time; it does not end up in the asar.
+
+```bash
+npm run icons         # build/icon/make-icons.js
+```
+
+The generator supplies the font itself: JetBrains Mono is usually not installed on
+Windows, and `font-family` alone falls back to some other monospace face, giving
+different letters. `make-icons.js` inlines an `@font-face` with a woff2 from the
+project as a `data:` URI and waits for `document.fonts.ready` before capturing.
+
+The generator used to be `make-icons.sh` and needed `rsvg-convert` plus
+`python3`, so it only worked on POSIX. It is still there as a second path — on a
+machine with Lato the letters land differently and the metrics in the SVG need
+adjusting.
+
+The 16/20/24 px layers are drawn at a larger font size (`SMALL_SCALE`): a cap
+height that small is otherwise four pixels and unreadable. The layout is pinned in
+the SVG by ink metrics rather than by eye — after editing the text, run
+`npm run icons` and `test/icon.test.js`.
+
+## UI icons and fonts
+
+UI icons are **inline SVG from [Lucide](https://lucide.dev)**; `src/icons.js` is
+generated by `scripts/vendor.js` from the `lucide-static` package. The icon list
+is the `USED_ICONS` constant in `vendor.js`.
+
+They used to be Font Awesome glyphs (`&#xf07b;` and friends) from the JetBrainsMono
+**Nerd** Font: they only rendered if the icon font happened to load, and the font
+itself weighed 4 × ~1 MB. SVG now depends on neither the font nor the network,
+paints through `currentColor`, and inherits the button's colour.
+
+Icons in markup: `<span class="ico" data-i="folder-open"></span>` — the markup is
+inserted by `MDV_ICONS.hydrate()` at startup. Dynamic icons use
 `ICONS.icon('copy')`.
 
-Инлайн, а не `<use href="sprite.svg#...">`: в `index.html` жёсткий CSP
-(`default-src 'none'`), а внешняя ссылка в `<use>` — это fetch, который его не
-проходит.
+Inline rather than `<use href="sprite.svg#...">`: `index.html` sets a strict CSP
+(`default-src 'none'`), and an external reference in `<use>` is a fetch, which
+that CSP does not allow.
 
-Шрифт везде **JetBrains Mono** (`--ui` и `--mono`): кириллица + латиница,
-400/500/700 и 400 italic, 8 файлов woff2 = **106 КБ** вместо 4 110 КБ Nerd Font.
-`@font-face` генерируются в `src/fonts.css` с `unicode-range`, чтобы браузер не
-тянул кириллический файл ради латинских букв и наоборот.
+The font everywhere is **JetBrains Mono** (`--ui` and `--mono`): Cyrillic plus
+Latin, weights 400/500/700 and 400 italic, 8 woff2 files totalling **106 KB**
+against 4 110 KB for Nerd Font. The `@font-face` rules are generated into
+`src/fonts.css` with `unicode-range` so the browser does not pull the Cyrillic
+file for Latin characters and vice versa.
 
-## Тесты
+## Tests
 
 ```bash
-npm test              # рендер LaTeX (22) + иконки/шрифт (57) + иконка приложения (54)
-npm run test:startup  # настоящее окно + живой DOM: запуск, вёрстка, дерево папок (30)
-npm run test:tabs     # правка, вкладки, ПКМ-меню, оглавление, дерево, пустая вкладка (50)
-npm run test:all      # всё вместе
-npm run test:ui       # smoke + аудит в реальном окне Electron (POSIX, нужен xvfb)
+npm test              # the whole fast suite: 247 checks
+npm run test:startup  # a real window + live DOM: startup, layout, folder tree
+npm run test:tabs     # editing, tabs, context menus, TOC, tree, blank tab
+npm run test:all      # everything together
+npm run test:ui       # smoke + audit in a real Electron window (needs xvfb)
 ```
 
-`test/math.test.js` прогоняет все `.md` из `/srv/uchoba` и падает, если хоть одна
-формула не отрендерилась или остался неразобранный плейсхолдер.
+Current counts: `math` 36, `icons` 71, `icon` 55, `print` 65, `quit` 20.
 
-`test/startup.js` — единственный тест, который поднимает настоящее окно и смотрит
-в него. Проверяет, что `main.js` создал окно, renderer дошёл до `index.html`,
-`marked`/`katex` загрузились, формулы стали глифами, а не буквами `\\frac`.
-На исходном `main.js` этот тест падает с «процесс жив, окна нет» — ровно тот
-баг, что описан в «Тихом запуске». Кроссплатформенный, CDP внутри, xvfb не нужен
-(на Linux в контейнере без дисплея — `xvfb-run -a npm run test:startup`).
+Some checks run against real notes and are skipped when those are not available.
+Paths come from environment variables — they have no place in the repository:
 
-### Что ловят регрессионные проверки вёрстки
+| variable | what it needs |
+|---|---|
+| `MDV_REAL_NOTE` | one `.md` file to render (+3 checks in `math`) |
+| `MDV_NOTES_DIR` | a directory of `.md` files, walked in full (`math`, `test:ui`) |
+| `MDV_SAMPLE_DIR` | a directory holding `AAA.md`, `BBB.md`, `DDD.md` for `test:tabs` |
+| `MDV_SAMPLE_NOTE` | one file inside `MDV_NOTES_DIR` for `test:ui` |
 
-Обе проверки в `test/startup.js` проверены обратным включением бага — с
-исходным кодом они падают.
+`test/startup.js` is the only test that starts a real window and looks into it. It
+checks that `main.js` created the window, that the renderer reached `index.html`,
+that `marked`/`katex` loaded, and that formulas became glyphs rather than literal
+`\frac`. Against the original `main.js` this test fails with "process alive, no
+window" — exactly the bug described under "The silent start".
 
-**Разъезд абзацев.** `.content > *` задавал `margin-left/right: auto`, а у
-`h1-h6`, `ul`, `ol`, `pre`, `table`, `blockquote` были свои правила со
-шорткатом `margin: X 0`, который обнулял центровку. В итоге на широком окне
-абзацы уезжали в центр колонки, а заголовки и списки оставались у левого края —
-разъезд около 290 px. Починено через `margin-inline: auto` + `margin-block`
-везде. Тест расширяет вьюпорт до 1700 px через `Emulation.setDeviceMetricsOverride`
-(на узком окне `max-width` не срабатывает и баг не виден) и требует, чтобы у
-всех блоков колонки совпадал `offsetLeft`.
+`test/icon.test.js` decodes the PNGs itself (only `zlib`, no Python) and checks the
+icon by pixels: letter geometry, margin symmetry, the TokyoNight palette, the ICO
+structure, and that the small layers really are scaled up.
 
-**`margin-block` нельзя писать тремя значениями.** Шорткат принимает только
-1–2 значения, тройная запись отбрасывает декларацию целиком — на этом уже
-потерялись вертикальные отступы у заголовков (`margin: 1.5em 0 .55em`
-превратился в `margin-block: 1.5em 0 .55em`, и заголовки слиплись). Проверка
-есть в `test/icons.test.js`.
+`test/audit.js` checks layout, fonts, formula centring, scroll-spy, the tree
+filter, and the self-containment of the HTML export. `test/packaged-check.js`
+attaches to the already packaged binary over CDP — it catches problems invisible
+in the sources (asar paths, fonts from the archive, files lost during packaging):
 
-## Правка, вкладки, оглавление
+```bash
+node test/packaged-check.js dist/linux-unpacked/jazz-reader "file.md"
+```
 
-**Правка.** В режиме правки вместо одного переключателя «Правка» показываются
-две явные кнопки: зелёная **Сохранить** и красная **Отменить**. Раньше был
-единственный переключатель, который молча уходил из правки, оставляя изменения
-в памяти — их можно было потерять, ничего не спрашивая. Теперь выход всегда
-явный: `Esc` или «Отменить» спрашивают, если есть несохранённое, и при отказе
-остаются в правке. `Ctrl+S` — сохранить.
+### What the layout regression tests catch
 
-**Ctrl+Tab / Ctrl+Shift+Tab** переключают вкладки **по порядку, по кругу**.
-Раньше обе комбинации шли в `cycleTab()`, то есть по стеку `visit`
-(туда-сюда-обратно), а ожидаешь спокойного шага «следующая/предыдущая».
+Both checks in `test/startup.js` were verified by re-enabling the bug — against the
+original source they fail.
 
-Тут есть тонкость Windows: `Ctrl+Tab` — системная комбинация, ОС съедает её
-раньше, чем дойдёт до Chromium, и `keydown` в renderer'е **не срабатывает вовсе**
-(проверено синтетическим `keybd_event` по настоящему окну). Поэтому перехват
-делает `globalShortcut` в главном процессе, он шлёт то же действие в renderer.
-Регистрация обязательно снимается на `will-quit` — иначе хоткей залипает и
-`Ctrl+Tab` не работает во всей системе до перезагрузки. Акселераторы у пунктов
-меню намеренно не заданы, чтобы Electron не обрабатывал комбинацию дважды.
+**Paragraph drift.** `.content > *` set `margin-left/right: auto`, while `h1-h6`,
+`ul`, `ol`, `pre`, `table` and `blockquote` had their own rules with a
+`margin: X 0` shorthand that cancelled the centring. On a wide window paragraphs
+drifted to the centre of the column while headings and lists stayed at the left
+edge — about 290 px apart. Fixed with `margin-inline: auto` plus `margin-block`
+everywhere. The test widens the viewport to 1700 px via
+`Emulation.setDeviceMetricsOverride` (on a narrow window `max-width` does not kick
+in and the bug is invisible) and requires every block in the column to share the
+same `offsetLeft`.
 
-**ПКМ по вкладке** — меню: закрыть вкладку / все кроме этой / справа / слева /
-все. Работает и с клавиатуры (Shift+F10 и клавиша ContextMenu). При массовом
-закрытии несохранённые вкладки **не закрываются**, а показываются в статусбаре
-(иначе пять одинаковых вопросов подряд и потеря правок).
+**`margin-block` cannot take three values.** The shorthand accepts only 1–2, and a
+three-value declaration is dropped entirely — vertical spacing on headings was
+already lost this way (`margin: 1.5em 0 .55em` became
+`margin-block: 1.5em 0 .55em` and the headings ran together). There is a check for
+this in `test/icons.test.js`.
 
-**Проводник всегда слева**, без переключателя. Оглавление убрано в отдельную
-выдвижную панель по кнопке-бургеру в тулбаре (Ctrl+Shift+B) — раньше оно
-делило с проводником одну панель, и ради оглавления приходилось терять
-проводник.
+## Editing, tabs, table of contents
 
-**В дереве подсвечивается открытый файл**: текущая вкладка — ярко и с
-синей полосой, открытая в другой вкладке — приглушённо и с фиолетовой. Тут
-был неочевидный баг: пути из дерева приходят через `path.join`
-(`C:\dir\file.md`), а во вкладках — с прямыми слэшами (`C:/dir/file.md`), и
-наивное `===` их не считывало. Всё сверяется через `samePath()`, который
-приводит путь к одному виду и не различает регистр.
+**Editing.** In edit mode there is no single "Edit" toggle: instead two explicit
+buttons, a green **Save** and a red **Cancel**. There used to be one toggle that
+would silently leave edit mode while changes stayed in memory — you could lose them
+without being asked. Exiting is now always explicit: `Esc` or "Cancel" asks if
+there are unsaved changes, and declining keeps you in edit mode. `Ctrl+S` saves.
 
-**Пустая вкладка** показывает дефолтную заглушку как при старте. Но если папка
-уже открыта, а вкладка без файла — показывается дерево (иначе «Папка» снова
-выглядит как кнопка, которая ничего не делает). Различается флагом `blank` на
-вкладке: его ставит `newTab()`, а `addFolder()` сбрасывает.
+**Ctrl+Tab / Ctrl+Shift+Tab** cycle tabs **in order, wrapping around**. Both
+combinations used to go to `cycleTab()`, i.e. walk the `visit` stack
+(there-and-back), while what you expect is a calm step to the next or previous
+tab.
 
-### Дерево папок
+There is a Windows subtlety here: `Ctrl+Tab` is a system shortcut, the OS eats it
+before Chromium ever sees it, and `keydown` in the renderer **does not fire at
+all**. So the interception is done by `globalShortcut` in the main process, which
+sends the same action to the renderer. The registration must be released on
+`will-quit` — otherwise the hotkey sticks and `Ctrl+Tab` stops working system-wide
+until you reboot. Menu items deliberately carry no accelerators, so Electron does
+not handle the combination twice.
 
-`renderTree()` писал дерево в `#paneFiles` внутри **скрытого** `#workspace`:
-рабочую область показывал `renderActive()`, и только когда открыт файл. Итог —
-кнопка «Папка» визуально ничего не делала, дерево «появлялось» лишь вместе с
-первым открытым файлом. Теперь `renderActive()` показывает рабочую область и
-когда открыта только папка, а `addFolder()` дёргает `renderActive()` после
+**Right-click on a tab** — menu: close this tab / all others / those to the right /
+those to the left / all. It works from the keyboard too (Shift+F10 and the ContextMenu
+key). When closing in bulk, unsaved tabs are **not** closed: they are listed in the
+status bar instead (otherwise you get five identical questions in a row and lose
+edits).
+
+**The file tree is always on the left**, with no toggle. The table of contents moved
+into its own slide-out panel behind a hamburger button — it used to share one pane
+with the tree, so wanting the TOC meant losing the tree.
+
+**The open file is highlighted in the tree**: the current tab bright with a blue
+bar, open in another tab dimmed with a violet one. There was a non-obvious bug
+here: paths from the tree come through `path.join` (`C:\dir\file.md`) while tabs
+hold forward slashes (`C:/dir/file.md`), and a naive `===` did not match them.
+Everything goes through `samePath()`, which normalises the path and ignores case.
+
+**A blank tab** shows the default placeholder as at startup. But if a folder is
+already open and the tab has no file, it shows the tree instead (otherwise "Folder"
+again looks like a button that does nothing). The difference is the `blank` flag on
+the tab: `newTab()` sets it, `addFolder()` clears it.
+
+### The folder tree
+
+`renderTree()` wrote the tree into `#paneFiles` inside a **hidden** `#workspace`:
+`renderActive()` is what showed the work area, and only when a file was open. The
+upshot was that the "Folder" button appeared to do nothing, and the tree only
+"appeared" together with the first opened file. Now `renderActive()` shows the work
+area when only a folder is open, and `addFolder()` calls `renderActive()` after
 `renderTree()`.
 
-Проверяется в `test/startup.js`: тест закрывает все вкладки (чтобы воспроизвести
-сценарий «файл ещё не открывали»), зовёт `window.__mdvTest.addFolder()` на
-настоящем временном каталоге и требует, чтобы `#workspace` стал видимым, а
-дерево — непустым. С багом падает на `workspaceHidden=true`.
+This is checked in `test/startup.js`: the test closes every tab (to reproduce the
+"no file opened yet" case), calls `window.__mdvTest.addFolder()` on a real temp
+directory, and requires `#workspace` to have become visible with a non-empty tree.
+With the bug it fails on `workspaceHidden=true`.
 
-Системный диалог выбора папки из теста открыть нельзя, поэтому у renderer есть
-хук `window.__mdvTest`. Подменить диалог через `contextBridge` невозможно —
-объекты оттуда заморожены, присваивание молча игнорируется.
+A test cannot open the system folder-picker dialog, so the renderer has a
+`window.__mdvTest` hook. Replacing the dialog through `contextBridge` is not
+possible — objects coming from there are frozen and assignment is silently ignored.
 
-`test/icon.test.js` разбирает PNG своим кодом (только `zlib`, без python) и проверяет
-иконку по пикселям: геометрию букв, симметрию полей, палитру TokyoNight, структуру
-ICO и что слои малых размеров действительно увеличены.
+## Layout
 
-`test/audit.js` проверяет раскладку, шрифты, центровку формул, scroll-spy, фильтр
-дерева и автономность HTML-экспорта. `test/packaged-check.js` подключается к уже
-запакованному бинарнику по CDP — ловит проблемы, невидимые на исходниках
-(asar-пути, шрифты из архива, потерянные при сборке файлы):
+| File | Purpose |
+|------|---------|
+| `main.js` | main process: window, menu, multiple instances, launch arguments |
+| `ipc.js` | all IPC handlers: read/write, `.md` tree, HTML export, encodings |
+| `preload.js` | renderer → main bridge (`contextBridge`), `webUtils.getPathForFile` for drop |
+| `src/md.js` | Markdown + LaTeX rendering: formula extraction, KaTeX, relative links |
+| `src/app.js` | tabs, tree, table of contents, history, search, drag-and-drop |
+| `src/index.html` | shell markup |
+| `src/style.css` | TokyoNight theme |
+| `src/vendor/` | `marked.min.js`, `katex/` (copied from npm in postinstall) |
+| `src/fonts/` | JetBrains Mono: 400/500/700 + italic, Latin and Cyrillic |
+| `src/icons.js` | generated SVG set of Lucide icons |
+| `build/icon/` | app icon: `icon.svg`, the `make-icons.js` generator, `icon.ico`/`icon-*.png` |
+| `scripts/` | `vendor.js` (icons and fonts), `after-pack.js` (slimming the build) |
+| `test/` | tests; see the section above |
 
-```bash
-xvfb-run -a node test/packaged-check.js dist/linux-unpacked/jazz-reader "файл.md"
-```
+## License
 
-## Структура
+GPL-3.0. Full text in [LICENSE](LICENSE).
 
-| Файл | Назначение |
-|------|------------|
-| `main.js` | главный процесс: окно, меню, мультиинстанс, аргументы запуска |
-| `ipc.js` | все IPC-обработчики: чтение/запись, дерево `.md`, экспорт HTML, кодировки |
-| `preload.js` | мост renderer → main (`contextBridge`), `webUtils.getPathForFile` для drop |
-| `src/md.js` | рендер Markdown + LaTeX: вырезка формул, KaTeX, относительные ссылки |
-| `src/app.js` | вкладки, дерево, оглавление, история, поиск, drag-and-drop |
-| `src/index.html` | разметка оболочки |
-| `src/style.css` | TokyoNight-тема |
-| `src/vendor/` | `marked.min.js`, `katex/` (копируется из npm в postinstall) |
-| `src/fonts/` | JetBrains Mono Nerd Font — иконки интерфейса |
-| `build/icon/` | иконка приложения: `icon.svg` + сгенерированные `icon.ico`/`icon-*.png` |
-
-## Отличия от серверного оригинала
-
-- В оригинале LaTeX не было вообще (`marked.parse()` без плагинов). Здесь — KaTeX.
-- Файлы читаются с диска, а не через `list.php`/`save.php`/`raw.php`.
-- Вместо плоского списка `.md` из одной папки — рекурсивное дерево + несколько корней.
-- Добавлены вкладки, история навигации, поиск, zoom, мультиинстанс.
+JetBrains Mono is under the SIL Open Font License 1.1. Lucide icons are ISC.
