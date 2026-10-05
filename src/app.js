@@ -625,7 +625,7 @@ function dropSubmenu(parentMenu, item) {
 function showContextMenu(x, y, items, opts) {
   const o = opts || {};
   // A new root menu closes everything that was open. A submenu does not: it
-  // само владеет уже открытой цепочкой и просто дописывается в конец.
+  // itself already owns an open chain and is simply appended to the end.
   if (!o.parent) closeAllMenus();
 
   const w = o.width || 232;
@@ -655,8 +655,8 @@ function showContextMenu(x, y, items, opts) {
       tick.textContent = it.check ? '✓' : '';
       l.append(tick);
     }
-    // Иконка слева от надписи, в одной строке с ней. Раньше контекстное меню
-    // было без значков вовсе, и экспорт из кругового меню вышел голым текстом.
+    // The icon to the left of the caption, on one line with it. The context menu
+    // used to have no icons at all, and export from the ring menu came out bare.
     if (it.icon) {
       const ic = document.createElement('span');
       ic.className = 'ico';
@@ -672,7 +672,7 @@ function showContextMenu(x, y, items, opts) {
     if (it.items) {
       b.classList.add('ctxmenu-parent');
       b.onmouseenter = () => {
-        // Переход на соседний пункт-подменю: старое подменю убираем.
+        // Moving to a neighbouring submenu item: the old submenu is taken down.
         for (const other of menuChain) {
           if (other.parent === m && other.item !== b) dropSubmenu(m, other.item);
         }
@@ -682,7 +682,7 @@ function showContextMenu(x, y, items, opts) {
           width: o.subWidth || 232, parent: m, parentItem: b,
         });
       };
-      // Клик по пункту-подменю ничего не выполняет: это не действие.
+      // A click on a submenu item runs nothing: it is not an action.
       b.onclick = (e) => e.stopPropagation();
     } else {
       b.onclick = () => { closeAllMenus(); it.act(); };
@@ -694,17 +694,17 @@ function showContextMenu(x, y, items, opts) {
 
   document.body.append(m);
   menuChain.push({ menu: m, parent: o.parent || null, item: o.parentItem || null });
-  // Первый доступный пункт сразу подсвечен: меню открыто с клавиатуры —
-  // человек должен видеть, где окажется Enter.
+  // The first available item is highlighted right away: the menu is opened from
+  // the keyboard — a person must see where Enter will land.
   menuMark(m, menuItemsOf(m).findIndex((b) => !b.disabled));
   if (!o.parent) {
-    // Коридор строится один раз, по геометрии корневого меню: подменю
-    // открывается от пункта ВНУТРИ меню и курсор до него уже внутри.
+    // The corridor is built once, from the geometry of the root menu: a submenu
+    // opens from an item INSIDE the menu, and the cursor is already inside.
     menuCorridor = menuCorridorFor(o.anchorRect, m.getBoundingClientRect());
   }
 
-  // Слушатели вешаем на весь корень, а не на каждый вызов: иначе на
-  // подменю висели бы копии, и закрытие одного закрывало бы не своё.
+  // The listeners are put on the whole root, not on every call: otherwise copies
+  // would hang on the submenus, and closing one would close the wrong thing.
   if (!o.parent) {
     setTimeout(() => {
       if (!menuChain.length) return;
@@ -719,23 +719,24 @@ function showContextMenu(x, y, items, opts) {
 }
 
 function onMenuDown(e) {
-  // Клик внутри подменю не закрывает меню: подменю — отдельный .ctxmenu, и
-  // e.target.closest('.ctxmenu') его найдёт.
+  // A click inside a submenu does not close the menu: a submenu is a separate
+  // .ctxmenu, and e.target.closest('.ctxmenu') will find it.
   if (!e.target.closest || !e.target.closest('.ctxmenu')) closeAllMenus();
 }
 
 /*
- * Навигация по меню с клавиатуры.
+ * Keyboard navigation in the menu.
  *
- *   стрелки вверх/вниз, j/k — по пунктам;
- *   стрелки вправо/влево, l/h — по разветвлениям: вправо открывает
- *     подменю, лево возвращает в родительское;
- *   Enter или Space — подтвердить;
- *   Esc — закрыть меню, а если меню нет — закрыть окно.
+ *   up/down arrows, j/k — by items;
+ *   right/left arrows, l/h — by branches: right opens a submenu, left returns
+ *     to the parent;
+ *   Enter or Space — confirm;
+ *   Esc — close the menu, and if there is no menu, close the window.
  *
- * И то и другое нужно: человек с клавиатуры не должен тянуться к мыши, а у
- * мыши нет клавиши. Разделители пропускаются, список закольцован, и текущий
- * пункт виден рамкой, а не только подсветкой при наведении.
+ * Both are needed: a person on the keyboard should not have to reach for the
+ * mouse, and the mouse has no key. Separators are skipped, the list wraps
+ * around, and the current item is shown by a border rather than only by a hover
+ * highlight.
  */
 function menuItemsOf(menu) {
   return [...menu.querySelectorAll('.ctxmenu-item')];
@@ -750,7 +751,7 @@ function menuMark(menu, index) {
   if (b) b.scrollIntoView({ block: 'nearest' });
 }
 
-/** Соседний доступный пункт, минуя разделители и неактивные. */
+/** The neighbouring available item, skipping separators and inactive ones. */
 function menuStep(menu, from, dir) {
   const items = menuItemsOf(menu);
   if (!items.length) return -1;
@@ -769,7 +770,7 @@ function menuCurrent(link) {
   return first;
 }
 
-/** Открыть подменю пункта (как при наведении мышью). */
+/** Open the submenu of an item (as on a mouse hover). */
 function menuOpenSub(item) {
   if (!item || !item._items) return false;
   item.dispatchEvent(new MouseEvent('mouseenter'));
@@ -779,7 +780,7 @@ function menuOpenSub(item) {
 function onMenuKey(e) {
   if (e.key === 'Escape') { e.stopPropagation(); closeAllMenus(); return; }
   if (!menuChain.length) return;
-  // Работает только в корневом меню: подменю следуют за родительским.
+  // It works only in the root menu: submenus follow their parent.
   const link = menuChain[0];
   const items = menuItemsOf(link.menu);
   const cur = menuCurrent(link);
@@ -806,7 +807,7 @@ function onMenuKey(e) {
     return;
   }
   if (isLeft) {
-    // Закрываем самое глубокое подменю: лево возвращает на уровень выше.
+    // We close the deepest submenu: left returns one level up.
     if (menuChain.length > 1) {
       const deep = menuChain[menuChain.length - 1];
       const parentLink = menuChain[menuChain.length - 2];
@@ -828,12 +829,12 @@ function onMenuKey(e) {
 }
 
 /**
- * Курсор ушёл из всех открытых меню — закрываем цепочку.
+ * The cursor left all the open menus — we close the chain.
  *
- * Раньше закрытия по уходу курсора не было вовсе: меню с подменю оставалось
- * висеть после того, как мышь ушла из него (в меню иконки это выглядело так,
- * будто оно залипло). Слушатель на mouseover, а не на mousemove: событий
- * меньше, а нужны именно уходы курсора.
+ * There used to be no closing on the cursor leaving at all: a menu with a
+ * submenu stayed hanging after the mouse had left it (in the icon menu it looked
+ * as if it had got stuck). A mouseover listener rather than mousemove: there are
+ * fewer events, and what we need is precisely the departures.
  */
 function onMenuHover(e) {
   if (!menuChain.length) return;
@@ -865,11 +866,12 @@ function tabContextMenu(id, x, y) {
 }
 
 /**
- * Контекстное меню файла в дереве.
- *   Просмотр           — открыть в текущей вкладке
- *   Отложенный просмотр — открыть в новой вкладке, фокус остаётся здесь
- *   Редактировать      — открыть и сразу войти в режим правки
- *   Удалить            — в корзину Windows, с подтверждением
+ * The context menu of a file in the tree.
+ *   Open             — open in the current tab
+ *   Open in background — open in a new tab, the focus stays here
+ *   Edit             — open and enter edit mode straight away
+ *   Show in explorer  — reveal the file in the system file manager
+ *   Delete           — move to the recycle bin, with a confirmation
  */
 function fileContextMenu(full, x, y) {
   const open = findTabByPath(full);
@@ -912,7 +914,7 @@ function fileContextMenu(full, x, y) {
   ], { width: 250, height: 250 });
 }
 
-/** Удаление в корзину: спрашиваем и имя файла, и сам факт. */
+/** Delete to the recycle bin: we ask about both the file name and the fact itself. */
 async function trashFile(full, label) {
   const open = findTabByPath(full);
   if (open && open.dirty) {
@@ -934,20 +936,20 @@ async function trashFile(full, label) {
     status(tr('status.deleteFailed') + ((res && res.error) || tr('err.unknown')), 'err');
     return;
   }
-  // Закрываем вкладку с удалённым файлом, чтобы не повисла со старым текстом.
+  // We close the tab of the deleted file, so that it does not hang with the old text.
   if (open) await closeTab(open.id);
-  // Пересобираем дерево: файл мог лежать в корне или во вложенной папке.
+  // We rebuild the tree: the file may have lain in the root or in a nested folder.
   await refreshRoots();
   status(tr('status.deleted') + label, 'ok');
 }
 
-/** Дублирование вкладки: та же заметка, новая вкладка сразу справа. */
+/** Duplicating a tab: the same note, a new tab immediately to the right. */
 async function duplicateTab(id) {
   const src = tabs.get(id);
   if (!src) return;
   if (!src.path) { status(tr('err.nothingToDuplicate')); return; }
-  // findTabByPath вернёт уже открытую вкладку, поэтому читаем файл в обход
-  // openPath и создаём вкладку напрямую.
+  // findTabByPath would return the already open tab, so we read the file around
+  // openPath and create the tab directly.
   const data = await api.read(src.path).catch(() => null);
   if (!data) { status(tr('err.cannotRead') + src.name, 'err'); return; }
   const t = blankTab();
@@ -955,13 +957,13 @@ async function duplicateTab(id) {
   t.hist = [{ path: data.path, anchor: null }];
   t.hi = 0;
   selectTab(t.id);
-  // Ставим копию сразу за исходной (moveTab перерисовывает сам).
+  // We put the copy right after the original (moveTab repaints by itself).
   moveTab(t.id, id);
   renderActive();
   status(tr('status.duplicated') + t.name, 'ok');
 }
 
-/** Переставить вкладку id сразу после after (порядок задаёт Map). */
+/** Move tab id to just after after (the order is set by the Map). */
 function moveTab(id, after) {
   const entries = [...tabs.entries()];
   const idx = entries.findIndex(([k]) => k === id);
@@ -972,23 +974,25 @@ function moveTab(id, after) {
   entries.splice(to + 1, 0, entry);
   tabs.clear();
   for (const [k, v] of entries) tabs.set(k, v);
-  // Порядок в DOM обязан совпадать с порядком в Map, иначе вкладки после
-  // перестановки выглядят старыми, а Ctrl+Tab идёт по новому.
+  // The DOM order must match the Map order, otherwise the tabs after a move look
+  // stale while Ctrl+Tab already goes by the new one.
   renderTabs();
   refreshTreeSelection();
 }
 
-/** Перетаскивание вкладок мышью: сортировка по середине элементов. */
+/** Dragging tabs with the mouse: sorting by the middle of the elements. */
 /**
- * Призрак перетаскиваемой вкладки.
+ * The ghost of a dragged tab.
  *
- * По умолчанию браузер рисует его со снимка элемента: туда попадают старые
- * размеры, обводка выделения, обрезанное имя и куски соседних вкладок — и под
- * курсором едет обрывок интерфейса, а не вкладка. Рисуем ровно то, что нужно:
- * плашку с тем же именем, и отдаём её setDragImage.
+ * By default the browser draws it from a snapshot of the element: the old
+ * sizes, the selection outline, the cut-off name and pieces of the neighbouring
+ * tabs all get in — and a fragment of the interface rather than a tab travels
+ * under the cursor. We draw exactly what is needed: a plate with the same name,
+ * and hand it to setDragImage.
  *
- * Элемент должен быть в документе на момент вызова setDragImage, но не
- * виден — поэтому уводим его за левый край и убираем на следующем тике.
+ * The element must be in the document at the moment setDragImage is called,
+ * but must not be visible — so we move it past the left edge and remove it on
+ * the next tick.
  */
 function showDragGhost(e, label) {
   const g = document.createElement('div');
@@ -998,57 +1002,59 @@ function showDragGhost(e, label) {
   nm.textContent = label;
   g.append(nm);
   document.body.append(g);
-  // Точка захвата: за левый край плашки, а не за центр — так вкладка
-  // «висит» на курсоре слева, как её тянут за вкладку, а не за середину.
+  // The grab point: past the left edge of the plate, not at the centre — that way
+  // the tab "hangs" to the left of the cursor, as it is dragged by a tab and not
+  // by its middle.
   e.dataTransfer.setDragImage(g, Math.min(24, Math.round(g.offsetWidth / 4)), 13);
   setTimeout(() => g.remove(), 0);
 }
 
 /**
- * Рамка на месте будущей правой панели.
+ * The frame where the future right pane will be.
  *
- * Пока вкладку тянут над полем заметки, показываем кромку там, где встанет
- * вторая панель: иначе непонятно, что будет, если отпустить. Кромка снимается
- * при уходе курсора и при отпускании — либо её повесил drop мимо цели.
+ * While a tab is dragged over the note area we show an edge where the second
+ * pane will land: otherwise it is unclear what will happen on release. The edge
+ * is removed when the cursor leaves and on release — or else a drop past the
+ * target hung it.
  */
 /*
- * Подсказки при перетаскивании.
+ * Hints while dragging.
  *
- * Пока вкладку тянут, показываем ДВА места, а не одно:
- *   • в ленте вкладок — щель, которая откроется (место, куда вкладка встанет);
- *   • в рабочей области — рамку на месте будущей правой панели.
+ * While a tab is being dragged we show TWO places, not one:
+ *   • in the tab strip — the gap that will open (the place the tab will take);
+ *   • in the workspace — the frame where the future right pane will be.
  *
- * Обе анимированы. Раньше вместо этого была одна мгновенная полоска
- * `box-shadow: inset` на вкладке под курсором: она прыгала без всякого
- * указания, куда вкладка встанет, и как экран разделится — тоже.
+ * Both are animated. Instead of this there used to be a single instant
+ * `box-shadow: inset` bar on the tab under the cursor: it jumped with no hint at
+ * all about where the tab would land or how the screen would split.
  */
 
-/** Щель в ленте вкладок на месте будущей вкладки. */
+/** The gap in the tab strip where the future tab will be. */
 let dropGap = null;
 
-/** Рамка на месте будущей правой панели. */
+/** The frame where the future right pane will be. */
 function hintSplitPlace(on) {
   const main = document.getElementById('mainPane');
   if (main) main.classList.toggle('drop-split', !!on);
   document.getElementById('split').classList.toggle('split-preview', !!on);
 }
 
-/** Показать щель перед вкладкой after (или в конце, если after === null). */
+/** Show the gap before tab after (or at the end, when after === null). */
 function showDropGap(afterId) {
   hideDropGap();
   const tab = afterId === null ? null : el.tabs.querySelector('.tab[data-id="' + afterId + '"]');
   dropGap = document.createElement('div');
   dropGap.className = 'tab-gap';
-  // Ширину берём у соседней вкладки, чтобы щель была ровно такой, какой
-  // станет вкладка. flex: 1 1 180px у .tab сделает её такой и без нас, но
-  // тогда анимировать нечего: сначала 0, потом ширина — и видно, как
-  // открывается место.
+  // We take the width from a neighbouring tab, so that the gap is exactly as big
+  // as the tab will be. The flex: 1 1 180px on .tab makes it so without us too,
+  // but then there is nothing to animate: first 0, then the width — and you see
+  // the place opening.
   const near = tab || el.tabs.lastElementChild;
   dropGap.style.flexBasis = near ? Math.round(near.getBoundingClientRect().width) + 'px' : '180px';
   if (tab) el.tabs.insertBefore(dropGap, tab);
   else el.tabs.append(dropGap);
-  // Один кадр без transition, потом включаем: иначе щель не растёт, а просто
-  // появляется готовой.
+  // One frame without a transition, then we turn it on: otherwise the gap does
+  // not grow, it simply appears ready-made.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     if (dropGap) dropGap.classList.add('open');
   }));
@@ -1067,15 +1073,15 @@ function initTabDrag() {
     const d = e.target.closest('.tab');
     if (!d) return;
     const t = tabs.get(+d.dataset.id);
-    // Пустые вкладки тоже таскаются: иначе «новую вкладку» нельзя было
-    // переставить, а при работе с несколькими заметками это самая частая
-    // вкладка. Раньше здесь стояло `!t.path` и она оставалась на месте.
+    // Blank tabs are draggable too: otherwise a "new tab" could not be
+    // reordered, and when working with several notes that is the most common tab
+    // of all. There used to be `!t.path` here and it stayed in place.
     if (!t) { e.preventDefault(); return; }
     dragId = +d.dataset.id;
     d.classList.add('dragging');
     el.tabs.classList.add('dragging-active');
     e.dataTransfer.effectAllowed = 'move';
-    // Firefox требует данные, иначе drag не стартует
+    // Firefox requires data, otherwise the drag does not start
     e.dataTransfer.setData('text/plain', t.name);
     showDragGhost(e, t.name);
   });
@@ -1088,10 +1094,11 @@ function initTabDrag() {
     for (const x of el.tabs.querySelectorAll('.tab')) x.classList.remove('dragging', 'drop-before', 'drop-after');
   });
 
-  // Перетаскивание в поле заметки — разделение экрана. Слушаем окно, а не
-  // .main: пока вкладку тянут из ленты, указатель над лентой и над областью
-  // заметки — это разные элементы, и .main не узнает о dragover, если
-  // курсор над лентой. Над самой лентой работает перестановка вкладок.
+  // Dragging into the note area is a screen split. We listen on the window, not
+  // on .main: while a tab is dragged out of the strip, the pointer over the strip
+  // and over the note area are different elements, and .main does not hear
+  // dragover while the cursor is over the strip. Over the strip itself, tab
+  // reordering works.
   window.addEventListener('dragover', (e) => {
     if (dragId === null) return;
     if (el.tabs.contains(e.target)) { hintSplitPlace(false); return; }
@@ -1111,10 +1118,10 @@ function initTabDrag() {
     const id = dragId;
     dragId = null;
     el.tabs.classList.remove('dragging-active');
-    // Предпросмотр снимаем ЗДЕСЬ, а не только по dragend: после отпускания
-    // мыши над чужой вкладкой dragend может не прийти (или придёт позже), а
-    // класс split-preview иначе остаётся, и панель навсегда остаётся
-    // контуром с пустой шапкой.
+    // The preview is taken down HERE, not only on dragend: after releasing the
+    // mouse over a foreign tab, dragend may not arrive (or may arrive later),
+    // and otherwise the split-preview class stays, and the pane stays an outline
+    // with an empty header forever.
     hintSplitPlace(false);
     openSecond(id);
   });
@@ -1129,7 +1136,7 @@ function initTabDrag() {
     const r = over.getBoundingClientRect();
     const before = e.clientX < r.left + r.width / 2;
     over.classList.add(before ? 'drop-before' : 'drop-after');
-    // Щель открывается ПОСЛЕ той вкладки, за которой встанет перетаскиваемая.
+    // The gap opens AFTER the tab behind which the dragged one will land.
     if (before) showDropGap(+over.dataset.id);
     else {
       const ids = [...el.tabs.querySelectorAll('.tab')].map((x) => +x.dataset.id);
@@ -1147,13 +1154,13 @@ function initTabDrag() {
     if (over && +over.dataset.id !== dragId) {
       const r = over.getBoundingClientRect();
       const before = e.clientX < r.left + r.width / 2;
-      // Ставим перед или после целевой вкладки.
+      // We place it before or after the target tab.
       const ids = [...tabs.keys()];
       const target = +over.dataset.id;
       const ti = ids.indexOf(target);
       const ref = before ? (ti > 0 ? ids[ti - 1] : null) : target;
-      // moveTab сам перерисовывает DOM; после «перед самой первой» (ref === null)
-      // он уводит вкладку в конец, поэтому докручиваем руками.
+      // moveTab repaints the DOM by itself; after "before the very first"
+      // (ref === null) it moves the tab to the end, so we finish it by hand.
       moveTab(dragId, ref === null ? undefined : ref);
       if (before && ti === 0) {
         const tmp = [...tabs.entries()];
@@ -1172,29 +1179,30 @@ function initTabDrag() {
 }
 
 /**
- * Лента вкладок: прокрутка и шевроны.
+ * The tab strip: scrolling and the chevrons.
  *
- * Раньше лента имела overflow-x:auto, но без min-width:0 на самой ленте и её
- * обёртке flex-элемент не сжимался ниже содержимого — вкладки просто уезжали
- * за край окна, и доехать до них было нечем. Теперь колесо над лентой листает
- * её вбок, а по краям появляются шевроны, когда есть что листать.
+ * The strip used to have overflow-x:auto, but without min-width:0 on the strip
+ * itself and on its flex wrapper the flex item did not shrink below its content —
+ * the tabs simply ran past the edge of the window, and there was nothing to reach
+ * them with. Now the wheel over the strip scrolls it sideways, and chevrons appear
+ * at the edges when there is something to scroll.
  */
 function initTabsScroll() {
   const step = () => Math.max(120, Math.round(el.tabs.clientWidth * 0.6));
 
-  // Плавность живёт здесь, а не в CSS: у ленты и контента стояло
-  // scroll-behavior:smooth, и колесо мыши тоже анимировалось — прокрутка
-  // шла рывками. Правило простое: то, что человек двигает руками (колесо,
-  // полоса прокрутки, перетаскивание), мгновенное; то, что он нажимает
-  // (шевроны, «Наверх», пункт оглавления), — плавное.
+  // Smoothness lives here rather than in CSS: the strip and the content had
+  // scroll-behavior:smooth, and the mouse wheel was animated too — the scrolling
+  // went in jerks. The rule is simple: what a person moves by hand (wheel,
+  // scrollbar, dragging) is instant; what they press (chevrons, "Back to top",
+  // a contents item) is smooth.
   el.tabsLeft.onclick = () => el.tabs.scrollBy({ left: -step(), behavior: 'smooth' });
   el.tabsRight.onclick = () => el.tabs.scrollBy({ left: step(), behavior: 'smooth' });
 
-  // Вертикальный скролл над полосой вкладок должен листать её, а не страницу.
-  // Важно: scroll-behavior:smooth делает присваивание scrollLeft отложенным,
-  // поэтому сразу после присваивания scrollLeft ещё старый. Значит сравнивать
-  // «изменилось ли» бесполезно — решаем по наличию переполнения и отменяем
-  // событие сразу.
+  // A vertical scroll over the tab strip must scroll it, not the page.
+  // Important: scroll-behavior:smooth makes an assignment to scrollLeft
+  // deferred, so right after the assignment scrollLeft is still the old one.
+  // Comparing "did it change" is therefore useless — we decide by the presence of
+  // an overflow and cancel the event at once.
   el.tabs.addEventListener('wheel', (e) => {
     if (!e.deltaY || e.deltaX) return;
     if (el.tabs.scrollWidth <= el.tabs.clientWidth + 1) return;
@@ -1202,20 +1210,21 @@ function initTabsScroll() {
     el.tabs.scrollLeft += e.deltaY;
   }, { passive: false });
 
-  // Шевроны должны знать текущее положение ленты. Раньше updateTabsNav
-  // звался только из ResizeObserver, то есть только при изменении ширины:
-  // уехав колесом или шевроном в конец, вкладка «уезжала» под обрезку, но
-  // шеврон, которым можно вернуться, оставался скрытым — назад было нечем
-  // листать. Слушатель passive: он ничего не отменяет и не тормозит.
-  // Обратной связи с updateTabsNav нет: он только прячет/показывает шевроны,
-  // а ширину ленты не меняет.
+  // The chevrons must know the current position of the strip. updateTabsNav
+  // used to be called only from ResizeObserver, that is, only on a width change:
+  // having scrolled to the end with the wheel or a chevron, the tab "slid" past
+  // the cut-off, but the chevron to come back with stayed hidden — there was
+  // nothing to scroll back with.
+  // The listener is passive: it cancels nothing and does not slow anything down.
+  // There is no feedback from updateTabsNav: it only hides/shows the chevrons,
+  // it does not change the width of the strip.
   el.tabs.addEventListener('scroll', updateTabsNav, { passive: true });
 
-  // Шефроны зависят от ширины ЛЕНТЫ, а обрезка имени — от ширины ВКЛАДКИ.
-  // Это разные величины: при сжатии полосы общая ширина может не измениться
-  // ни на пиксель, пока отдельные вкладки сжмутся со 180 до 110. Наблюдая
-  // только за лентой, мы пропускали этот переход, и имена оставались
-  // необрезанными при заведомо узких вкладках.
+  // The chevrons depend on the width of the STRIP, while the cut-off of the name
+  // depends on the width of the TAB. These are different quantities: when the
+  // strip is squeezed its total width may not change by a pixel while the
+  // individual tabs shrink from 180 to 110. Watching only the strip, we missed
+  // that transition, and the names stayed uncut on obviously narrow tabs.
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => updateTabsNav()).observe(el.tabs);
   } else {
@@ -1223,7 +1232,7 @@ function initTabsScroll() {
   }
 }
 
-/** Показываем шеврон только с той стороны, где есть что листать. */
+/** We show a chevron only on the side where there is something to scroll. */
 function updateTabsNav() {
   const max = el.tabs.scrollWidth - el.tabs.clientWidth;
   el.tabsWrap.classList.toggle('has-overflow', max > 2);
@@ -1232,22 +1241,24 @@ function updateTabsNav() {
 }
 
 /**
- * Обрезать длинное имя в конце, многоточием: «Заметка-с-дли…».
+ * Cut a long name off at the end, with an ellipsis: "Note-with-a-lo…".
  *
- * Обрезка по середине была моей идеей («различается хвост — покажем хвост»),
- * но на деле выглядит хуже: получается «Заметка-с-дли…енем-24.md», обрезка
- * ровно посередине слова плюс рваный остаток. Просили просто обрезать с конца.
+ * Cutting in the middle was my idea ("the tail differs — show the tail"), but in
+ * practice it looks worse: you get "Note-with-a-lo…name-24.md", a cut exactly in
+ * the middle of a word plus a ragged remainder. What was asked for was simply to
+ * cut from the end.
  *
- * Двоичный поиск по числу символов, а не цикл по одному: длина ленты
- * линейная по числу вкладок, а тут на каждый шаг нужен замер ширины.
+ * A binary search over the number of characters rather than a loop one by one:
+ * the length of the strip is linear in the number of tabs, and here every step
+ * needs a width measurement.
  */
 function elideTail(el, full) {
   if (!full) return;
   const cur = el.textContent;
   if (cur !== full) {
-    // Уже обрезано. Полное имя возвращаем только если оно теперь помещается:
-    // вкладка могла разъехаться (сменилось число вкладок, ресайз, резерв под
-    // системные кнопки).
+    // Already cut off. We return the full name only if it fits now: the tab may
+    // have spread out (the number of tabs changed, a resize, the reserve for the
+    // system buttons).
     el.textContent = full;
     if (el.scrollWidth <= el.clientWidth + 1) return;
   } else if (el.scrollWidth <= el.clientWidth + 1) {
@@ -1265,15 +1276,16 @@ function elideTail(el, full) {
 }
 
 /**
- * Пересчёт обрезки имён под текущую ширину вкладок.
+ * Recompute the cut-off of the names for the current tab width.
  *
- * Следить надо за вкладками, а не за лентой: при сжатии полосы её ширина может
- * не измениться ни на пиксель, пока отдельные вкладки сойдутся со 180 до 110.
+ * We have to watch the tabs, not the strip: when the strip is squeezed its
+ * width may not change by a pixel while the individual tabs shrink from 180 to
+ * 110.
  *
- * Переподключать наблюдатель из его же колбэка нельзя — disconnect() там
- * отменяет доставку уже поставленных в очередь уведомлений, и часть вкладок
- * оставалась необрезанной навсегда. Поэтому переподключение живёт в
- * observeTabWidths(), а колбэк только пересчитывает.
+ * Reconnecting the observer from inside its own callback is not allowed —
+ * disconnect() there cancels the delivery of notifications already queued, and
+ * part of the tabs stayed uncut forever. So the reconnection lives in
+ * observeTabWidths(), and the callback only recomputes.
  */
 let tabResizeObs = null;
 
@@ -1292,10 +1304,10 @@ function observeTabWidths() {
 }
 
 /**
- * Пересчитать сейчас и ещё дважды отложенно. Первая раскладка flex может
- * прийти позже нашей синхронной проверки, а таймеры закрывают этот зазор
- * независимо от того, сработал ли ResizeObserver (в скрытом окне кадров нет,
- * но layout всё равно происходит).
+ * Recompute now and twice more deferred. The first flex layout can arrive later
+ * than our synchronous check, and the timers close that gap regardless of
+ * whether the ResizeObserver fired (there are no frames in a hidden window, but
+ * the layout still happens).
  */
 function scheduleElide() {
   elideAllTabNames();
@@ -1305,17 +1317,18 @@ function scheduleElide() {
 
 function renderTabs() {
   el.tabs.innerHTML = '';
-  // Много вкладок — жмём ширину, чтобы меньше уезжало за край
+  // Many tabs — we squeeze the width, so that less runs past the edge
   el.tabs.classList.toggle('many', tabs.size > 7);
   for (const t of tabs.values()) {
     const d = document.createElement('div');
     d.className = 'tab' + (t.id === activeId ? ' active' : '');
-    // Полоса вкладок одна на обе панели, поэтому вкладку правой панели
-    // помечаем: без метки не видно, какая заметка где.
+    // There is one tab strip for both panes, so the tab of the right pane is
+    // marked: without a mark it is not visible which note is where.
     if (secondId !== null && t.id === secondId) d.classList.add('in-second');
     d.dataset.id = String(t.id);
-    // Таскаются и пустые: иначе «новую вкладку» нельзя было переставить,
-    // хотя это самая обычная вкладка при работе с несколькими заметками.
+    // Blank tabs are draggable too: otherwise a "new tab" could not be
+    // reordered, although that is the most ordinary tab when working with
+    // several notes.
     d.draggable = true;
     d.title = (t.path || t.name)
       + (t.id === secondId ? tr('tab.secondPanelNote') : '');
@@ -1341,8 +1354,8 @@ function renderTabs() {
     d.onclick = () => selectTab(t.id);
     d.onauxclick = (e) => { if (e.button === 1) closeTab(t.id); };
     d.oncontextmenu = (e) => { e.preventDefault(); tabContextMenu(t.id, e.clientX, e.clientY); };
-    // Shift+F10 и «контекстное меню» с клавиатуры прилетают как отдельный
-    // keydown без координат — без этого меню по Tab-у не открывалось.
+    // Shift+F10 and the keyboard "context menu" arrive as a separate keydown
+    // without coordinates — without this the menu did not open on Tab.
     d.tabIndex = 0;
     d.onkeydown = (e) => {
       if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
@@ -1353,22 +1366,22 @@ function renderTabs() {
     };
     el.tabs.append(d);
   }
-  // Ширины вкладок известны только после того, как они в DOM, поэтому
-  // обрезаем имена вторым проходом.
+  // The tab widths are known only once the tabs are in the DOM, so we cut the
+  // names in a second pass.
   scheduleElide();
   observeTabWidths();
-  // активную вкладку видно
+  // the active tab is visible
   const act = el.tabs.querySelector('.tab.active');
   if (act) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   updateTabsNav();
 }
 
 /**
- * Один и тот же файл приходит двумя способами: из дерева — через path.join
- * («C:\dir\file.md»), из openPath — с прямыми слэшами («C:/dir/file.md»).
- * Наивное === их не считывает, из-за чего подсветка открытого файла в дереве
- * не работала. Здесь оба приводятся к одному виду и к нижнему регистру
- * (Windows регистр не различает).
+ * The same file arrives in two ways: from the tree through path.join
+ * ("C:\dir\file.md"), from openPath with forward slashes ("C:/dir/file.md").
+ * A naive === does not match them, which is why the highlight of the open file in
+ * the tree did not work. Here both are brought to one form and to lower case
+ * (Windows does not distinguish case).
  */
 function samePath(a, b) {
   if (!a || !b) return false;
@@ -1383,9 +1396,9 @@ function findTabByPath(p) {
   return null;
 }
 
-// --------------------------------------------------------------- загрузка
+// --------------------------------------------------------------- loading
 
-/** Пустая вкладка для переиспользования (иначе копятся пустые). */
+/** A blank tab for reuse (otherwise blank ones pile up). */
 function blankTab() {
   for (const t of tabs.values()) if (!t.path) return t;
   return newTab();
@@ -1408,15 +1421,15 @@ function pushHist(t, p, anchor) {
 }
 
 /**
- * Открыть файл.
- *   newTab:true  — в новой вкладке (дерево, диалог, drop, кли по «Файл»);
- *   newTab:false — в текущей (переход по ссылке .md внутри документа).
+ * Open a file.
+ *   newTab:true  — in a new tab (the tree, a dialog, a drop, a click on "File");
+ *   newTab:false — in the current one (following an .md link inside a document).
  */
 async function openPath(p, opts) {
   opts = opts || {};
   const existing = findTabByPath(p);
   if (existing) {
-    // Отложенный просмотр уже открытой вкладки не должен перехватывать фокус
+    // A deferred open of an already open tab must not steal the focus
     if (!opts.background) selectTab(existing.id);
     return existing;
   }
@@ -1424,8 +1437,8 @@ async function openPath(p, opts) {
   const my = ++loadSeq;
   try {
     status(tr('status.openingName') + basname(p) + '…');
-    // Показываем индикатор и отдаём кадр, иначе он появится уже после того,
-    // как всё отрисовалось, и толку от него не будет.
+    // We show the indicator and give up the frame, otherwise it appears only
+    // after everything has been painted, and there will be no use for it.
     showLoading(tr('status.openingName') + basname(p) + '…');
     await nextPaint();
     const data = await api.read(p);
@@ -1439,9 +1452,9 @@ async function openPath(p, opts) {
     t.hi = 0;
 
     if (opts.background) {
-      // Вкладка появляется и рендерится, но фокус остаётся на прежней.
-      // html готовим сразу, иначе переключение на неё потом подтормаживало бы
-      // (renderActive рендерит лениво, при первом показе).
+      // The tab appears and renders, but the focus stays on the previous one.
+      // We prepare the html at once, otherwise switching to it later would lag
+      // (renderActive renders lazily, on the first show).
       t.html = null;
       try {
         t.html = MDV.renderMd(t.raw, t.baseUrl);
@@ -1457,7 +1470,7 @@ async function openPath(p, opts) {
     } else {
       selectTab(t.id);
     }
-    // Прячем после кадра с содержимым, иначе индикатор гаснет раньше текста.
+    // We hide it after the frame with the content, otherwise the indicator goes out before the text.
     await nextPaint();
     if (my === loadSeq) hideLoading();
     status(data.encoding.toUpperCase() + ' · ' + fmtSize(t.size) + ' · ' + t.name, 'ok');
@@ -1469,7 +1482,7 @@ async function openPath(p, opts) {
   }
 }
 
-/** Переход по ссылке .md — в текущей вкладке, с записью в историю. */
+/** Following an .md link — in the current tab, with a history entry. */
 async function navigate(p, anchor) {
   const t = active();
   if (!t || !t.path) return openPath(p, {});
@@ -1488,8 +1501,8 @@ async function navigate(p, anchor) {
 }
 
 /**
- * Alt+←/→. Сначала — история документа (ссылки и якоря оглавления),
- * когда она кончилась — переключение вкладок, как в браузере.
+ * Alt+Left/Right. First the document history (links and table-of-contents
+ * anchors); when it is exhausted — tab switching, as in a browser.
  */
 async function go(delta) {
   const t = active();
@@ -1522,44 +1535,45 @@ function updateNavButtons() {
   el.btnForward.title = docFwd ? tr('nav.fwdDoc') : tr('nav.fwdTab');
 }
 
-// ------------------------------------------------------------------ рендер
+// ------------------------------------------------------------------ render
 
 function renderActive() {
   const t = active();
   const has = !!t && !!t.path;
-  // Рабочую область показываем не только когда открыт файл, но и когда
-  // добавлена папка. Раньше условие было строго `has`, а дерево файлов
-  // рисуется в #paneFiles внутри скрытого #workspace: после «Папка» не было
-  // видно ничего, дерево «появлялось» лишь вместе с первым открытым файлом.
+  // We show the workspace not only when a file is open but also when a folder
+  // has been added. The condition used to be strictly `has`, while the file tree
+  // is drawn in #paneFiles inside the hidden #workspace: after "Folder" nothing
+  // was visible, and the tree "appeared" only together with the first file opened.
   const show = has || roots.length > 0;
-  // Пустая вкладка (нет файла) показывает дефолтную заглушку. Но если
-  // открыта папка, заглушка не нужна — показываем проводник с деревом,
-  // иначе «Папка» снова выглядит как ничего не сделавшая кнопка.
+  // A blank tab (no file) shows the default placeholder. But if a folder is
+  // open the placeholder is not needed — we show the explorer with the tree,
+  // otherwise "Folder" again looks like a button that did nothing.
   const isBlank = !has;
-  // Заглушка нужна в двух разных случаях, и их нельзя смешивать:
-  //  • папка не открыта — показываем экран приветствия;
-  //  • пользователь нажал «новая вкладка» (blank=true) — тоже заглушка,
-  //    даже если папка уже открыта.
-  // Если же папку открыли при пустой вкладке (blank сброшен в addFolder),
-  // заглушку не показываем — иначе «Папка» снова выглядит как кнопка,
-  // которая ничего не делает.
+  // The placeholder is needed in two different cases, and they must not be
+  // mixed up:
+  //  • no folder is open — we show the welcome screen;
+  //  • the person pressed "new tab" (blank=true) — a placeholder too, even if a
+  //    folder is already open.
+  // But if a folder was opened on a blank tab (blank cleared in addFolder), we
+  // do not show the placeholder — otherwise "Folder" again looks like a button
+  // that does nothing.
   const wantWelcome = isBlank && (!roots.length || (t && t.blank));
   el.welcome.hidden = !wantWelcome;
-  // Показываем что-то одно: заглушку ИЛИ рабочую область. Иначе при
-  // открытой папке и новой пустой вкладке welcome ложился поверх дерева.
+  // We show one thing or the other: the placeholder OR the workspace. Otherwise
+  // with a folder open and a new blank tab the welcome screen lay over the tree.
   el.workspace.hidden = wantWelcome || !show;
   closeFind();
   if (isBlank) {
 
-    // Файла нет — не пишем ничего. Чёрточка-разделитель читалась как
-    // «имя файла, но я не знаю какое».
+    // There is no file — we write nothing. A dash as a separator read as
+    // "a file name, but I do not know which".
     el.fileName.textContent = '';
     el.fileName.title = '';
     el.content.innerHTML = '';
     el.editor.hidden = true;
     el.toTop.hidden = true;
     el.statusbar.hidden = true;
-    // Док режима целиком прячем: файла нет — правки негде и нечего.
+    // The edit mode dock is hidden entirely: there is no file, and nowhere to edit.
     document.title = 'JazzReader';
     updateNavButtons();
     return;
@@ -1573,20 +1587,20 @@ function renderActive() {
   const editing = t.mode === 'edit';
   el.editor.hidden = !editing;
   el.content.hidden = editing;
-  // В правке — зелёная «Сохранить» и красная «Отменить» вместо одного
-  // переключателя. Раньше он просто уводил из правки, оставляя изменения
-  // в памяти: их можно было потерять молча, ничего не спрашивая.
+  // In edit mode a green "Save" and a red "Discard" instead of a single toggle.
+  // The toggle used to simply take you out of edit mode, leaving the changes in
+  // memory: they could be lost silently, without a single question.
 
   if (editing) {
-    // Присваиваем только если текст действительно другой: любая перерисовка
-    // заметки перезаписывала бы поле и обнуляла историю отмены.
+    // We assign only if the text really is different: any repaint of the note
+    // would overwrite the field and reset the undo history.
     if (el.editor.value !== t.raw) {
       el.editor.value = t.raw;
       resetUndo(t);
     }
-    // Точка отсчёта истории — текст, который в поле СЕЙЧАС. Задавать её надо
-    // здесь: если отложить до первого нажатия, «до правки» окажется уже
-    // исправленным текстом и отменять будет нечего.
+    // The starting point of the history is the text in the field RIGHT NOW. It
+    // has to be set here: if postponed to the first keypress, "before the edit"
+    // would already be the corrected text and there would be nothing to undo.
     t.undoLast = t.raw;
   } else {
     if (t.html === null) {
@@ -1598,8 +1612,8 @@ function renderActive() {
       }
     }
     el.content.innerHTML = t.html;
-    // Явно мгновенно: при переключении вкладок «уезжать» к прежнему месту
-  // анимацией не нужно — это задерживает появление текста.
+    // Explicitly instant: when switching tabs there is no need to "travel" to
+  // the old place with an animation — it delays the appearance of the text.
   el.content.scrollTo({ top: t.scroll || 0, behavior: 'instant' });
     decorateCode();
     decorateMath();
@@ -1611,28 +1625,30 @@ function renderActive() {
   refreshTreeSelection();
 }
 
-/* ------------------------------------------------- разделение экрана
+/* ------------------------------------------------- splitting the screen
 
- * Правая панель — вторая заметка рядом с рабочей. Полоса вкладок общая, и
- * вкладка правой панели помечена кромкой слева: иначе непонятно, какая из
- * двух заметок сейчас в какой панели.
+ * The right pane is a second note beside the working one. The tab strip is
+ * shared, and the tab of the right pane is marked with an edge on the left:
+ * otherwise it is unclear which of the two notes is in which pane.
  *
- * Панель появляется, когда вкладку тянут из ленты в поле заметки, и
- * исчезает, когда в правой панели нажали крестик или её вкладку закрыли.
- * Состояние намеренно не сохраняется: разделение — это способ посмотреть на
- * две заметки сразу, а не настройка вида.
+ * The pane appears when a tab is dragged out of the strip into the note area,
+ * and disappears when the close box in the right pane is pressed or its tab is
+ * closed. The state is deliberately not saved: a split is a way to look at two
+ * notes at once, not a view setting.
  */
 
-/** Показать вкладку в правой панели. */
+/** Show a tab in the right pane. */
 function openSecond(id) {
   if (!tabs.has(id)) return false;
-  // Ту же вкладку, что и в рабочей области, во вторую панель нечего помещать:
-  // рядом с самим собой пусто, и человек ничего не получает.
+  // There is nothing to put in the second pane that is the same tab as in the
+  // working area: next to itself there would be emptiness, and the person would
+  // get nothing.
   if (id === activeId) { status(tr('tab.alreadyLeft')); return false; }
   if (secondId !== null && tabs.has(secondId)) secondTab().scroll2 = el.content2.scrollTop;
   secondId = id;
-  // Правая панель только что появилась, но фокус остаётся у левой: человек
-  // тянул вкладку из правой части экрана, а не работал в новой панели.
+  // The right pane has just appeared, but the focus stays on the left: the person
+  // dragged a tab from the right part of the screen, they did not start working in
+  // the new pane.
   setPaneFocus('main');
   hintSplitPlace(false);
   renderSecond();
@@ -1641,7 +1657,7 @@ function openSecond(id) {
   return true;
 }
 
-/** Убрать правую панель. */
+/** Remove the right pane. */
 function closeSecond() {
   closeRadial();
   if (secondId === null) return;
@@ -1651,7 +1667,7 @@ function closeSecond() {
   renderActive();
 }
 
-/** Правая панель и активная вкладка поменялись местами. */
+/** The right pane and the active tab have swapped places. */
 function swapPanes() {
   const other = activeId;
   secondId = other;
@@ -1660,7 +1676,7 @@ function swapPanes() {
   renderSecond();
 }
 
-/** Правая панель занимает вторую позицию: сначала разделить, потом смотреть. */
+/** The right pane takes the second position: split first, look afterwards. */
 function splitScreen() {
   const ids = [...tabs.keys()].filter((k) => k !== activeId);
   if (!ids.length) { status(tr('err.nothingToSplit')); return false; }
@@ -1675,7 +1691,7 @@ function renderSecond() {
   el.panel2.hidden = !on;
   el.splitDivider.hidden = !on;
   if (!on) {
-    // Панели нет — её содержимое и рамка места разделения не нужны.
+    // There is no pane — its content and the frame of the split place are not needed.
     el.content2.innerHTML = '';
     hintSplitPlace(null);
     return;
@@ -1714,9 +1730,9 @@ const LANG_NAMES = {
   dockerfile: 'Dockerfile', makefile: 'Makefile', plaintext: tr('lang.plaintext'), text: tr('lang.plaintext'),
 };
 
-/* root передаётся, потому что при разделении экрана текст рисуется в двух
-   контейнерах, а оформление блоков кода и формул должно одинаково работать
-   в обоих. Без аргумента — прежнее поведение, только el.content. */
+/* root is passed because with a split screen the text is drawn into two
+   containers, and the styling of code blocks and formulas has to work the same
+   in both. Without the argument — the previous behaviour, el.content only. */
 function decorateCode(root) {
   const box = root || el.content;
   for (const pre of box.querySelectorAll('pre')) {
@@ -1751,7 +1767,7 @@ function decorateCode(root) {
   }
 }
 
-/** Клик по отрендеренной формуле показывает её LaTeX-исходник. */
+/** A click on a rendered formula shows its LaTeX source. */
 function decorateMath(root) {
   const box = root || el.content;
   for (const m of box.querySelectorAll('.mdv-math')) {
@@ -1760,7 +1776,7 @@ function decorateMath(root) {
   }
 }
 
-// ---------------------------------------------------------------- оглавление
+// ----------------------------------------------------------- table of contents
 
 function slugify(txt) {
   return txt.trim().toLowerCase()
@@ -1771,22 +1787,23 @@ function slugify(txt) {
 let spyHeads = [], spyLinks = [];
 
 /*
- * Оглавление — дерево, а не плоский список с отступами.
+ * The table of contents is a tree, not a flat list with indents.
  *
- * Заголовки идут подряд, уровень известен по тегу (h1..h4), поэтому дерево
- * строится стеком: идём по заголовкам, отбрасываем с верху стека всё с
- * уровнем не меньше текущего, и текущий становится под последним оставшимся.
+ * Headings come one after another and the level is known from the tag
+ * (h1..h4), so the tree is built with a stack: we walk the headings, pop from
+ * the top of the stack everything whose level is not less than the current one,
+ * and the current heading becomes a child of the last one left.
  *
- * Сворачивание нужно для длинных оглавлений: в заметке на 2000 строк их
- * десятки, и до нужного раздела невозможно добраться, не прокрутив полстолба.
- * Стрелка есть только у разделов с потомками — у листьев её рисовать нечем.
- * Состояние живёт во вкладке (t.tocClosed), поэтому переключение вкладок
- * не сбрасывает то, что человек свернул.
+ * Collapsing is needed for long tables of contents: in a 2000-line note there
+ * are dozens of them, and the section you need cannot be reached without
+ * scrolling half a screen. The arrow is only on sections with children — there
+ * is nothing to draw it for on a leaf. The state lives in the tab (t.tocClosed),
+ * so switching tabs does not reset what the person collapsed.
  *
- * Если заголовков очень много (> TOC_AUTO_COLLAPSE), на первый раз все
- * разделы свёрнуты: список в 200 строк всё равно не читают, его открывают по
- * одной ветке. Помечаем это состояние как автоматическое, чтобы при первом
- * же клике человек получил развернутое дерево, а не пустое.
+ * If there are very many headings (> TOC_AUTO_COLLAPSE), the first time all the
+ * sections are collapsed: a list of 200 lines is not read anyway, it is opened
+ * branch by branch. We mark that state as automatic, so that on the very first
+ * click the person gets an expanded tree rather than an empty one.
  */
 const TOC_AUTO_COLLAPSE = 60;
 
@@ -1796,8 +1813,8 @@ function tocNode(h, id) {
   row.className = 'toc-row';
   row.dataset.l = String(lvl);
 
-  // Стрелка. Пока потомков нет, она не рисуется вовсе — иначе в списке из
-  // двух пунктов половина строк была бы в бесполезных значках.
+  // The arrow. While there are no children it is not drawn at all — otherwise in
+  // a list of two items half the rows would be taken up by useless icons.
   const twist = document.createElement('button');
   twist.className = 'toc-twist';
   twist.type = 'button';
@@ -1821,16 +1838,16 @@ function tocNode(h, id) {
   const kidsBox = document.createElement('div');
   kidsBox.className = 'toc-kids';
 
-  // kids — массив дочерних УЗЛОВ (не DOM-элементов), kidsBox — их контейнер
-  // в разметке. Раньше оба назывались kids, и дерево падало на
-  // parent.kids.push(...) — parent.kids оказывался div'ом.
+  // kids is an array of child NODES (not DOM elements), kidsBox is their container
+  // in the markup. Both used to be called kids, and the tree fell over on
+  // parent.kids.push(...) — parent.kids turned out to be a div.
   const node = { lvl, row, kids: [], twist, a, kidsBox, hasKids: false, closed: false };
   twist.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
     setTocNodeClosed(node, !node.closed, true);
-    // Свернули ветку — её внутренние разделы тоже должны лежать, иначе при
-    // обратном раскрытии они вылезут развёрнутыми.
+    // We collapsed a branch — its inner sections have to be collapsed too,
+    // otherwise on expanding back they would come out expanded.
     if (node.closed) hideSubtree(node.kids);
   };
   return node;
@@ -1846,7 +1863,7 @@ function setTocNodeClosed(node, closed, byUser) {
   if (!t.tocClosed) t.tocClosed = new Set();
   const key = node.a.getAttribute('href').slice(1);
   if (closed) t.tocClosed.add(key); else t.tocClosed.delete(key);
-  // Автосворачивание живёт один раз: дальше решает человек.
+  // Auto-collapsing happens once: after that the person decides.
   if (byUser) t.tocTouched = true;
 }
 
@@ -1875,7 +1892,7 @@ function buildToc() {
     used.add(id);
   }
 
-  // Дерево стеком: верхушка стека — последний открытый предок.
+  // The tree is built with a stack: the top of the stack is the last opened ancestor.
   const top = [];
   const stack = [];
   for (const h of heads) {
@@ -1886,14 +1903,16 @@ function buildToc() {
     if (parent) parent.kids.push(node); else top.push(node);
     stack.push(node);
     spyHeads.push(h);
-    // Именно строка, а не узел дерева: updateSpy вешает на этот элемент
-    // класс active. С узлом было бы .active не у того элемента, а ни у
-    // какого — и оглавление оставалось бы пустым с первого же кадра.
+    // Specifically a row, not a tree node: updateSpy puts the active class on
+    // this element. With a node the class .active would be on the wrong element,
+    // on none at all — and the table of contents would be empty from the very
+    // first frame.
     spyLinks.push(node.row);
   }
-  // Разворачиваем дерево в DOM. Контейнер потомков — СОСЕД строки, а не её
-  // потомок внутри: .toc-row это flex-линия, и вложенный div встал бы в неё
-  // рядом со ссылкой. Соседним он и скрывается целиком по hidden.
+  // We expand the tree into the DOM. The children container is a SIBLING of the
+  // row, not a descendant inside it: .toc-row is a flex line, and a nested div
+  // would stand in it right next to the link. Being a sibling, it is also hidden
+  // completely by hidden.
   const draw = (nodes, host) => {
     for (const n of nodes) {
       host.append(n.row);
@@ -1908,10 +1927,11 @@ function buildToc() {
   };
   draw(top, el.paneToc);
 
-  // Свёрнутое состояние живёт во вкладке. Если заголовков очень много и
-  // человек ещё не трогал оглавление, все разделы сворачиваются: список в
-  // 200 строк всё равно не читают, его открывают по одной ветке. Пометка
-  // tocTouched ставится только кликом — дальше решает человек.
+  // The collapsed state lives in the tab. If there are very many headings and the
+  // person has not touched the table of contents yet, all sections are
+  // collapsed: a list of 200 lines is not read anyway, it is opened branch by
+  // branch. The tocTouched mark is set by a click only — after that the person
+  // decides.
   const t0 = active();
   const autoClose = heads.length > TOC_AUTO_COLLAPSE && !t0.tocTouched;
   const walk = (nodes) => {
@@ -1926,7 +1946,7 @@ function buildToc() {
   walk(top);
 }
 
-/** Свернуть ветку целиком. */
+/** Collapse a branch completely. */
 function hideSubtree(nodes) {
   for (const n of nodes) {
     n.closed = true;
@@ -1938,19 +1958,19 @@ function hideSubtree(nodes) {
 }
 
 /*
- * Линия прогресса чтения.
+ * The reading progress line.
  *
- * Прячется, пока прокручивать нечего: в начале заметки и в заметке без
- * прокрутки пустая линия ничего не сообщает. В конце заполняется целиком —
- * так видно «дочитал».
+ * It hides while there is nothing to scroll: at the start of a note and in a
+ * note without scrolling an empty line says nothing. At the end it is filled
+ * completely — so that "I finished reading" is visible.
  */
 function updateReadProgress() {
   const c = el.content;
   if (!c || !el.readProgress) return;
   const max = c.scrollHeight - c.clientHeight;
   const editing = el.editor && !el.editor.hidden;
-  // В режиме правки прокручивается редактор, а не статья: полоса показывала
-  // бы процент не того документа.
+  // In edit mode the editor scrolls, not the article: the bar would show the
+  // percentage of the wrong document.
   const box = editing ? el.editor : c;
   const span = box.scrollHeight - box.clientHeight;
   const p = span > 1 ? Math.min(1, Math.max(0, box.scrollTop / span)) : 0;
@@ -1959,8 +1979,8 @@ function updateReadProgress() {
   el.readProgress.style.width = (p * 100).toFixed(2) + '%';
 }
 
-/** Войти в режим правки. Кнопка в тулбаре и пункт кругового меню делают
- *  одно и то же, и обе дороги ведут сюда. */
+/** Enter edit mode. The toolbar button and the ring menu item do the same
+ *  thing, and both roads lead here. */
 function toggleEditMode() {
   const t = active();
   if (!t || !t.path) return;
@@ -1996,7 +2016,7 @@ function updateSpy() {
   }
 }
 
-// ------------------------------------------------------------- дерево папок
+// ------------------------------------------------------------- folder tree
 
 async function addFolder(p) {
   if (roots.some((r) => r.path === p)) { status(tr('status.folderAlreadyOpen') + p); return; }
@@ -2004,7 +2024,7 @@ async function addFolder(p) {
   const res = await api.listMd(p);
   roots.push({ path: p, name: basname(p), tree: res.tree, total: res.total });
   renderTree();
-  // Открытие папки на пустой вкладке должно показать дерево, а не заглушку:
+  // Opening a folder on a blank tab must show the tree, not the placeholder:
   // сбрасываем флаг «пользователь хотел пустую вкладку».
   const a = active();
   if (a && a.blank && !a.path) a.blank = false;
