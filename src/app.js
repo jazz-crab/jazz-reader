@@ -3545,8 +3545,8 @@ async function recentDialog() {
       list.append(b);
     }
     box.append(list);
-    // ICONS.hydrate на старте уже отработал (до появления этого окна), поэтому
-    // свежесозданные [data-i] сами не подхватятся — гидрируем список заново.
+    // ICONS.hydrate has already run at startup (before this window appeared), so the
+    // freshly created [data-i] do not pick themselves up — we hydrate the list again.
     ICONS.hydrate(box);
   }
 
@@ -3570,23 +3570,23 @@ async function recentDialog() {
 }
 
 /**
- * Настройки: размер шрифта колонки, её ширина и автосохранение при выходе
- * из правки. Хранятся в userData/settings.json, применяются как CSS-переменные
- * на :root, поэтому работают без перезапуска.
+ * The settings: the column font size, its width and autosave on leaving edit
+ * mode. They live in userData/settings.json and are applied as CSS variables on
+ * :root, so they work without a restart.
  */
 const SETTINGS_DEFAULT = {
   zoom: 1,
   columnWidth: 900,
   autosave: false,
-  // '' — «как в системе». Конкретные языки: 'ru', 'en'.
+  // '' means "as in the system". Concrete languages: 'ru', 'en'.
   lang: '',
 };
 
-// updateZoom считает размер от 15px при 100%. Настройка «Размер текста»
-// показывает пиксели и переводит их в zoom — одна шкала вместо двух.
+// updateZoom counts the size from 15px at 100%. The "Text size" setting
+// shows pixels and converts them into zoom — one scale instead of two.
 const BASE_TEXT_PX = 15;
 
-/** Залить левую часть ползунка до текущего значения (CSS рисует по --fill). */
+/** Fill the left part of the slider up to the current value (CSS draws by --fill). */
 function paintRange(inp) {
   const min = +inp.min;
   const max = +inp.max;
@@ -3596,9 +3596,9 @@ function paintRange(inp) {
 }
 
 async function loadSettings() {
-  // navigator.language — то же самое, чем app.getLocale() в главном процессе,
-  // но берётся раньше: язык системы нужен для первого кадра, до запроса
-  // настроек по IPC.
+  // navigator.language is the same as app.getLocale() in the main process,
+  // but it is taken earlier: the system language is needed for the first frame,
+  // before the settings come over IPC.
   MDV_I18N.setSystemLocale(navigator.language || (navigator.languages && navigator.languages[0]) || '');
   let saved = {};
   try { saved = (await api.settingsGet()) || {}; } catch { saved = {}; }
@@ -3612,8 +3612,8 @@ async function loadSettings() {
     }
   }
   applySettings(merged);
-  // Вид хранится рядом с настройками, но это объект, а не число/флаг:
-  // берём только известные ключи, чтобы битый файл не навязал лишнего.
+  // The view lives next to the settings, but it is an object rather than a number or a
+  // flag: we take only the known keys, so that a broken file imposes nothing extra.
   if (saved.view && typeof saved.view === 'object') {
     for (const k of Object.keys(VIEW_DEFAULT)) {
       if (typeof saved.view[k] === 'boolean') view[k] = saved.view[k];
@@ -3625,8 +3625,8 @@ async function loadSettings() {
 
 
 /**
- * Открыта ли пустая вкладка. Проверка стояла инлайном в renderActive, а
- * понадобилась ещё и в applyView — для галочек вида.
+ * Whether a blank tab is open. The check used to sit inline in renderActive, and
+ * it was needed in applyView as well — for the view checkmarks.
  */
 function isBlankTab() {
   const t = active();
@@ -3636,24 +3636,26 @@ function isBlankTab() {
 function applySettings(s) {
   const root = document.documentElement;
   root.style.setProperty('--content-max-width', s.columnWidth + 'px');
-  // Атрибут lang нужен не только экранным читалкам: от него зависят
-  // переносы, форма курсира и правила :lang() в разметке.
+  // The lang attribute is needed not only by screen readers: line breaking, the
+  // italic shape and :lang() rules in the markup depend on it.
   MDV_I18N.setLocale(s.lang || 'auto');
-  // Язык, заданный командной строкой (--lang=ru), перекрывает настройку.
-  // Главный процесс так уже сделал, но renderer читает settings.json сам и
-  // без этой строки возвращался к сохранённому значению: окно и меню
-  // показывали разные языки. Значение отдаёт preload, который читает argv
-  // главного процесса — иначе renderer до него не доберётся.
+  // The language set on the command line (--lang=ru) overrides the setting.
+  // The main process has already done that, but the renderer reads
+  // settings.json itself, and without this line it went back to the saved value:
+  // the window and the menu showed different languages. The value comes from
+  // preload, which reads the argv of the main process — the renderer cannot
+  // reach it otherwise.
   if (MDV_FORCED_LANG) MDV_I18N.setLocale(MDV_FORCED_LANG);
   root.lang = MDV_I18N.tag();
-  // Подписи из разметки (title, aria-label, placeholder) переводим здесь же:
-  // applySettings вызывается и на старте, и при каждой смене языка.
+  // The captions from the markup (title, aria-label, placeholder) are
+  // translated right here: applySettings is called both at startup and on every
+  // language change.
   MDV_I18N.applyDom();
-  // Текст, который CSS вставляет через content:, — переменная, иначе подпись
-  // осталась бы на одном языке при любом выбранном.
+  // The text that CSS inserts through content: is a variable, otherwise the
+  // caption would stay in one language whatever is selected.
   root.style.setProperty('--i18n-second-pane', tr('split.secondPane'));
-  // Размер текста идёт через setZoom, чтобы ползунок в настройках и кнопки
-  // масштаба в тулбаре всегда показывали одно и то же.
+  // The text size goes through setZoom, so that the slider in the settings and the
+  // zoom buttons in the toolbar always show the same thing.
   setZoom(s.zoom);
 }
 
@@ -3668,19 +3670,19 @@ function settingsDialog() {
    */
   let closeModal = () => back.remove();
   const back = modalShell();
-  // Окно было 470×460, а в него набилось четыре карточки с длинными
-  // подсказками: содержимое уходило под нижний край и окно приходилось
-  // прокручивать. Стало просторнее — подсказки видны целиком.
+  // The window was 470×460, and four cards with long hints were crammed into it:
+  // the content went past the bottom edge and the window had to be scrolled.
+  // It is roomier now — the hints are visible whole.
   const box = modalBox(tr('settings.title'), 560, 720);
 
   const rows = [];
 
   /**
-   * Одна настройка — карточка: заголовок со значением справа, сам контрол под
-   * ним, подсказка внизу мелким шрифтом. Раньше была сетка «метка слева,
-   * контрол справа» в две колонки, и подсказки вылезали отдельной строкой
-   * под меткой — окно выглядело как таблица, а не как диалог.
-   * Возвращает карточку, чтобы положить в неё контрол.
+   * One setting — a card: a title with the value on the right, the control below
+   * it, the hint at the bottom in a small font. It used to be a two-column grid of
+   * "label on the left, control on the right", and the hints came out on a
+   * separate row under the label — the window looked like a table, not a dialog.
+   * Returns the card, so that a control can be put into it.
    */
   function addCard(label, valueEl, hint) {
     const row = document.createElement('div');
@@ -3705,9 +3707,9 @@ function settingsDialog() {
     box.append(row);
     rows.push(row);
 
-    // Контрол кладём ПЕРЕД подсказкой, а не в конец: иначе порядок получается
-    // «заголовок → подсказка → ползунок», и текст висит над самим элементом,
-    // к которому относится.
+    // We put the control BEFORE the hint, not at the end: otherwise the order comes
+    // out as "title -> hint -> slider", and the text hangs over the very element
+    // it belongs to.
     row._before = hintEl;
     row.addControl = (ctl) => {
       row.insertBefore(ctl, hintEl || null);
@@ -3718,7 +3720,7 @@ function settingsDialog() {
 
   const next = Object.assign({}, currentSettings);
 
-  // Размер текста. Ползунок в пикселях (людям понятнее), внутри — zoom.
+  // Text size. The slider is in pixels (clearer to people), zoom inside — one scale instead of two.
   const fontOut = document.createElement('span');
   fontOut.className = 'set-val';
   const font = document.createElement('input');
@@ -3738,7 +3740,7 @@ function settingsDialog() {
   syncFont();
   addCard(tr('settings.font.label'), fontOut, tr('settings.font.hint')).addControl(font);
 
-  // Ширина колонки
+  // Column width
   const widthOut = document.createElement('span');
   widthOut.className = 'set-val';
   const width = document.createElement('input');
@@ -3756,8 +3758,8 @@ function settingsDialog() {
   syncWidth();
   addCard(tr('settings.width.label'), widthOut, tr('settings.width.hint')).addControl(width);
 
-  // Автосохранение. Настоящий <input type=checkbox> прячем, а рисуем
-  // переключатель: системный квадратик в тёмной теме выглядит чужеродно.
+  // Autosave. The real <input type=checkbox> is hidden and a switch is drawn
+  // instead: the system little square looks out of place in a dark theme.
   const autoIn = document.createElement('input');
   autoIn.type = 'checkbox';
   autoIn.className = 'set-switch-input';
@@ -3772,15 +3774,15 @@ function settingsDialog() {
     tr('settings.autosave.hint')).addControl(auto);
 
   /*
-   * Язык интерфейса. Не select по двум пунктам, а список из трёх состояний:
-   * «Как в системе» отдельно от конкретного языка, потому что это разные
-   * вещи — «Русский» это требование, а «Как в системе» это отсутствие
-   * требования.
+   * The interface language. Not a select with two items but a list of three
+   * states: "As in the system" is separate from a concrete language, because
+   * these are different things — "Russian" is a requirement, and "As in the
+   * system" is the absence of a requirement.
    *
-   * Значение уходит в общий settings.json тем же путём, что зум и ширина
-   * колонки, а главному процессу по IPC-сигналу, чтобы он пересобрал своё
-   * меню: там строки тоже живут, и без сигнала они остались бы на старом
-   * языке до перезапуска.
+   * The value goes into the shared settings.json by the same road as the zoom and
+   * the column width, and to the main process through an IPC signal so that it
+   * rebuilds its menu: the strings live there too, and without the signal they
+   * would stay in the old language until a restart.
    */
   const langSel = document.createElement('select');
   langSel.className = 'set-select';
@@ -3792,35 +3794,36 @@ function settingsDialog() {
   }
   langSel.value = MDV_I18N.locale;
   langSel.onchange = async () => {
-    // Явный выбор снимает перекрытие из командной строки: человек выбрал
-    // язык сам, и он должен пережить и следующие applySettings.
+    // An explicit choice cancels the command line override: the person chose the
+    // language themselves, and it must survive the following applySettings too.
     MDV_FORCED_LANG = '';
-    // Значение сохраняется раньше, чем приходит сигнал: главный процесс
-    // перечитывает файл, и к моменту чтения запись должна быть уже на диске.
+    // The value is saved before the signal comes: the main process re-reads the
+    // file, and by the time it reads, the record must already be on disk.
     await previewSettings({ lang: langSel.value });
     try { await api.setLang(); } catch { /* главный процесс перечитает при старте */ }
 
-    // Окно настроек приходится переоткрывать: подписи в нём ставятся один раз
-    // при сборке, через t(), и держат язык, на котором окно открылось. Без
-    // переоткрытия человек выбрал язык, окно осталось на старом — и переключатель
-    // выглядит сломанным. Значения уже сохранены, так что новое окно
-    // открывается с теми же настройками, просто на новом языке.
+    // The settings window has to be reopened: the captions in it are set once
+    // while it is built, through t(), and hold the language it was opened in.
+    // Without reopening, a person chose a language, the window stayed on the old
+    // one — and the switch looked broken. The values are already saved, so the
+    // new window opens with the same settings, just in the new language.
     closeModal(false);
     settingsDialog();
   };
   addCard(tr('settings.lang.label'), null, tr('settings.lang.hint')).addControl(langSel);
 
   /*
-   * Откатывать предпросмотр больше нечего: изменения сохраняются сразу, и
-   * закрытие окна — обычное закрытие. Раньше здесь стоял откат к снимку
-   * «до», из-за чего клик мимо окна тихо выбрасывал правку ползунка.
+   * There is nothing to roll back in the preview any more: the changes are saved
+   * at once, and closing the window is an ordinary close. There used to be a
+   * rollback to the snapshot from "before" here, which is why a click outside
+   * the window silently threw away a slider edit.
    */
   const oldOnCancel = back._onCancel;
 
   const row = document.createElement('div');
   row.className = 'modal-row';
-  // «По умолчанию», а не «Сбросить»: слово сбивало с толку, будто отменяет
-  // правку. Здесь возвращаются исходные значения — как в новой установке.
+  // "Default", not "Reset": the word was confusing, as if it cancelled the edit.
+  // Here the original values come back — as in a fresh install.
   const def = document.createElement('button');
   def.className = 'dlgbtn';
   def.textContent = tr('settings.default');
@@ -3837,9 +3840,9 @@ function settingsDialog() {
   const ok = document.createElement('button');
   ok.className = 'dlgbtn dlgbtn-primary';
   ok.textContent = tr('settings.done');
-  // Значения уже сохранены по ходу работы с окном, поэтому кнопка только
-  // закрывает. Всё равно пишем их раз: закрытие может прийти по Esc или
-  // клику мимо, и значения ползунков — источник истины.
+  // The values are already saved as you work with the window, so the button only
+  // closes. We still write them out: the close may come from Esc or from a click
+  // outside, and the slider values are the source of truth.
   ok.onclick = () => {
     previewSettings({
       zoom: pxToZoom(+font.value),
@@ -3860,13 +3863,13 @@ function settingsDialog() {
 let currentSettings = Object.assign({}, SETTINGS_DEFAULT);
 
 /**
- * Применить и СОХРАНИТЬ настройки.
+ * Apply and SAVE the settings.
  *
- * Раньше изменения ждали кнопки «Готово», а клик мимо окна откатывал
- * предпросмотр. Окно настроек — это не форма с кнопкой, а набор
- * переключателей: человек двигает ползунок и сразу видит результат, и
- * ждать отдельного подтверждения незачем. Поэтому каждое движение сразу
- * уходит в settings.json, а закрытие окна чем угодно — просто закрытие.
+ * The changes used to wait for the "Done" button, and a click outside the window
+ * rolled back the preview. The settings window is not a form with a button but a
+ * set of switches: a person moves a slider and sees the result at once, and
+ * waiting for a separate confirmation is pointless. So every movement goes
+ * straight to settings.json, and closing the window by any means is just a close.
  */
 async function previewSettings(patch) {
   Object.assign(currentSettings, patch);
@@ -3879,12 +3882,12 @@ async function previewSettings(patch) {
 }
 
 /**
- * Сколько вкладок с несохранёнными правками.
+ * How many tabs have unsaved changes.
  *
- * Спрашивает главный процесс перед окном подтверждения выхода, чтобы
- * предупредить в нём. Обычный API, а не крючок для тестов: вопрос возникает
- * как раз тогда, когда renderer уже собирается закрываться, и дотянуться до
- * него через крючок было бы нечестно.
+ * The main process asks before the quit confirmation window, in order to warn
+ * in it. An ordinary API rather than a test hook: the question comes up exactly
+ * when the renderer is already closing, and reaching it through a hook would be
+ * dishonest.
  */
 window.mdvDirtyTabs = () => {
   let n = 0;
@@ -3892,32 +3895,32 @@ window.mdvDirtyTabs = () => {
   return n;
 };
 
-/** Отмечаем файл в списке недавних (без await — ошибка тут не критична). */
+/** Note the file in the recent list (without await — an error here is not critical). */
 function noteRecent(p) {
   if (!p) return;
   Promise.resolve(api.recentAdd(p)).catch(() => {});
 }
-// Открытие файла/папки живёт на экране-подсказке, в меню иконки и в ПКМ по «+».
-// Отдельных кнопок в тулбаре больше нет, обращаться к ним не к чему.
+// Opening a file/folder lives on the hint screen, in the icon menu and in the right click on "+".
+// There are no separate buttons in the toolbar any more, so there is nothing to refer to.
 el.wOpenFile.onclick = openFileDialog;
 el.wOpenFolder.onclick = openFolderDialog;
 el.btnBack.onclick = () => go(-1);
 el.btnForward.onclick = () => go(1);
 el.toTop.onclick = () => el.content.scrollTo({ top: 0, behavior: 'smooth' });
 
-/** Выйти из правки с явным решением: сохранить или отменить. */
+/** Leave edit mode with an explicit decision: save or discard. */
 /*
- * Выйти из правки в чтение.
+ * Leave edit mode for reading.
  *
- * Отдельная функция потому, что save() выходит раньше, если изменений не
- * было: он честно говорит «Изменений нет» и файл не пишет. Но выйти из
- * правки всё равно надо — иначе «Сохранить» без правок оставлял человека в
- * редакторе, и кольцо не помогало: нажать было не на что.
+ * A function of its own because save() leaves earlier if there were no changes:
+ * it honestly says "No changes" and does not write the file. But leaving edit
+ * mode is still needed — otherwise "Save" with no changes left the person in the
+ * editor, and the ring did not help: there was nothing to press.
  */
 function endEdit(t) {
   if (!t || t.mode !== 'edit') return;
-  // Кольцо закрываем: оно собрано под прежний режим заметки, и оставить его
-  // открытым значит показать «Сохранить» в заметке, которая уже не в правке.
+  // We close the ring: it was assembled for the previous mode of the note, and
+  // leaving it open would mean showing "Save" in a note that is no longer editing.
   closeRadial();
   t.mode = 'read';
   t.dirty = false;
@@ -3930,13 +3933,13 @@ async function exitEdit(saveIt) {
   const t = active();
   if (!t || !t.path || t.mode !== 'edit') return;
 
-  // Включённое автосохранение убирает сам повод нажимать «Сохранить»:
-  // выход из правки пишет файл сам. Вопрос про отмену тогда не нужен —
-  // отменять нечего.
+  // Enabled autosave removes the very reason to press "Save": leaving edit mode
+  // writes the file by itself. The question about discarding is then not needed —
+  // there is nothing to discard.
   if (!saveIt && t.dirty && currentSettings.autosave) {
     await save();
-    // save() намеренно оставляет правку включённой (Ctrl+S не должен
-    // выбрасывать в чтение), а тут мы именно выходим — доводим до конца.
+    // save() deliberately stays in edit mode (Ctrl+S should not throw you into
+    // reading), and here we are specifically leaving — we finish it.
     endEdit(t);
     status(tr('status.autosaved') + t.name, 'ok');
     return;
@@ -3944,13 +3947,14 @@ async function exitEdit(saveIt) {
 
   if (!saveIt && t.dirty) {
     /*
-     * Вопрос задаётся как «Сохранить правки?», а не «Отменить правки?».
-     * Второй вариант ставил вопрос о том действии, которое уже вызвали, и
-     * кнопки «Отмена» / «Отменить правки» отличались от названия вопроса.
-     * Здесь выбор исчерпывающий: сохранить или выбросить, а закрытие окна
-     * возвращает в правку ничего не теряя.
+     * The question is asked as "Save changes?", not as "Discard changes?".
+     * The second version asked about the action that had already been invoked,
+     * and the buttons "Cancel" / "Discard changes" did not match the name of the
+     * question. Here the choice is exhaustive: save or throw away, and closing
+     * the window returns to editing with nothing lost.
      *
-     * null — крестик или Esc: вопрос закрыт, ответ не дан, остаёмся в правке.
+     * null — the close box or Esc: the question is closed, no answer given, we
+     * stay in edit mode.
      */
     const answer = await askConfirm(
       tr('discard.title'),
@@ -3963,7 +3967,7 @@ async function exitEdit(saveIt) {
         closeIsNo: false,
       }
     );
-    // null — закрыли без ответа: ничего не делаем, остаёмся в правке.
+    // null — closed without an answer: we do nothing, we stay in edit mode.
     if (answer === null) return;
     if (answer === true) {
       await save();
@@ -3978,7 +3982,7 @@ async function exitEdit(saveIt) {
     return;
   }
 
-  // Отмена: возвращаем то, что реально лежит на диске.
+  // Discard: we return what is actually on the disk.
   t.raw = t._diskRaw;
   t.dirty = false;
   t.mode = 'read';
@@ -3988,26 +3992,15 @@ async function exitEdit(saveIt) {
   status(tr('status.editsDiscarded'), 'warn');
 }
 
-/* ------------------------------------------------------- отмена и повтор
+/* ------------------------------------------------------- undo and redo
 
- * Своя история, а не Ctrl+Z самого браузера.
+ * A history of our own rather than the browser's Ctrl+Z.
  *
- * Встроенная отмена работает с полем, значение которого никто не трогает
- * извне. Здесь значение поля переписывается при переходах между вкладками и
- * при выходе из правки, и этого достаточно, чтобы история Chromium
- * обнулялась: Ctrl+Z не делал ничего, и человек справедливо считал кнопку
- * сломанной.
+ * The built-in undo works on a field whose value nobody touches from outside.
+ * Here the value of the field is overwritten when switching tabs and when
+ * leaving edit mode, and that is enough for the Chromium history to be reset:
+ * Ctrl+Z did nothing, and the person quite rightly considered the button broken.
  *
- * История живёт в вкладке (t.undo/t.redo), а не глобально: переключение
- * вкладок не должно путать правки разных заметок.
- *
- * Шаги склеиваются. Набор текста даёт по событию на букву, и Ctrl+Z,
- * отменяющий одну букву, бесполезен. Поэтому подряд идущие правки одного
- * рода (тот же inputType, без паузы) записываются как один шаг.
- *
- * Шаг хранит текст ДО правки, поэтому отмена — это просто возврат
- * предыдущего значения; redo-стек при этом пополняется текущим текстом.
- */
 const UNDO_COALESCE_MS = 700;
 const UNDO_MAX = 300;
 

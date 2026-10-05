@@ -629,9 +629,9 @@ kbd {
 .split.split-preview > #panel2 > .second-head,
 .split.split-preview > #panel2 > .content-second { display: none !important; }
 .split.split-preview > #panel2::after {
-    /* Текст-заглушка в предпросмотре разделения берётся из переменной:
-       значение ставит applySettings, иначе подпись была бы на одном языке
-       при любом выбранном. */
+    /* The placeholder text in the split preview comes from a variable:
+       the value is set by applySettings, otherwise the caption would be in
+       one language whatever is selected. */
     content: var(--i18n-second-pane, 'second pane');
     align-self: center; justify-self: center; margin: auto;
     color: var(--comment); font-size: 12px;
