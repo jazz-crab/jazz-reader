@@ -1,13 +1,13 @@
 'use strict';
 /*
- * Иконки и шрифт.
+ * Icons and font.
  *
- * Иконки раньше были глифами Font Awesome (&#xf07b; и подобные) из
- * JetBrainsMono Nerd Font. Это работало только пока грузился иконочный шрифт,
- * а сам он занимал 4 x ~1 МБ. Сейчас это инлайновый SVG из Lucide, который
- * генерирует scripts/vendor.js в src/icons.js.
+ * The icons used to be Font Awesome glyphs (&#xf07b; and the like) from
+ * JetBrainsMono Nerd Font. That worked only while the icon font was loading, and
+ * the font itself took 4 x ~1 MB. Now they are inline SVG from Lucide, which
+ * scripts/vendor.js generates into src/icons.js.
  *
- * Тест ловит возврат к глифам, потерянную иконку и возврат Nerd Font.
+ * The test catches a return to glyphs, a lost icon and a return of the Nerd Font.
  */
 const fs = require('fs');
 const path = require('path');
@@ -26,29 +26,29 @@ const html = read(path.join(SRC, 'index.html'));
 const app = read(path.join(SRC, 'app.js'));
 const css = read(path.join(SRC, 'style.css'));
 
-// Комментарии упоминают старые глифы намеренно («раньше было &#xf07b;»),
-// поэтому вырезаем их перед проверкой.
+// Comments mention the old glyphs deliberately ("it used to be &#xf07b;"),
+// so they are cut out before the check.
 const stripComments = (s) => s
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^\s*\/\/.*$/gm, '');
 
 console.log('== иконки ==');
 
-// 1. Глифов Font Awesome в коде быть не должно.
+// 1. There must be no Font Awesome glyphs in the code.
 const GLYPH = /&#x[0-9a-fA-F]{3,4};|\\uf[0-9a-fA-F]{3}/;
 for (const [name, src] of [['index.html', html], ['app.js', app], ['style.css', css]]) {
   const bad = stripComments(src).match(new RegExp(GLYPH.source, 'g'));
   t('нет глифов Font Awesome в ' + name, !bad, bad ? bad.join(' ') : '');
 }
 
-// 2. Модуль иконок сгенерирован и на месте.
+// 2. The icon module is generated and in place.
 const iconsPath = path.join(SRC, 'icons.js');
 t('src/icons.js существует', fs.existsSync(iconsPath));
 if (fs.existsSync(iconsPath)) {
   const icons = read(iconsPath);
   t('icons.js отдаёт MDV_ICONS', /global\.MDV_ICONS/.test(icons));
 
-  // 3. Каждая data-i из index.html должна быть в ICONS.
+  // 3. Every data-i from index.html must be in ICONS.
   const used = new Set();
   for (const m of html.matchAll(/data-i="([a-z0-9-]+)"/g)) used.add(m[1]);
   t('в index.html есть иконки через data-i', used.size > 0, 'найдено ' + used.size);
@@ -56,11 +56,11 @@ if (fs.existsSync(iconsPath)) {
     t('иконка «' + name + '» есть в icons.js', icons.includes(JSON.stringify(name) + ':'));
   }
 
-  // 4. Каждый ICONS.icon('...') из app.js должен существовать.
-  //
-  //    Сверх того ловим `icon: '...'` в описаниях пунктов меню: экспорт из
-  //    кругового меню собирается кодом, и его иконки не проходят через
-  //    data-i в разметке. Без этой строчки они выпали бы из проверки целиком.
+  // 4. Every ICONS.icon('...') from app.js must exist.
+  //    On top of that we catch `icon: '...'` in the menu item descriptions: export
+  //    from the ring is assembled by code, and its icons do not go through
+  //    data-i in the markup. Without this line they would fall out of the check
+  //    entirely.
   const inJs = new Set();
   for (const m of app.matchAll(/ICONS\.icon\('([a-z0-9-]+)'/g)) inJs.add(m[1]);
   for (const m of app.matchAll(/\bicon: '([a-z0-9-]+)'/g)) inJs.add(m[1]);
@@ -72,11 +72,11 @@ if (fs.existsSync(iconsPath)) {
     t('иконка «' + name + '» (app.js) есть в icons.js', icons.includes(JSON.stringify(name) + ':'));
   }
 
-  // 5. Иконки обязаны быть SVG, а не текстом.
+  // 5. The icons must be SVG, not text.
   t('icons.js рисует <svg>', icons.includes("'<svg class=\"ico-svg\"'") || icons.includes('<svg class="ico-svg'));
 }
 
-// 6. Никаких Nerd Font в сборке.
+// 6. No Nerd Font in the build.
 const fontDir = path.join(SRC, 'fonts');
 const fontFiles = fs.existsSync(fontDir) ? fs.readdirSync(fontDir) : [];
 t('Nerd Font выкинут из src/fonts', !fontFiles.some((f) => /NerdFont/i.test(f)),
@@ -85,7 +85,7 @@ t('в src/fonts есть обычный JetBrains Mono',
   fontFiles.some((f) => /^jetbrains-mono-(latin|cyrillic)-\d+-(normal|italic)\.woff2$/.test(f)),
   fontFiles.join(', '));
 
-// 7. fonts.css подключён и покрывает кириллицу (интерфейс русский).
+// 7. fonts.css is attached and covers Cyrillic (the interface is Russian).
 t('index.html подключает fonts.css', /href="fonts\.css"/.test(html));
 const fontsCssPath = path.join(SRC, 'fonts.css');
 t('src/fonts.css существует', fs.existsSync(fontsCssPath));
@@ -94,7 +94,7 @@ if (fs.existsSync(fontsCssPath)) {
   t('fonts.css объявляет JetBrainsMono', /font-family:\s*"JetBrainsMono"/.test(fc));
   t('в fonts.css есть кириллический сабсет', /cyrillic-\d+-/.test(fc));
   t('в fonts.css есть латинский сабсет', /latin-\d+-/.test(fc));
-  // Каждый упомянутый файл должен существовать на диске.
+  // Every mentioned file must exist on the disk.
   const refs = [...fc.matchAll(/url\("fonts\/([^"]+)"\)/g)].map((m) => m[1]);
   t('fonts.css ссылается на файлы', refs.length > 0, 'ссылок: ' + refs.length);
   for (const f of refs) {
@@ -102,15 +102,14 @@ if (fs.existsSync(fontsCssPath)) {
   }
 }
 
-// 8. Шрифт UI — JetBrains Mono (а не Segoe UI).
+// 8. The UI font is JetBrains Mono (not Segoe UI).
 t('в CSS задан --ui: JetBrainsMono', /--ui:\s*"JetBrainsMono"/.test(css));
 t('в CSS больше нет Segoe UI в --ui', !/--ui:[^;]*Segoe UI/.test(css));
 t('CSS ссылается на --mono, а не на удалённый --nf', !/var\(--nf\)/.test(css));
 
-// 9. margin-block / margin-inline принимают 1–2 значения. Тройная запись
-//    молча отбрасывается всей декларацией — на этом уже потерялись
-//    вертикальные отступы у заголовков (margin: 1.5em 0 .55em ->
-//    margin-block: 1.5em 0 .55em).
+// 9. margin-block / margin-inline accept 1-2 values. A three-value form is
+//    silently dropped with the whole declaration — the vertical spacing of the
+//    headings was already lost that way (margin: 1.5em 0 .55em ->
 for (const prop of ['margin-block', 'margin-inline', 'padding-block', 'padding-inline']) {
   const bad = [];
   for (const m of css.matchAll(new RegExp(prop + ':\\s*([^;{}]+);', 'g'))) {
@@ -120,8 +119,8 @@ for (const prop of ['margin-block', 'margin-inline', 'padding-block', 'padding-i
   t('нет невалидных ' + prop + ' (больше 2 значений)', bad.length === 0, bad.join('; '));
 }
 
-// 10. Универсальный сброс * { margin: 0 } обнуляет всё — значит у каждого
-//     блочного элемента колонки должно быть своё вертикальное правило.
+// 10. The universal reset * { margin: 0 } zeroes everything — so every block
+//     element of the column must have its own vertical rule.
 t('сброс * { margin: 0 } на месте (ожидаем)', /\*\s*\{[^}]*margin:\s*0/.test(css));
 t('у заголовков есть вертикальный margin-block',
   /\.content h1[^{]*\{[^}]*margin-block:/.test(css) || /\.content h1,\s*\.content h2/.test(css));

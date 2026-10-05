@@ -1,7 +1,8 @@
 'use strict';
 /*
- * Проверка иконки build/icon/icon.{svg,png,ico} по пикселям.
- * Свой разбор PNG на zlib — чтобы тест тянул только стдли, без python/Pillow.
+ * Checking the icon build/icon/icon.{svg,png,ico} pixel by pixel.
+ * Our own PNG parsing on top of zlib — so that the test pulls in only the standard
+ * library, without python/Pillow.
  *   node test/icon.test.js
  */
 const fs = require('fs');
@@ -19,7 +20,7 @@ const t = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '\n       ' + extra : '')); }
 };
 
-// ---------- PNG: только 8-bit RGBA, без чередования (ровно то, что даёт rsvg) ----------
+// ---------- PNG: 8-bit RGBA only, no interlacing (exactly what rsvg produces) ----------
 function decodePng(buf) {
   if (buf.readUInt32BE(0) !== 0x89504e47 || buf.readUInt32BE(4) !== 0x0d0a1a0a) throw new Error('не PNG');
   let pos = 8, ihdr = null, idat = [];
@@ -71,13 +72,13 @@ const px = (img, x, y) => {
   return { r: img.data[i], g: img.data[i + 1], b: img.data[i + 2], a: img.data[i + 3] };
 };
 const hex = c => '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('');
-// Буквы — единственное, что заметно голубое и светлое; плитка тёмная, обводка серая.
-// Буквы — единственное, что в кадре заметно голубое и светлое; плитка тёмная
-// (#16161e, b-r=12), обводка серая (#3b4261, b-r=38). Порог по хроматике, а не
-// по абсолютным каналам: на 16..20px после сглаживания почти нет пикселей с
-// буквенным цветом на 100%, и строгий детектор терял бы половину капители.
+// The letters are the only noticeably blue and light thing in the frame; the tile is dark
+// (#16161e, b-r=12), the outline grey (#3b4261, b-r=38). The threshold is by
+// chromaticity, not by absolute channels: at 16..20px after anti-aliasing there are
+// almost no pixels at 100% of the letter colour, and a strict detector would lose
+// half of the capitals.
 const isInk = p => p.a > 128 && (p.b - p.r) > 60 && p.r > 40;
-// Для выбора цвета: пиксель, где буква лежит почти целиком, без сглаживания.
+// For picking the colour: a pixel where the letter lies almost entirely, without anti-aliasing.
 const isInkSolid = p => p.a > 200 && p.b > 200 && p.r < 200;
 
 function inkBox(img) {
@@ -98,7 +99,7 @@ function inkBox(img) {
 
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
-// ---------- PNG-слои ----------
+// ---------- PNG layers ----------
 console.log('\n== PNG-слои ==');
 const png = {};
 let missing = [];
@@ -152,12 +153,12 @@ if (fs.existsSync(icoPath)) {
   t('внутри ICO лежат PNG (Vista+) и все декодируются', payloadOk, notes.join('\n       '));
   t('размер пикселей в слое = размер в каталоге (0 => 256)', dimOk, notes.join('\n       '));
   t('слои ICO побайтово равны icon-<n>.png', sameAsPng, notes.join('\n       '));
-  // electron-builder/app-builder требует слой 256+, иначе exe останется с дефолтной иконкой.
+  // electron-builder/app-builder requires a layer of 256+, otherwise the exe keeps the default icon.
   t('есть слой 256x256 (иначе electron-builder не встроит иконку)', seen.includes(256));
   t('ICO заметно больше дефолтной иконки Electron', ico.length > 5000, ico.length + ' байт');
 }
 
-// ---------- Геометрия ----------
+// ---------- Geometry ----------
 console.log('\n== геометрия ==');
 if (png[256]) {
   const img = png[256].img, box = inkBox(img);
@@ -183,7 +184,7 @@ if (png[256]) {
   t('прозрачного поля 2..20% (скруглённые углы, не обрезанный квадрат) (' + (transparent / 65536 * 100).toFixed(1) + '%)',
     transparent / 65536 > 0.02 && transparent / 65536 < 0.2, transparent + ' px');
 
-  // Палитра TokyoNight
+  // The TokyoNight palette
   const counts = new Map();
   for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
     const c = px(img, x, y);
@@ -199,9 +200,10 @@ if (png[256]) {
   t('буквы — blue #7aa2f7', has(TOKYO.blue, 6));
 
   if (box) {
-    // Градиент по горизонтали: слева синий, справа циан. Берём медиану цвета по
-    // плотным пикселям крайних 10% инка — на самой кромке цвет уже смешан с
-    // плиткой, а в середине второй стоп градиента ещё не начался.
+    // A horizontal gradient: blue on the left, cyan on the right. We take the median
+    // colour over the dense pixels of the outer 10% of the ink — at the very edge
+    // the colour is already mixed with the tile, and in the middle the second
+    // gradient stop has not begun yet.
     const band = (from, to) => {
       const list = [];
       for (let y = box.y0; y <= box.y1; y++) for (let x = from; x <= to; x++) {
@@ -218,7 +220,7 @@ if (png[256]) {
   }
 }
 
-// ---------- Малые слои ----------
+// ---------- Small layers ----------
 console.log('\n== малые слои ==');
 const fracOf = i => { const b = inkBox(i); return b ? (b.x1 - b.x0 + 1) / i.w : 0; };
 for (const s of SMALL) {
@@ -230,9 +232,10 @@ for (const s of SMALL) {
   t(s + 'px: капитель не мельче 29% холста (' + h + 'px)', h / s >= 0.29, 'w=' + w + ' h=' + h);
   t(s + 'px: «JR» не шире 80% холста (' + w + 'px)', w / s <= 0.8);
 }
-// Слои <=24px рисуются с увеличенным кеглем (SMALL_SCALE в make-icons.sh),
-// иначе на 16px капитель вырождается в 4 пикселя и не читается. Сверяем
-// среднюю долю инка: усреднение снимает шум округления на мелких кеглях.
+// Layers <=24px are drawn with an increased font size (SMALL_SCALE in
+// make-icons.sh), otherwise at 16px the capitals degenerate into 4 pixels and
+// cannot be read. We compare the average share of ink: averaging takes away the
+// rounding noise at small sizes.
 const have = s => png[s] && fracOf(png[s].img);
 if (SMALL.every(have) && [32, 40, 48, 64, 128, 256].every(have)) {
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
@@ -242,7 +245,7 @@ if (SMALL.every(have) && [32, 40, 48, 64, 128, 256].every(have)) {
     ratio > 1.1 && ratio < 1.32, 'small=' + small.toFixed(3) + ' base=' + base.toFixed(3));
 }
 
-// ---------- Исходник ----------
+// ---------- The source ----------
 console.log('\n== исходник ==');
 const svgPath = path.join(DIR, 'icon.svg');
 t('icon.svg есть', fs.existsSync(svgPath));
@@ -256,13 +259,14 @@ if (fs.existsSync(svgPath)) {
   t('внешние ресурсы не тянутся (без <image>/http)',
     !/<image\b|https?:\/\/(?!www\.w3\.org)/.test(svg));
 }
-// Право на исполнение имеет смысл только на POSIX; в git на Windows файл
-// приходит с 0644, и проверять там нечего.
-// Генератор иконок: make-icons.js — основной (работает везде, где есть node и
-// electron). make-icons.sh остаётся как путь для машин с Lato и rsvg-convert:
-// там буквы ложатся чуть иначе, и метрики в icon.svg придётся подвинуть.
-// Право на исполнение .sh проверяем только на POSIX — в git на Windows файл
-// приходит с 0644, и проверять там нечего.
+// The execute bit only makes sense on POSIX; in git on Windows the file
+// comes as 0644, and there is nothing to check.
+// The icon generator: make-icons.js is the primary one (it works wherever there
+// is node and electron). make-icons.sh stays as the path for machines with Lato
+// and rsvg-convert: there the letters land slightly differently, and the metrics
+// in icon.svg will have to be nudged.
+// The execute bit of the .sh is checked only on POSIX — in git on Windows the
+// file comes as 0644, and there is nothing to check.
 t('make-icons.js есть (генератор по умолчанию)', fs.existsSync(path.join(DIR, 'make-icons.js')));
 const iconsScript = path.join(DIR, 'make-icons.sh');
 t('make-icons.sh есть' + (process.platform === 'win32' ? ' (режим exec на Windows не проверяем)' : ' и исполняемый'),

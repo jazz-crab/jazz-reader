@@ -1,11 +1,12 @@
 'use strict';
 /*
- * i18n: язык системы, выбор языка, плейсхолдеры, множественные формы, откат на
- * второй язык при пробеле в переводе.
+ * i18n: the system language, the language choice, placeholders, plural forms,
+ * and the fallback to the second language when a translation has a gap.
  *
- * Без Electron и без окна: словари грузятся двумя путями (глобальный объект,
- * как в renderer, и require, как в главном процессе) и проверяются напрямую.
- * Оба пути важны — в renderer нет require, а в главном процессе нет <script>.
+ * Without Electron and without a window: the dictionaries are loaded by two
+ * routes (the global object, as in the renderer, and require, as in the main
+ * process) and checked directly. Both routes matter — the renderer has no
+ * require, and the main process has no <script>.
  *
  *   node test/i18n.test.js
  */
@@ -23,7 +24,7 @@ const eq = (name, got, want) => t(name, got === want, 'got ' + JSON.stringify(go
 
 console.log('\n== загрузка ==');
 
-// renderer-путь: три <script>, ни require, ни модулей
+// the renderer route: three <script>s, no require and no modules
 require(path.join(I18N, 'ru.js'));
 require(path.join(I18N, 'en.js'));
 require(path.join(I18N, 'index.js'));
@@ -31,9 +32,9 @@ const i18n = global.MDV_I18N;
 t('MDV_I18N создан (renderer-путь)', !!i18n);
 t('словари зарегистрировались в globalThis', !!(global.MDV_I18N_DICT && global.MDV_I18N_DICT.ru && global.MDV_I18N_DICT.en));
 
-// main-путь: только index.js, он подтягивает словари сам. Кэш require чистим
-// руками, иначе повторный require вернёт кэш и словари не перерегистрируются —
-// так имитируется новый процесс.
+// the main route: index.js only, it pulls the dictionaries in itself. The require
+// cache is cleared by hand, otherwise a repeated require returns the cache and
+// the dictionaries are not registered again — that is how we imitate a new process.
 for (const f of ['ru.js', 'en.js', 'index.js']) {
   delete require.cache[require.resolve(path.join(I18N, f))];
 }
@@ -72,7 +73,7 @@ t('многострочный текст не поехал', i18n.t('about.detai
 
 console.log('\n== множественные формы ==');
 i18n.setLocale('ru');
-// Русский меняет слово на границах 1, 2-4, 5+, 11-14, 21 и так далее.
+// Russian changes the word at the boundaries 1, 2-4, 5+, 11-14, 21 and so on.
 const RU_FORMS = {
   0: 'заметках', 1: 'заметке', 2: 'заметках', 4: 'заметках', 5: 'заметках',
   11: 'заметках', 12: 'заметках', 14: 'заметках',
@@ -109,16 +110,16 @@ i18n.setSystemLocale('de-DE');
 eq('auto + неподдерживаемый системный -> en', i18n.tag(), 'en');
 
 console.log('\n== ключи ==');
-// Ключи обязаны совпадать в обоих словарях: расхождение означает либо
-// забытый перевод, либо ключ, который никто не использует.
+// The keys must match in both dictionaries: a mismatch means either a
+// forgotten translation or a key nobody uses.
 const ruKeys = Object.keys(global.MDV_I18N_DICT.ru).sort();
 const enKeys = Object.keys(global.MDV_I18N_DICT.en).sort();
 const onlyRu = ruKeys.filter((k) => !enKeys.includes(k));
 const onlyEn = enKeys.filter((k) => !ruKeys.includes(k));
 t('ключи словарей совпадают (' + ruKeys.length + ' шт.)', onlyRu.length === 0 && onlyEn.length === 0,
   'только в ru: ' + onlyRu.join(', ') + ' | только в en: ' + onlyEn.join(', '));
-// Список доменов задаётся вручную: автособирать его из самих ключей бессмысленно,
-// проверка тогда всегда проходит. Новый домен — это решение, а не следствие.
+// The list of domains is set by hand: collecting it from the keys themselves would be
+// pointless, the check would always pass. A new domain is a decision, not a consequence.
 const DOMAINS = [
   'about', 'btn', 'clip', 'discard', 'err', 'error', 'export', 'file',
   'find', 'ipc', 'lang', 'md', 'menu', 'name', 'nav', 'path', 'quit',

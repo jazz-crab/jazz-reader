@@ -1,16 +1,16 @@
 'use strict';
 /*
- * Выход из приложения: Ctrl+Q спрашивает подтверждение, галочка «не
- * показывать больше» запоминается, и — главное — выход не падает.
+ * Quitting the application: Ctrl+Q asks for confirmation, the "don't ask
+ * again" checkbox is remembered, and — above all — quitting does not crash.
  *
- * Падение было настоящим: releaseTabShortcuts() присваивала пустой массив
- * const'у прямо в will-quit, и вместо закрытия на экране появлялось окно
- * «JazzReader — ошибка при запуске». Ни один тест этого не ловил: все закрывали
- * экземпляр kill'ом, а не через выход из приложения.
+ * The crash was real: releaseTabShortcuts() assigned an empty array to a const
+ * right in will-quit, and instead of closing, a "JazzReader — failed to start"
+ * window appeared on screen. No test caught it: they all closed the instance with
+ * kill, not by quitting the application.
  *
- * Настройки читаем из отдельного --user-data-dir, чтобы не трогать
- * пользовательский settings.json. Ответы приложения читаем из stderr:
- * log() пишет туда всегда, независимо от того, куда лег файл журнала.
+ * The settings are read from a separate --user-data-dir, so that the user's
+ * settings.json is not touched. The application's answers are read from stderr:
+ * log() always writes there, regardless of where the log file ended up.
  *
  *   node test/quit.js
  */
@@ -91,8 +91,9 @@ async function launch(userData, sample) {
   child.stdout.on('data', (b) => { out += b.toString(); });
   child.stderr.on('data', (b) => { out += b.toString(); });
   const page = await waitForPage(port, 25000);
-  // Страница видна по CDP раньше, чем отработал app.js: без этого ожидания
-  // проверка ловит не «сломанный выход», а «приложение ещё грузится».
+  // The page is visible over CDP before app.js has run: without this wait
+  // the check catches "the application is still loading" rather than
+  // "the quit is broken".
   if (page) {
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
@@ -122,11 +123,12 @@ async function main() {
   const cleanup = () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} };
   process.on('exit', cleanup);
 
-  // --- 1. По умолчанию выход спрашивает; «Отмена» оставляет приложение жить --
+  // --- 1. By default quitting asks; "Cancel" leaves the application alive --
   //
-  // Ответ передаётся индексом кнопки, а не нажатием в окне: системный диалог
-  // закрывается только настоящей мышью, и окно, всплывающее во время
-  // автопроверок, забирает фокус у того, что у человека открыто на экране.
+  // The answer is passed as a button index rather than by clicking in the window:
+  // the system dialog can only be closed with a real mouse, and a window popping
+  // up during automated checks takes focus from whatever the person has open on
+  // screen.
   {
     const app = await launch(userData, sample);
     t('приложение поднялось', !!app.page, app.out().slice(-400));
@@ -143,7 +145,7 @@ async function main() {
       t('вопрос не приводит к ошибке',
         !/Assignment to constant variable/.test(out), out.slice(-300));
 
-      // Тот же экземпляр, теперь согласие: должно выйти без зависания.
+      // The same instance, now with agreement: it should quit without hanging.
       await evaluate(app.page, 'window.mdv.testQuit(0)');
       const code = await waitExit(app.child, 12000);
       t('по согласию приложение выходит', code !== null, 'код ' + code);
@@ -153,7 +155,7 @@ async function main() {
     }
   }
 
-  // --- 2. «Не показывать больше» -> выход без вопроса ---------------------
+  // --- 2. "Don't ask again" -> quitting without a question ---------------------
   {
     fs.writeFileSync(path.join(userData, 'settings.json'),
       JSON.stringify({ quitAsk: false }, null, 2), 'utf8');
@@ -174,7 +176,7 @@ async function main() {
     }
   }
 
-  // --- 3. Статика: хоткей и структура диалога ---------------------------
+  // --- 3. Statics: the hotkey and the shape of the dialog ---------------------------
   const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
   t('пункт «Выход» на Ctrl+Q',
     /label: tr\('menu\.file\.quit'\), accelerator: 'CmdOrCtrl\+Q'/.test(mainSrc));
@@ -187,15 +189,15 @@ async function main() {
     /buttons: \[tr\('quit\.close'\), tr\('quit\.cancel'\)\]/.test(mainSrc));
   t('крестик в рамке равносилен «Отмена»', /cancelId: 1/.test(mainSrc));
   t('заголовок диалога — «Закрыть?»', /title: tr\('quit\.title'\)/.test(mainSrc));
-  // Диалог обязан остаться в requestQuit, а ответ из теста — идти мимо
-  // showMessageBox. Иначе проверки снова начнут выводить окно на экран.
+  // The dialog must stay in requestQuit, and the test answer must go past
+  // showMessageBox. Otherwise the checks will start putting a window on screen again.
   t('ответ из теста идёт мимо диалога',
     /async function requestQuit\(answer = null\)/.test(mainSrc)
     && /if \(answer === null\) \{/.test(mainSrc));
   t('тестовый канал передаёт индекс ответа',
     /ipcMain\.handle\('mdv:testQuit', \(_e, answer = null\)/.test(mainSrc));
-  // Ключи диалога выхода обязаны существовать в обоих словарях: проверка
-  // исходника на t('quit.title') иначе проходит, даже если перевода нет.
+  // The keys of the quit dialog must exist in both dictionaries: a source check
+  // for t('quit.title') otherwise passes even when there is no translation.
   const dictRu = require(path.join(ROOT, 'src', 'i18n', 'ru.js'));
   const dictEn = require(path.join(ROOT, 'src', 'i18n', 'en.js'));
   for (const k of ['quit.title', 'quit.message', 'quit.close', 'quit.cancel',
@@ -203,8 +205,8 @@ async function main() {
     'menu.file.quit', 'error.startup']) {
     t('ключ есть в обоих словарях: ' + k, dictRu[k] != null && dictEn[k] != null);
   }
-  // Формы множественного числа обязаны покрывать one/few/many: иначе русский
-  // диалог про несохранённые правки молча отдаст английский.
+  // The plural forms must cover one/few/many: otherwise the Russian dialog about
+  // unsaved changes silently returns English.
   t('quit.detailDirty покрывает русские формы',
     dictRu['quit.detailDirty'] && dictRu['quit.detailDirty'].one
     && dictRu['quit.detailDirty'].few && dictRu['quit.detailDirty'].many);
@@ -214,12 +216,12 @@ async function main() {
     && /ipc\.setting\('quitAsk', false\)/.test(mainSrc));
   t('список хоткеев объявлен через let',
     /let shortcuts = \[\];/.test(mainSrc) && !/const shortcuts = \[\];/.test(mainSrc));
-  // Раньше тут была проверка исходника на литерал --mdview-hidden рядом с
-  // mdv:testQuit. Она ломалась от любой безобидной правки: я заменил
-  // инлайн-проверку флага на константу HIDDEN, и регулярка перестала находить
-  // флаг, хотя смысл не изменился. Проверяем теперь обе части по отдельности:
-  // канал действительно за `if (HIDDEN)`, и HIDDEN действительно выводится из
-  // скрытого режима — иначе проверка была бы пустой.
+  // There used to be a source check for the literal --mdview-hidden next to
+  // mdv:testQuit. It broke on any harmless edit: I replaced the inline flag check
+  // with the HIDDEN constant, and the regex stopped finding the flag although the
+  // meaning had not changed. We now check both parts separately:
+  // the channel really is behind `if (HIDDEN)`, and HIDDEN really is derived from
+  // the hidden mode — otherwise the check would be empty.
   t('тестовый канал выхода есть только в скрытом режиме',
     /if \(HIDDEN\) \{[\s\S]{0,200}mdv:testQuit/.test(mainSrc)
     && /const HIDDEN =[\s\S]{0,400}JAZZREADER_HIDDEN/.test(mainSrc));

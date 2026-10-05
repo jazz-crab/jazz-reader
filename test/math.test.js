@@ -1,12 +1,12 @@
 'use strict';
-/* Рендер на синтетике и, если задана MDV_NOTES_DIR, на реальных заметках. */
+/* Rendering on synthetic input and, if MDV_NOTES_DIR is set, on real notes. */
 const fs = require('fs');
 const path = require('path');
 
 global.marked = require(path.join(__dirname, '..', 'src', 'vendor', 'marked.min.js'));
 global.katex = require(path.join(__dirname, '..', 'src', 'vendor', 'katex', 'katex.min.js'));
-// md.js рисует чекбоксы task-list через MDV_ICONS; без него оставил бы
-// нативные <input>, поэтому грузим иконки ДО md.js.
+// md.js draws task-list checkboxes through MDV_ICONS; without it they would be
+// left as native <input>, so the icons are loaded BEFORE md.js.
 require(path.join(__dirname, '..', 'src', 'icons.js'));
 const MDV = require(path.join(__dirname, '..', 'src', 'md.js'));
 
@@ -18,50 +18,50 @@ const t = (name, cond, extra) => {
 
 console.log('\n== синтетика ==');
 
-// 1. блочная формула отдельным абзацем -> <div>, не внутри <p>
+// 1. a block formula as its own paragraph -> <div>, not inside <p>
 let h = MDV.renderMd('текст до\n\n$$E = mc^2$$\n\nтекст после');
 t('блок $$ -> div вне <p>', /<div class="mdv-math mdv-math-block"/.test(h) && !/<p><div/.test(h));
 t('у формулы есть data-tex (исходник по клику)', /data-tex="E = mc\^2"/.test(h), h.slice(0, 300));
 t('блок не остался плейсхолдером', !/MDVMATH\d+END/.test(h), h.slice(0, 300));
 
-// 2. инлайновая формула
+// 2. an inline formula
 h = MDV.renderMd('смотри $Z_{2}$ и $Z_{3}$ вместе');
 t('инлайн $..$ -> span', (h.match(/mdv-math-inline/g) || []).length === 2, h);
 t('инлайн не разорван <em>', !/<em>|\/em>/.test(h), h);
 
-// 3. `\\` НЕ должен теряться (главная беда auto-render после marked)
+// 3. `\\` must NOT be lost (the main trouble with auto-render after marked)
 h = MDV.renderMd('$$\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}$$');
 t('\\\\ сохранён как \\\\ в katex', /\\\\/.test(h) && !/katex[^]*?\\\\/.test(h) === false);
 t('aligned отрисован', /mord|begin-array|katex/.test(h) && !/Undefined control/.test(h));
 
-// 4. экранированные скобки \{ \} и \, {,}
+// 4. escaped braces \{ \} and \, {,}
 h = MDV.renderMd('$$A = \\{1,2\\}, \\quad B = 1{,}5 \\text{ Ом}$$');
 t('\\{ \\} не развалились', !/Undefined control sequence/.test(h));
 t('нет ошибок KaTeX', !/katex-error/.test(h), h.replace(/<[^>]+>/g, ' ').slice(0, 200));
 
-// 5. кириллица в \text{}
+// 5. Cyrillic in \text{}
 h = MDV.renderMd('$$\\tau = 2{,}564\\cdot10^{-4}\\ \\text{с}.$$');
 t('кириллица в \\text{}', !/katex-error/.test(h) && /mathdefault|mathrm|mord/.test(h), h.replace(/<[^>]+>/g, ' ').slice(0, 200));
 
-// 6. код НЕ трогаем: $ внутри fence
+// 6. code is NOT touched: $ inside a fence
 h = MDV.renderMd('```tikz\n\\begin{tikzpicture}\n$x$ and $$\n```\n');
 t('$ внутри fence не формула', !/katex/.test(h), h);
 t('tikz-код на месте', /tikzpicture/.test(h));
 
-// 7. код НЕ трогаем: `$` inline-code
+// 7. code is NOT touched: `$` inline code
 h = MDV.renderMd('введи `$PATH` и всё');
 t('$ внутри inline-code не формула', !/katex/.test(h), h);
 
-// 8. валюта не считается формулой
+// 8. currency is not a formula
 h = MDV.renderMd('Цена $5 и $10 в итоге');
 t('$5 и $10 — не формула', !/katex/.test(h), h);
 
-// 9. экранированный \$
+// 9. an escaped \$
 h = MDV.renderMd('цена \\$5, а формула $x^2$ тут');
 t('\\$ не открывает формулу', (h.match(/katex/g) || []).length > 0 && !/Undefined/.test(h));
 t('обе части на месте', /\$5/.test(h) && /5/.test(h));
 
-// 10. пустой/битый ввод не роняет
+// 10. empty/broken input does not bring anything down
 h = MDV.renderMd('$$\\frac{1}$$');
 t('битая формула не роняет рендер', typeof h === 'string' && h.length > 0);
 h = MDV.renderMd('');
@@ -69,16 +69,16 @@ t('пустой ввод -> пусто', h.trim() === '');
 h = MDV.renderMd('```\nнезакрытый fence\n$$x$$');
 t('незакрытый fence не роняет', typeof h === 'string');
 
-// 11. ссылки на .md помечаются
+// 11. .md links are marked
 h = MDV.renderMd('[вот](Лекция%201.md)', 'file:///home/user/notes/');
 t('.md-ссылка помечена data-mdpath', /data-mdpath="/.test(h), h);
 t('путь с кириллицей декодирован', /Лекция 1\.md/.test(h), h);
 
-// 12. картинки
+// 12. images
 h = MDV.renderMd('![схема](img%2Fсхема.png)', 'file:///home/user/notes/Электротехника/');
 t('img -> абсолютный file://', /<img[^>]+src="file:\/\/\/home\/user\/notes\/%D0%AD/.test(h), h);
 
-// 13. task-list: нативные <input type=checkbox> -> SVG Lucide
+// 13. task-list: native <input type=checkbox> -> Lucide SVG
 console.log('\n== task-list (- [x] / - [ ]) ==');
 
 h = MDV.renderMd('- [x] сделано\n- [ ] не сделано\n');
@@ -89,26 +89,26 @@ t('неотмеченный -> без mdv-task-done', (h.match(/mdv-task-done/g)
 t('иконки — это svg, а не глифы', (h.match(/<svg/g) || []).length === 2, h);
 t('текст задачи сохранён', /сделано/.test(h) && /не сделано/.test(h), h);
 
-// нумерованный список — самый частый случай в заметках
+// a numbered list — the most common case in notes
 h = MDV.renderMd('1. [x] первый\n2. [ ] второй\n');
 t('нумерованный: checkbox заменён', !/type="checkbox"/.test(h), h);
 t('нумерованный: один done', (h.match(/mdv-task-done/g) || []).length === 1, h);
 
-// вложенность
+// nesting
 h = MDV.renderMd('- [x] да\n  - [ ] вложенная\n');
 t('вложенная задача обработана', !/type="checkbox"/.test(h), h);
 t('вложенная: один done один нет', (h.match(/mdv-task-done/g) || []).length === 1, h);
 
-// обычный список не должен пострадать
+// an ordinary list must not suffer
 h = MDV.renderMd('- просто пункт\n- [ ] с галочкой\n');
 t('в обычном пункте нет иконки', !/mdv-task-wrap[\s\S]*просто пункт/.test(h), h);
 t('в обычном пункте нет task-wrap вообще', (h.match(/mdv-task-wrap/g) || []).length === 1, h);
 
-// без пробела после скобок — это НЕ task, и не должно ломаться
+// no space after the brackets — this is NOT a task, and must not break
 h = MDV.renderMd('- [x]слитно\n');
 t('[x] без пробела не трогаем', !/mdv-task/.test(h), h);
 
-// инлайн-код с [x] не должен превратиться в чекбокс
+// inline code with [x] must not become a checkbox
 h = MDV.renderMd('- `[x]` в коде\n');
 t('[x] в inline-коде не стал иконкой', !/mdv-task-wrap/.test(h), h);
 
@@ -120,11 +120,11 @@ if (REAL && fs.existsSync(REAL)) {
   const src = fs.readFileSync(REAL, 'utf8');
   const h2 = MDV.renderMd(src);
   t('реальный файл: нет нативных checkbox', !/type="checkbox"/.test(h2));
-  // Сколько задач — считаем по самому файлу, а не зашиваем числом: заметка
-  // пользователя меняется, и проверка падала вслед за ней, ничего не говоря
-  // о рендере.
-  // Маркер задачи встречается и в списках «1. [x]», не только в «- [x]»,
-  // поэтому берём любой нумерованный или маркированный пункт.
+  // How many tasks there are — we count from the file itself rather than hardcode
+  // a number: a user's note changes, and the check used to fall after it, saying
+  // nothing about the rendering.
+  // The task marker also occurs in "1. [x]" lists, not only in "- [x]", so we
+  // take any numbered or bulleted item.
   const wantTasks = (src.match(/^\s*(?:[-*]|\d+\.)\s+\[[ xX]\]/gm) || []).length;
   const gotTasks = (h2.match(/mdv-task-wrap/g) || []).length;
   t('реальный файл: все задачи получили иконки', gotTasks === wantTasks && wantTasks > 0,

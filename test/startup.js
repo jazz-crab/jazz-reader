@@ -57,7 +57,7 @@ async function waitForPage(port, timeoutMs) {
   return null;
 }
 
-/** Минимальный CDP-клиент: держит одно соединение, шлёт методы по id. */
+/** A minimal CDP client: it keeps one connection and sends methods by id. */
 function cdp(wsUrl) {
   const ws = new WebSocket(wsUrl);
   const pending = new Map();
@@ -92,7 +92,7 @@ function cdp(wsUrl) {
   };
 }
 
-/** Минимальный CDP-клиент: Runtime.evaluate с returnByValue. */
+/** A minimal CDP client: Runtime.evaluate with returnByValue. */
 function evaluate(wsUrl, expression) {
   return cdp(wsUrl).evaluate(expression);
 }
@@ -100,7 +100,7 @@ function evaluate(wsUrl, expression) {
 (async function main() {
   console.log('== запуск реального окна ==');
 
-  // Файл с формулами: если рендер сломан, .katex в DOM не появится.
+  // A file with formulas: if the render is broken, .katex will not appear in the DOM.
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-startup-'));
   const sample = path.join(tmpDir, 'sample.md');
   fs.writeFileSync(sample, [
@@ -118,7 +118,7 @@ function evaluate(wsUrl, expression) {
     '',
   ].join('\n'), 'utf8');
 
-  // Каталог с двумя вложенными заметками — для проверки дерева.
+  // A directory with two nested notes — for checking the tree.
   const notesDir = path.join(tmpDir, 'notes');
   fs.mkdirSync(path.join(notesDir, 'sub'), { recursive: true });
   fs.writeFileSync(path.join(notesDir, 'one.md'), '# one\n', 'utf8');
@@ -131,11 +131,11 @@ function evaluate(wsUrl, expression) {
     '--remote-debugging-port=' + port,
     '--no-sandbox',
     '--disable-gpu',
-    // Язык зафиксирован: иначе подписи зависят от локали машины,
-    // и проверки ниже падают на любом нерусском Windows.
+    // The language is pinned: otherwise the captions depend on the locale of the
+    // machine, and the checks below fail on any non-Russian Windows.
     '--lang=ru',
 
-    // Окно не показываем: тесты не должны выскакивать поверх работы.
+    // The window is not shown: tests must not pop up on top of the work.
     '--jazzreader-hidden',
     sample,
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -168,8 +168,8 @@ function evaluate(wsUrl, expression) {
 
   t('окно создано и страница загрузилась', true);
 
-  // Страница может ещё быть на about:blank — ждём, пока renderer дойдёт до
-  // нашего index.html и догрузит файл.
+  // The page may still be at about:blank — we wait until the renderer reaches
+  // our index.html and finishes loading the file.
   const PROBE = `JSON.stringify((() => {
     const content = document.getElementById('content');
     const html = content ? content.innerHTML : '';
@@ -179,10 +179,10 @@ function evaluate(wsUrl, expression) {
       ready: document.readyState,
       tabbar: !!document.getElementById('tabbar'),
       content: html,
-      // Для проверки «сырой LaTeX не утёк» берём видимый текст без
-      // MathML-аннотаций: KaTeX кладёт исходник в <annotation>, и он законно
-      // попадает в textContent (на этом работает копирование формул).
-      // В innerHTML исходник тоже есть — в атрибуте data-tex.
+      // For the check "the raw LaTeX did not leak" we take the visible text without
+      // the MathML annotations: KaTeX puts the source into <annotation>, and it
+      // legitimately ends up in textContent (copying formulas works on that).
+      // In innerHTML the source is there too — in the data-tex attribute.
       text: (() => {
         const c = content && content.cloneNode(true);
         if (!c) return '';
@@ -228,16 +228,15 @@ function evaluate(wsUrl, expression) {
     'text=' + JSON.stringify(d.text.slice(0, 200)));
   t('исходник TeX сохранён в data-tex', /\\frac/.test(d.content));
 
-  // ---------------------------------------------------------- вёрстка колонки
-  // Регресссия: `.content > *` задавал margin-left/right: auto, а у h1-h6,
-  // ul, ol, pre, table, blockquote были свои правила с шорткатом `margin: X 0`,
-  // который обнулял центровку. В итоге на широком окне абзацы уезжали в
-  // центр колонки, а заголовки и списки оставались у левого края — разъезд
-  // около 290px, который был виден в заметке.
-  //
-  // Проверять надо на ШИРОКОМ окне: при узком (меньше 900px + отступы)
-  // max-width не срабатывает, блоки просто занимают всю ширину и баг
-  // не проявляется. Поэтому сначала расширяем вьюпорт через CDP.
+  // ------------------------------------------------------------ the column layout
+  // Regression: `.content > *` had margin-left/right: auto, while h1-h6,
+  // ul, ol, pre, table, blockquote had their own rules with the shortcut
+  // `margin: X 0`, which zeroed the centring. In the end, in a wide window the
+  // paragraphs drifted to the centre of the column while headings and lists
+  // stayed at the left edge — a divergence of about 290px, visible in a note.
+  // It has to be checked in a WIDE window: in a narrow one (less than 900px plus
+  // the margins) max-width does not apply, the blocks simply take the full width
+  // and the bug does not show. So we first widen the viewport through CDP.
   console.log('\n== вёрстка колонки (широкое окно) ==');
   const client = cdp(page.webSocketDebuggerUrl);
   try {
@@ -260,8 +259,8 @@ function evaluate(wsUrl, expression) {
         ml: s.marginLeft,
       };
     });
-    // Ширина колонки берётся из настройки, а не из дефолта: проверка живёт
-    // на настоящем settings.json, где у человека может стоять своё значение.
+    // The column width is taken from the setting, not from the default: the check
+    // lives on a real settings.json, where a person may have their own value.
     return {
       contentW: c.clientWidth,
       rows,
@@ -279,31 +278,32 @@ function evaluate(wsUrl, expression) {
 
   const wide = layout.rows.filter((r) => r.w > 0);
   const maxW = wide.length ? Math.max(...wide.map((r) => r.w)) : 0;
-  // Проверяем сам инвариант «блоки не шире заданной колонки», а не дефолтное
-  // число: настройка ширины колонки принадлежит пользователю, и проверка
-  // падала всякий раз, когда он её менял.
+  // We check the invariant "blocks are no wider than the given column" itself,
+  // not a default number: the column width setting belongs to the user, and the
+  // check failed every time they changed it.
   t('колонка чтения ограничена по ширине (max-width работает)',
     layout.colW > 0 && maxW <= layout.colW,
     'блок ' + maxW + 'px, колонка ' + layout.colW + 'px');
 
-  // Главное: окно не просто существует, а видимо. show:false + регресс
-  // titleBarOverlay как раз давали «процесс жив, окна нет».
-  // ------------------------------------------------- дерево папок
-  // Регресс: renderTree() писал дерево в #paneFiles внутри СКРЫТОГО
-  // #workspace (его показывал renderActive только когда открыт файл).
-  // Итог: «Папка» визуально ничего не делала, дерево «появлялось» только
-  // вместе с первым открытым файлом.
-  //
-  // Системный диалог выбора папки из теста не открыть, поэтому зовём
-  // window.__mdvTest.addFolder() — он идёт через настоящий IPC listMd
-  // в главный процесс и читает настоящий каталог с диска.
+  // The main thing: the window does not merely exist, it is visible. show:false
+  // plus the titleBarOverlay regression gave exactly "the process is alive,
+  // there is no window".
+  // ------------------------------------------------------------- folder tree
+  // Regression: renderTree() wrote the tree into #paneFiles inside the HIDDEN
+  // #workspace (renderActive only showed it when a file was open).
+  // The result: "Folder" visually did nothing, and the tree "appeared" only
+  // together with the first file opened.
+  // The system folder dialog cannot be opened from a test, so we call
+  // window.__mdvTest.addFolder() — it goes through the real IPC listMd
+  // to the main process and reads a real directory from the disk.
   console.log('\n== дерево папок ==');
   const c2 = cdp(page.webSocketDebuggerUrl);
   const tree = JSON.parse(await c2.evaluate(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     if (!window.__mdvTest) return JSON.stringify({ hook: false });
-    // Закрываем все вкладки: сценарий «открыл папку, файл ещё не открывал».
-    // С открытым файлом #workspace и так виден и баг не проявляется.
+    // We close all the tabs: the scenario is "opened a folder, has not opened a
+    // file yet". With a file open #workspace is visible anyway and the bug does
+    // not show.
     for (const id of [...window.__mdvTest.tabs.keys()]) {
       await window.__mdvTest.closeTab(id);
     }
