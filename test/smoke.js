@@ -8,8 +8,14 @@ const ipc = require('../ipc');
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-gpu');
 
-const ROOT = '/srv/uchoba';
-const SAMPLE = path.join(ROOT, 'Электротехника', 'Готово (вариант 6)', 'РГР-3-задача-1', 'rgr3_z1.md');
+// Библиотека заметок для прогона. Не в репозитории: укажи MDV_NOTES_DIR
+// на каталог с .md и MDV_SAMPLE_NOTE на один файл внутри него.
+const ROOT = process.env.MDV_NOTES_DIR || '';
+const SAMPLE = process.env.MDV_SAMPLE_NOTE || '';
+if (!ROOT || !SAMPLE || !fs.existsSync(SAMPLE)) {
+  console.error('Нужны MDV_NOTES_DIR и MDV_SAMPLE_NOTE: задай их и прогони снова.');
+  app.exit(1);
+}
 
 const errors = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

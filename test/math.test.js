@@ -1,5 +1,5 @@
 'use strict';
-/* Прогон рендера на синтетике и на реальных заметках /srv/uchoba. */
+/* Рендер на синтетике и, если задана MDV_NOTES_DIR, на реальных заметках. */
 const fs = require('fs');
 const path = require('path');
 
@@ -70,13 +70,13 @@ h = MDV.renderMd('```\nнезакрытый fence\n$$x$$');
 t('незакрытый fence не роняет', typeof h === 'string');
 
 // 11. ссылки на .md помечаются
-h = MDV.renderMd('[вот](Лекция%201.md)', 'file:///home/u/uchoba/');
+h = MDV.renderMd('[вот](Лекция%201.md)', 'file:///home/user/notes/');
 t('.md-ссылка помечена data-mdpath', /data-mdpath="/.test(h), h);
 t('путь с кириллицей декодирован', /Лекция 1\.md/.test(h), h);
 
 // 12. картинки
-h = MDV.renderMd('![схема](img%2Fсхема.png)', 'file:///home/u/uchoba/Электротехника/');
-t('img -> абсолютный file://', /<img[^>]+src="file:\/\/\/home\/u\/uchoba\/%D0%AD/.test(h), h);
+h = MDV.renderMd('![схема](img%2Fсхема.png)', 'file:///home/user/notes/Электротехника/');
+t('img -> абсолютный file://', /<img[^>]+src="file:\/\/\/home\/user\/notes\/%D0%AD/.test(h), h);
 
 // 13. task-list: нативные <input type=checkbox> -> SVG Lucide
 console.log('\n== task-list (- [x] / - [ ]) ==');
@@ -132,9 +132,9 @@ if (REAL && fs.existsSync(REAL)) {
   t('реальный файл: первая задача done', /mdv-task mdv-task-done/.test(h2));
 }
 
-console.log('\n== реальные заметки /srv/uchoba ==');
-const ROOT = '/srv/uchoba';
-if (fs.existsSync(ROOT)) {
+console.log('\n== реальные заметки ==');
+const ROOT = process.env.MDV_NOTES_DIR || '';
+if (ROOT && fs.existsSync(ROOT)) {
   const files = [];
   (function walk(d) {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {

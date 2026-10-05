@@ -8,7 +8,14 @@ const ipc = require('../ipc');
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-gpu');
 
-const SAMPLE = '/srv/uchoba/Электротехника/Готово (вариант 6)/РГР-3-задача-1/rgr3_z1.md';
+// Библиотека заметок для прогона. Не в репозитории: укажи MDV_NOTES_DIR
+// на каталог с .md и MDV_SAMPLE_NOTE на один файл внутри него.
+const ROOT = process.env.MDV_NOTES_DIR || '';
+const SAMPLE = process.env.MDV_SAMPLE_NOTE || '';
+if (!ROOT || !SAMPLE || !fs.existsSync(SAMPLE)) {
+  console.error('Нужны MDV_NOTES_DIR и MDV_SAMPLE_NOTE: задай их и прогони снова.');
+  app.exit(1);
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const errors = [];
 
@@ -89,8 +96,8 @@ c.scrollTop = 0;
     c.style.scrollBehavior = '';
 
     // --- дерево папок + фильтр ---
-    const g = await mdv.listMd('/srv/uchoba');
-    roots.push({ path: g.root, name: 'uchoba', tree: g.tree, total: g.total });
+    const g = await mdv.listMd(ROOT);
+    roots.push({ path: g.root, name: path.basename(ROOT), tree: g.tree, total: g.total });
     renderTree();
     await new Promise(x => setTimeout(x, 200));
     out.treeRows = document.querySelectorAll('#paneFiles .tree-item').length;
