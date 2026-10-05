@@ -1300,7 +1300,7 @@ function renderTabs() {
     // хотя это самая обычная вкладка при работе с несколькими заметками.
     d.draggable = true;
     d.title = (t.path || t.name)
-      + (t.id === secondId ? '\n(справа — вторая панель)' : '');
+      + (t.id === secondId ? tr('tab.secondPanelNote') : '');
     if (t.id === activeId) d.focus();   // чтобы Shift+F10 и клавиатура работали на активной вкладке
     const nm = document.createElement('span');
     nm.className = 'tname';
@@ -1311,13 +1311,13 @@ function renderTabs() {
       const dot = document.createElement('span');
       dot.className = 'dirty';
       dot.textContent = '●';
-      dot.title = 'не сохранено';
+      dot.title = tr('tab.unsavedTitle');
       d.append(dot);
     }
     const x = document.createElement('button');
     x.className = 'tclose';
     x.innerHTML = ICONS.icon('x');
-    x.title = 'Закрыть (Ctrl+W)';
+    x.title = tr('tab.closeTitle');
     x.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
     d.append(x);
     d.onclick = () => selectTab(t.id);
@@ -1405,14 +1405,14 @@ async function openPath(p, opts) {
   const prevActive = activeId;
   const my = ++loadSeq;
   try {
-    status('Открываю ' + basname(p) + '…');
+    status(tr('status.openingName') + basname(p) + '…');
     // Показываем индикатор и отдаём кадр, иначе он появится уже после того,
     // как всё отрисовалось, и толку от него не будет.
-    showLoading('Открываю ' + basname(p) + '…');
+    showLoading(tr('status.openingName') + basname(p) + '…');
     await nextPaint();
     const data = await api.read(p);
     if (my !== loadSeq) return null;
-    showLoading('Открываю ' + basname(p) + '…', fmtSize(data.size));
+    showLoading(tr('status.openingName') + basname(p) + '…', fmtSize(data.size));
     await nextPaint();
     noteRecent(data.path);
     const t = opts.newTab ? blankTab() : (active() && active().path ? active() : blankTab());
@@ -1428,7 +1428,7 @@ async function openPath(p, opts) {
       try {
         t.html = MDV.renderMd(t.raw, t.baseUrl);
       } catch (e) {
-        t.html = '<pre style="color:var(--red)">Ошибка рендера: '
+        t.html = tr('render.errorPre')
           + MDV.escapeHtml(String(e.message || e)) + '</pre>';
       }
       activeId = prevActive;
@@ -1446,7 +1446,7 @@ async function openPath(p, opts) {
     return t;
   } catch (e) {
     if (my === loadSeq) hideLoading();
-    status('Не удалось открыть: ' + (e.message || e), 'err');
+    status(tr('status.openFailed') + (e.message || e), 'err');
     return null;
   }
 }
@@ -1462,7 +1462,7 @@ async function navigate(p, anchor) {
     return t;
   }
   const data = await api.read(p).catch(() => null);
-  if (!data) { status('Не удалось открыть ' + basname(p), 'err'); return null; }
+  if (!data) { status(tr('status.openFailedName') + basname(p), 'err'); return null; }
   applyData(t, data);
   pushHist(t, data.path, anchor);
   selectTab(t.id);
@@ -1481,7 +1481,7 @@ async function go(delta) {
     const entry = t.hist[ni];
     if (entry.path !== t.path) {
       const data = await api.read(entry.path).catch(() => null);
-      if (!data) { status('Файл недоступен: ' + basname(entry.path), 'err'); return; }
+      if (!data) { status(tr('status.fileUnavailable') + basname(entry.path), 'err'); return; }
       applyData(t, data);
     }
     t.hi = ni;
@@ -1500,8 +1500,8 @@ function updateNavButtons() {
   const tabFwd = visitPos < visit.length - 1;
   el.btnBack.disabled = !(docBack || tabBack);
   el.btnForward.disabled = !(docFwd || tabFwd);
-  el.btnBack.title = docBack ? 'Назад по истории (Alt+←)' : 'Предыдущая вкладка (Alt+←)';
-  el.btnForward.title = docFwd ? 'Вперёд по истории (Alt+→)' : 'Следующая вкладка (Alt+→)';
+  el.btnBack.title = docBack ? tr('nav.backDoc') : tr('nav.backTab');
+  el.btnForward.title = docFwd ? tr('nav.fwdDoc') : tr('nav.fwdTab');
 }
 
 // ------------------------------------------------------------------ рендер
@@ -1575,8 +1575,8 @@ function renderActive() {
       try {
         t.html = MDV.renderMd(t.raw, t.baseUrl);
       } catch (e) {
-        t.html = '<pre style="color:var(--red)">Ошибка рендера: ' + MDV.escapeHtml(String(e.message || e)) + '</pre>';
-        status('Ошибка рендера: ' + (e.message || e), 'err');
+        t.html = tr('render.errorPre') + MDV.escapeHtml(String(e.message || e)) + '</pre>';
+        status(tr('render.error') + (e.message || e), 'err');
       }
     }
     el.content.innerHTML = t.html;
@@ -1610,7 +1610,7 @@ function openSecond(id) {
   if (!tabs.has(id)) return false;
   // Ту же вкладку, что и в рабочей области, во вторую панель нечего помещать:
   // рядом с самим собой пусто, и человек ничего не получает.
-  if (id === activeId) { status('Эта вкладка уже открыта слева'); return false; }
+  if (id === activeId) { status(tr('tab.alreadyLeft')); return false; }
   if (secondId !== null && tabs.has(secondId)) secondTab().scroll2 = el.content2.scrollTop;
   secondId = id;
   // Правая панель только что появилась, но фокус остаётся у левой: человек
@@ -1619,7 +1619,7 @@ function openSecond(id) {
   hintSplitPlace(false);
   renderSecond();
   renderTabs();
-  status('Справа: ' + tabs.get(id).name, 'ok');
+  status(tr('status.movedRight') + tabs.get(id).name, 'ok');
   return true;
 }
 
@@ -1645,7 +1645,7 @@ function swapPanes() {
 /** Правая панель занимает вторую позицию: сначала разделить, потом смотреть. */
 function splitScreen() {
   const ids = [...tabs.keys()].filter((k) => k !== activeId);
-  if (!ids.length) { status('Нужна ещё одна вкладка — разделить нечего'); return false; }
+  if (!ids.length) { status(tr('err.nothingToSplit')); return false; }
   return openSecond(ids[ids.length - 1]);
 }
 
@@ -1668,7 +1668,7 @@ function renderSecond() {
     try {
       t.html = MDV.renderMd(t.raw, t.baseUrl);
     } catch (e) {
-      t.html = '<pre style="color:var(--red)">Ошибка рендера: ' + MDV.escapeHtml(String(e.message || e)) + '</pre>';
+      t.html = tr('render.errorPre') + MDV.escapeHtml(String(e.message || e)) + '</pre>';
     }
   }
   el.content2.innerHTML = t.html;
@@ -1693,7 +1693,7 @@ const LANG_NAMES = {
   yaml: 'YAML', yml: 'YAML', toml: 'TOML', ini: 'INI', cfg: 'Config',
   md: 'Markdown', markdown: 'Markdown', tex: 'LaTeX', latex: 'LaTeX',
   tikz: 'TikZ', circuitikz: 'circuitikz', diff: 'Diff', patch: 'Diff',
-  dockerfile: 'Dockerfile', makefile: 'Makefile', plaintext: 'Текст', text: 'Текст',
+  dockerfile: 'Dockerfile', makefile: 'Makefile', plaintext: tr('lang.plaintext'), text: tr('lang.plaintext'),
 };
 
 /* root передаётся, потому что при разделении экрана текст рисуется в двух
@@ -1714,19 +1714,19 @@ function decorateCode(root) {
     }
     const btn = document.createElement('button');
     btn.className = 'code-copy';
-    btn.innerHTML = ICONS.icon('copy') + '<span>Копировать</span>';
+    btn.innerHTML = ICONS.icon('copy') + tr('clip.copyBtnHtml');
     btn.onclick = () => {
       const text = code ? code.innerText : pre.innerText;
       navigator.clipboard.writeText(text).then(
         () => {
           btn.classList.add('ok');
-          btn.innerHTML = ICONS.icon('check') + '<span>Скопировано</span>';
+          btn.innerHTML = ICONS.icon('check') + tr('clip.copiedBtnHtml');
           setTimeout(() => {
             btn.classList.remove('ok');
-            btn.innerHTML = ICONS.icon('copy') + '<span>Копировать</span>';
+            btn.innerHTML = ICONS.icon('copy') + tr('clip.copyBtnHtml');
           }, 1400);
         },
-        () => { btn.textContent = 'Не вышло'; }
+        () => { btn.textContent = tr('clip.failedBtn'); }
       );
     };
     pre.append(btn);
@@ -1737,7 +1737,7 @@ function decorateCode(root) {
 function decorateMath(root) {
   const box = root || el.content;
   for (const m of box.querySelectorAll('.mdv-math')) {
-    m.title = 'LaTeX: клик — показать исходник';
+    m.title = tr('md.latexTip');
     m.style.cursor = 'pointer';
   }
 }
@@ -1784,7 +1784,7 @@ function tocNode(h, id) {
   twist.className = 'toc-twist';
   twist.type = 'button';
   twist.innerHTML = ICONS.icon('chevron-right');
-  twist.title = 'Свернуть / развернуть раздел';
+  twist.title = tr('md.collapseSection');
   twist.setAttribute('aria-expanded', 'true');
   row.append(twist);
 
@@ -1837,12 +1837,12 @@ function buildToc() {
   el.paneToc.innerHTML = '';
   spyHeads = []; spyLinks = [];
   if (!t || !t.path || t.mode === 'edit') {
-    el.paneToc.innerHTML = '<div class="toc-hint">Нет заголовков</div>';
+    el.paneToc.innerHTML = tr('toc.noHeadingsEmpty');
     return;
   }
   const heads = [...el.content.querySelectorAll('h1, h2, h3, h4')];
   if (!heads.length) {
-    el.paneToc.innerHTML = '<div class="toc-hint">В файле нет заголовков<br>Оглавление пустое</div>';
+    el.paneToc.innerHTML = tr('toc.noHeadingsBody');
     return;
   }
   const used = new Set();
@@ -1981,8 +1981,8 @@ function updateSpy() {
 // ------------------------------------------------------------- дерево папок
 
 async function addFolder(p) {
-  if (roots.some((r) => r.path === p)) { status('Папка уже открыта: ' + p); return; }
-  status('Сканирую ' + basname(p) + '…');
+  if (roots.some((r) => r.path === p)) { status(tr('status.folderAlreadyOpen') + p); return; }
+  status(tr('status.scanning') + basname(p) + '…');
   const res = await api.listMd(p);
   roots.push({ path: p, name: basname(p), tree: res.tree, total: res.total });
   renderTree();
@@ -1993,7 +1993,7 @@ async function addFolder(p) {
   // Без этого рабочая область оставалась скрытой и дерево было не видно:
   // показывать его должен renderActive, а не renderTree.
   renderActive();
-  status(res.total ? 'В папке ' + res.total + ' .md — ' + basname(p) : 'В папке нет .md — ' + basname(p), res.total ? 'ok' : 'err');
+  status(res.total ? tr('status.inFolder') + res.total + ' .md — ' + basname(p) : tr('status.noMdIn') + basname(p), res.total ? 'ok' : 'err');
 }
 
 async function openFolderDialog() {
@@ -2010,7 +2010,7 @@ function renderTree() {
   const q = (el.treeFilter.value || '').trim().toLowerCase();
   el.paneFiles.innerHTML = '';
   if (!roots.length) {
-    el.paneFiles.innerHTML = '<div class="tree-empty">Папка не открыта.<br>Нажми «Папка» или перетащи каталог.</div>';
+    el.paneFiles.innerHTML = tr('tree.empty');
     return;
   }
   for (const r of roots) {
@@ -2019,7 +2019,7 @@ function renderTree() {
     const rm = document.createElement('button');
     rm.className = 'tree-remove';
     rm.innerHTML = ICONS.icon('x');
-    rm.title = 'Убрать папку из списка';
+    rm.title = tr('tree.removeRoot');
     rm.onclick = () => {
       const i = roots.findIndex((x) => x.path === r.path);
       if (i >= 0) roots.splice(i, 1);
@@ -2059,7 +2059,7 @@ function renderTree() {
           row.querySelector('.fn').textContent = it.name;
           row.querySelector('.sz').textContent = fmtSize(it.size);
           row.dataset.path = it.full;
-          if (openInSome && !isCur) row.title = it.full + ' — открыт в другой вкладке';
+          if (openInSome && !isCur) row.title = it.full + tr('status.openInOtherTab');
           row.onclick = () => openPath(it.full, { newTab: true });
           row.oncontextmenu = (e) => { e.preventDefault(); fileContextMenu(it.full, e.clientX, e.clientY); };
           box.append(row);
@@ -2070,7 +2070,7 @@ function renderTree() {
     if (!shown) {
       const none = document.createElement('div');
       none.className = 'tree-empty';
-      none.textContent = q ? 'Ничего не найдено' : 'Здесь нет .md';
+      none.textContent = q ? tr('tree.nothingFound') : tr('tree.noMdHere');
       el.paneFiles.append(none);
     }
   }
@@ -2112,7 +2112,7 @@ function applyZoomInput() {
   const bare = raw.replace(/%/g, '').replace(',', '.').trim();
   let n = parseFloat(bare);
   if (raw === '' || !isFinite(n)) {
-    status('Не понял масштаб: ' + raw, 'err');
+    status(tr('zoom.badValue') + raw, 'err');
     zoomEditing = false;
     updateZoom();
     return false;
@@ -2121,7 +2121,7 @@ function applyZoomInput() {
   // проценты (85 -> 85%). Иначе «1» означал бы 1% невозможного.
   const z = raw.indexOf('%') >= 0 ? n / 100 : (n <= 1 ? n : n / 100);
   if (z < ZOOM_MIN || z > ZOOM_MAX) {
-    status('Масштаб вне ' + Math.round(ZOOM_MIN * 100) + '–'
+    status(tr('zoom.outOfRange') + Math.round(ZOOM_MIN * 100) + '–'
       + Math.round(ZOOM_MAX * 100) + '%: ' + raw, 'err');
     zoomEditing = false;
     updateZoom();
@@ -2197,10 +2197,10 @@ async function saveTab(t) {
     t.html = null;
     renderTabs();
     renderActive();
-    toast('Сохранено: ' + t.name, 'ok');
+    toast(tr('status.saved') + t.name, 'ok');
     return true;
   } catch (e) {
-    status('Не удалось сохранить: ' + (e.message || e), 'err');
+    status(tr('status.saveFailed') + (e.message || e), 'err');
     return false;
   }
 }
@@ -2208,7 +2208,7 @@ async function saveTab(t) {
 async function save() {
   const t = active();
   if (!t || !t.path) return;
-  if (!t.dirty) { toast('Изменений нет'); return; }
+  if (!t.dirty) { toast(tr('status.noChanges')); return; }
   // После сохранения выходим из правки в просмотр. Раньше save() намеренно
   // оставлял правку включённой (мысль была «Ctrl+S не должен выбрасывать в
   // чтение»), но это означало, что после сохранения остаёшься в редакторе уже

@@ -120,8 +120,9 @@ t('ключи словарей совпадают (' + ruKeys.length + ' шт.)'
 // Список доменов задаётся вручную: автособирать его из самих ключей бессмысленно,
 // проверка тогда всегда проходит. Новый домен — это решение, а не следствие.
 const DOMAINS = [
-  'about', 'btn', 'discard', 'err', 'error', 'file', 'menu', 'quit',
-  'settings', 'status', 'tab', 'trash', 'unit',
+  'about', 'btn', 'clip', 'discard', 'err', 'error', 'file', 'lang', 'md',
+  'menu', 'nav', 'quit', 'render', 'settings', 'status', 'tab', 'toc',
+  'trash', 'tree', 'unit', 'zoom',
 ];
 const domRe = new RegExp('^(' + DOMAINS.join('|') + ')\\.');
 const strays = ruKeys.filter((k) => !domRe.test(k));
