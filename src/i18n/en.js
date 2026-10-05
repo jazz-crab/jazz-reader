@@ -77,6 +77,9 @@
 
     'error.startup': 'JazzReader — failed to start',
     'error.windowFailed': 'Could not create the window',
+    'error.logAt': 'Details: {path}',
+    'error.noLog': '(log unavailable)',
+    'error.sendLog': 'If the application window never appeared, please send this file along.',
 
     // ---- settings dialog ----
     'settings.title': 'Settings',

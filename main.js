@@ -5,83 +5,84 @@ const path = require('path');
 const fs = require('fs');
 const ipc = require('./ipc');
 
-// Тот же i18n-рантайм, что и в renderer: словарями владеет src/i18n, здесь он
-// нужен до первого окна — заголовок окна и диалог об ошибке создаются раньше,
-// чем renderer что-либо загрузит.
+// The same i18n runtime as the renderer: the dictionaries live in src/i18n, and
+// it is needed here before the first window — the window title and the error
+// dialog are created earlier than the renderer loads anything.
 const i18n = require('./src/i18n/index.js');
 i18n.setSystemLocale(app.getLocale());
 
-/* Короткое имя tr, а не t: короткие однобуквенные имена в этом файле
- * уже заняты (t здесь — вкладка в сообщениях), и перекрытие молча ломает
- * разбор выражений вида t.name. */
+/* Short name tr, not t: the one-letter names are already taken in this file
+ * (t is a tab in the messages), and the collision silently breaks parsing of
+ * expressions like t.name. */
 const tr = (key, params) => i18n.t(key, params);
 
-// Множественные экземпляры — намеренно НЕ используем requestSingleInstanceLock().
-// Каждый запуск = отдельный процесс со своим окном и своим набором вкладок,
-// так можно держать рядом два разных проекта.
+// Multiple instances: requestSingleInstanceLock() is deliberately NOT used.
+// Every launch is a separate process with its own window and its own tabs, so
+// that two different projects can sit side by side.
 
 if (process.platform === 'linux' && process.getuid?.() === 0) {
   app.commandLine.appendSwitch('no-sandbox');
 }
 
-// ───────────────────────────── Диагностика ─────────────────────────────
-// Electron — приложение с подсистемой GUI, поэтому stdout/stderr не идут
-// в консоль, из которой его запустили. Раньше это означало, что любая ошибка
-// на старте выглядела как «программа ничего не делает». Поэтому пишем лог на
-// диск и показываем диалог, а не падаем молча.
+// ───────────────────────────── Diagnostics ─────────────────────────────
+// Electron is a GUI-subsystem application, so stdout/stderr do not reach the
+// console it was started from. That used to mean any startup error looked like
+// "the program does nothing". So we write a log to disk and show a dialog
+// rather than failing silently.
 
-// Скрытый режим: JAZZREADER_HIDDEN=1 или ключ --jazzreader-hidden.
-// Окно создаётся и работает, но не показывается ни разу: на экране ничего
-// нет, в панели задач и Alt+Tab его нет, тыкнуть некуда. Нужен, чтобы
-// автотесты и разработка не выскакивали окном поверх работы.
+// Hidden mode: JAZZREADER_HIDDEN=1 or the --jazzreader-hidden flag.
+// The window is created and works but is never shown: nothing appears on
+// screen, it is absent from the taskbar and from Alt+Tab, and there is nothing
+// to click. Needed so that automated tests and development do not pop a window
+// on top of whatever is being worked on.
 //
-// Почему не «другой рабочий стол»: виртуальные столы Windows недоступны
-// с этой сборки (COM-класс IVirtualDesktopManager не зарегистрирован),
-// горячая клавиша требует передать фокус окну, а отдельный Win32-стол
-// убивает Chromium до старта main.js.
+// Why not "another desktop": Windows virtual desktops are unavailable from this
+// build (the IVirtualDesktopManager COM class is not registered), a hotkey
+// requires handing focus to the window, and a separate Win32 desktop kills
+// Chromium before main.js even starts.
 //
-// Имена до переименования (MDVIEW_HIDDEN, --mdview-hidden) принимаются
-// и дальше: старые сценарии и ярлыки не должны падать из-за переименования.
+// The names from before the rename (MDVIEW_HIDDEN, --mdview-hidden) are still
+// accepted: old shortcuts and scripts should not break over a rename.
 const HIDDEN = process.env.JAZZREADER_HIDDEN === '1'
   || process.env.MDVIEW_HIDDEN === '1'
   || process.argv.includes('--jazzreader-hidden')
   || process.argv.includes('--mdview-hidden');
 
 /*
- * Полоса, которую Windows рисует под системными кнопки окна, и наш резерв.
+ * The strip Windows paints under the system caption buttons, and our fallback.
  *
- * OVERLAY.height — это высота полосы titleBarOverlay. Windows заливает её
- * СВОИМ цветом (OVERLAY.color) поверх содержимого окна. Полоска вкладок
- * ровно 40px, и её нижняя граница приходилась ровно на последний пиксель
- * этой полосы — то есть на последний пиксель линии под вкладками. Windows
- * заливала его целиком, и линия обрывалась ровно там, где начинались
- * кнопки «свернуть/развернуть/закрыть»: слева под вкладками она была, а
- * под самими кнопками — нет.
+ * OVERLAY.height is the height of the titleBarOverlay strip. Windows fills it
+ * with ITS OWN colour (OVERLAY.color) on top of the window contents. The tab
+ * strip is exactly 40px, and its bottom edge landed on the last pixel of that
+ * strip — that is, on the last pixel of the line under the tabs. Windows
+ * painted over it entirely, so the line stopped exactly where the
+ * minimise/maximise/close buttons began: on the left under the tabs it was
+ * there, under the buttons themselves it was not.
  *
- * Лечится высотой: делаем полосу на 2px меньше полосы вкладок. Тогда
- *Windows заливает только верхние 38px, нижняя граница остаётся наша и
- * тянется во всю ширину. Побочный эффект — две лишние полоски вкладок под
- * кнопками, что при 40px высоты не видно.
+ * The cure is the height: make the strip 2px shorter than the tab strip. Then
+ * Windows paints only the top 38px, the bottom edge stays ours and runs the
+ * full width. The side effect is two extra tab strips under the buttons, which
+ * at a height of 40px is not visible.
  */
 const OVERLAY = { color: '#16161e', symbolColor: '#a9b1d6', height: 38 };
 
 /*
- * Ширина блока системных кнопок окна (свернуть/развернуть/закрыть).
+ * Width of the system caption buttons (minimise/maximise/close).
  *
- * titleBarOverlay рисует их поверх содержимого окна, и это была наша беда:
- * полоса вкладок не резервировала под них место. При множестве вкладок
- * кнопка «+» уезжала под системные кнопки и становилась недоступной, а
- * последние вкладки — невидимыми. Скролла при этом не появлялось: лента
- * формально влезала, и переполнение считать было не от чего.
+ * titleBarOverlay draws them on top of the window contents, and that was our
+ * trouble: the tab strip did not reserve room for them. With many tabs the "+"
+ * button slid under the system buttons and became unusable, and the last tabs
+ * became invisible. No scrollbar appeared meanwhile: the strip formally fitted,
+ * so there was nothing to count the overflow against.
  *
- * Константа не годится: ширина зависит от DPI (на 150% это ~207px вместо
- * ~138px). Меряем на живом окне через getTitleBarArea() — он отдаёт область
- * заголовка, доступную для перетаскивания, то есть БЕЗ блока кнопок справа.
- * Разница между правым краем окна и правым краем этой области и есть нужная
- * ширина.
+ * A constant will not do: the width depends on DPI (at 150% it is ~207px
+ * instead of ~138px). We measure on the live window with getTitleBarArea() —
+ * it returns the title area available for dragging, that is, WITHOUT the block
+ * of buttons on the right. The difference between the right edge of the window
+ * and the right edge of that area is the width we need.
  *
- * Запасной путь — 138px (типичное значение при 100%): если overlay не
- * применился, лучше перестараться и оставить пустое место, чем спрятать «+».
+ * The fallback path is 138px (the typical value at 100%): if the overlay did
+ * not apply, better to over-reserve and leave empty space than to hide the "+".
  */
 const CAPTION_FALLBACK = 138;
 
@@ -100,36 +101,37 @@ function captionButtonWidth(win) {
 
 let logPath = null;
 let fatalShown = false;
-/** Захваченные системные хоткеи (см. registerTabShortcuts). */
-// let, а не const: releaseTabShortcuts() присваивает ему пустой массив, и
-// на const приложение падало с «Assignment to constant variable» прямо в
-// will-quit — то есть вместо закрытия на экране появлялось окно ошибки.
+/** Captured system hotkeys (see registerTabShortcuts). */
+// let, not const: releaseTabShortcuts() assigns an empty array to it, and on a
+// const the application died with "Assignment to constant variable" right in
+// will-quit — that is, instead of closing, an error window appeared on screen.
+// (A placeholder line to keep the comment block anchored: the let is below.)
 let shortcuts = [];
 
 function resolveLogPath() {
-  // Portable: рядом с .exe. Установленная: Program Files не writable — берём userData.
+  // Portable: next to the .exe. Installed: Program Files is not writable — take userData.
   const candidates = [app.isPackaged ? path.dirname(process.execPath) : __dirname, null];
-  try { candidates.splice(1, 0, app.getPath('userData')); } catch { /* до ready */ }
+  try { candidates.splice(1, 0, app.getPath('userData')); } catch { /* not ready yet */ }
   for (const dir of candidates) {
     if (!dir) continue;
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.accessSync(dir, fs.constants.W_OK);
       return path.join(dir, 'jazzreader.log');
-    } catch { /* пробуем следующий */ }
+    } catch { /* try the next one */ }
   }
   return null;
 }
 
 function log(...args) {
   const line = `[${new Date().toISOString()}] ` + args.join(' ') + '\n';
-  try { process.stderr.write(line); } catch { /* нет stderr */ }
+  try { process.stderr.write(line); } catch { /* no stderr */ }
   if (logPath) {
-    try { fs.appendFileSync(logPath, line); } catch { /* диск недоступен */ }
+    try { fs.appendFileSync(logPath, line); } catch { /* disk unavailable */ }
   }
 }
 
-/** Необработанная ошибка: пишем в лог и один раз показываем окно с текстом. */
+/** Unhandled error: write it to the log and show the window with the text once. */
 function reportFatal(where, err) {
   const text = err && err.stack ? err.stack : String(err);
   log(`FATAL ${where}: ${text}`);
@@ -139,16 +141,16 @@ function reportFatal(where, err) {
     dialog.showErrorBox(
       tr('error.startup'),
       `${where}\n\n${text}\n\n` +
-      `Подробности: ${logPath || '(лог недоступен)'}\n` +
-      'Если окно с приложением не появилось — пришлите этот файл, разберёмся.'
+      tr('error.logAt', { path: logPath || tr('error.noLog') }) + '\n' +
+      tr('error.sendLog')
     );
-  } catch { /* до ready диалога нет */ }
+  } catch { /* no dialog before ready */ }
 }
 
 process.on('uncaughtException', (err) => reportFatal('uncaughtException', err));
 process.on('unhandledRejection', (err) => reportFatal('unhandledRejection', err));
 
-// ───────────────────────────── Окно ─────────────────────────────
+// ───────────────────────────── Window ─────────────────────────────
 
 let win = null;
 
@@ -161,14 +163,15 @@ function createWindow() {
     backgroundColor: '#1a1b26',
     title: 'JazzReader',
     show: false,
-    // titleBarStyle — только опция конструктора (метода setTitleBarStyle нет).
-    // Прячем системный заголовок, чтобы полоса вкладок шла до самого верха.
+    // titleBarStyle is a constructor option only (there is no setTitleBarStyle).
+    // Hide the system title bar so the tab strip reaches the very top.
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    // ВАЖНО: overlay обязан быть включён ЗДЕСЬ, в конструкторе.
-    // Раньше его включали только вызовом setTitleBarOverlay() после создания окна —
-    // тот бросал «Titlebar overlay is not enabled», исключение уходило в
-    // app.whenReady().then() как unhandledRejection, окно не создавалось вообще,
-    // и приложение молча висело без единого окна. Плюс app.asar на 6 МБ.
+    // IMPORTANT: the overlay MUST be enabled HERE, in the constructor.
+    // It used to be enabled only by a setTitleBarOverlay() call after the window
+    // was created — that threw "Titlebar overlay is not enabled", the exception
+    // went into app.whenReady().then() as an unhandledRejection, no window was
+    // created at all, and the application hung silently with no window. Plus
+    // app.asar was 6 MB.
     ...(isWin ? { titleBarOverlay: OVERLAY } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -176,33 +179,35 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
-      // Язык из --lang= кладём в argv окна: renderer читает settings.json
-      // сам, и без перекрытия возвращался к сохранённому значению — тогда
-      // окно и меню показывали разные языки. Имя с префиксом mdv-, чтобы
-      // отличать внутренний аргумент от пользовательского --lang=.
+      // The --lang= language goes into the window argv: the renderer reads
+      // settings.json itself, and without the override it fell back to the saved
+      // value — so the window and the menu showed different languages. The name
+      // carries an mdv- prefix to tell the internal argument from the user's
+      // --lang=.
       ...(langFromArgv() ? { additionalArguments: ['--mdv-lang=' + langFromArgv()] } : {}),
-      // Окно не видно, значит композитор не будет рисовать: в offscreen
-      // кадры идут напрямую, и снимки страницы получаются непустыми.
+      // The window is not visible, so the compositor will not draw: in offscreen
+      // mode frames go straight out, and page screenshots come out non-empty.
       ...(HIDDEN ? { offscreen: true } : {}),
     },
   });
 
-  // Страховка: если overlay всё-таки недоступен (старая Windows, доп. реестр),
-  // окно должно показаться, а не исчезнуть вместе с ошибкой.
+  // Safety net: if the overlay is unavailable after all (old Windows, extra
+  // registry state), the window should appear rather than disappear with the
+  // error.
   if (isWin) {
     try {
       win.setTitleBarOverlay(OVERLAY);
     } catch (e) {
       log('setTitleBarOverlay недоступен, продолжаем без него: ' + e.message);
     }
-    // Ширину блока кнопок узнаём только после того, как overlay применён.
+    // The button block width is only known once the overlay has been applied.
     const caption = captionButtonWidth(win);
     log('системные кнопки окна: ' + caption + 'px');
     ipc.setCaptionWidth(caption);
   }
 
-  // Страховка от «невидимого» окна: показываем по ready-to-show, но если событие
-  // не пришло за 6 с — показываем всё равно.
+  // Safety net against an "invisible" window: show on ready-to-show, but if the
+  // event has not arrived within 6 s, show anyway.
   if (HIDDEN) {
     log('скрытый режим: окно создано, но не показывается (JAZZREADER_HIDDEN)');
   } else {
@@ -216,7 +221,7 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
 
-  // Внешние ссылки — в системный браузер.
+  // External links go to the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -238,22 +243,22 @@ function send(channel, payload) {
 }
 
 /*
- * Выход по Ctrl+Q спрашивает подтверждение.
+ * Ctrl+Q asks for confirmation before quitting.
  *
- * Диалог системный, а не нарисованный: у него есть настоящая рамка с
- * крестиком, и закрытие крестиком равносильно «Отмена» — как в любом
- * системном окне. Рисованный слой с двумя кнопками выглядел бы частью
- * приложения, и его нельзя закрыть ничем, кроме двух этих кнопок.
+ * The dialog is the system one, not a drawn one: it has a real frame with a
+ * close box, and closing it means Cancel, as in any system window. A drawn
+ * layer with two buttons would look like part of the application, and could not
+ * be closed by anything except those two buttons.
  *
- * Галочка «Не показывать больше» записывается в settings.json, поэтому
- * настройку не нужно искать заново при каждом запуске.
+ * The "Don't ask again" checkbox is written to settings.json, so the choice
+ * does not have to be looked up again on every launch.
  *
- * Право выхода выдаётся один раз и снимается при любом новом вызове: пока
- * идёт диалог, повторный Ctrl+Q не должен подтверждения отменять.
+ * Permission to quit is granted once and dropped on any new call: while the
+ * dialog is up, a repeated Ctrl+Q must not cancel the confirmation.
  */
 let quitArmed = false;
 
-/** Сколько вкладок с несохранёнными правками — предупредить в диалоге. */
+/** How many tabs have unsaved changes — to warn about in the dialog. */
 async function dirtyTabs() {
   const w = targetWindowSafe();
   if (!w || w.isDestroyed()) return 0;
@@ -262,7 +267,7 @@ async function dirtyTabs() {
       'window.mdvDirtyTabs ? window.mdvDirtyTabs() : 0');
     return Number(n) || 0;
   } catch {
-    return 0;   // renderer мог уже закрыться — тогда и спрашивать не о чем
+    return 0;   // the renderer may already be closed, nothing to ask about then
   }
 }
 
@@ -271,19 +276,19 @@ function targetWindowSafe() {
 }
 
 /**
- * Выход из приложения с подтверждением.
+ * Quit the application with confirmation.
  *
- * answer — индекс нажатой кнопки, если ответ известен заранее. Обычно это
- * null и диалог показывается пользователю. Тест передаёт индекс напрямую:
- * системный диалог закрывается только настоящей мышью, поднять его из
- * скрипта нельзя, а показ окна во время автопроверок забирает фокус у
- * всего, что открыто у человека на экране.
+ * answer is the index of the pressed button when the answer is known in
+ * advance. Normally that is null and the dialog is shown to the user. The test
+ * passes the index directly: the system dialog can only be closed with a real
+ * mouse, a script cannot raise it, and showing the window during automated
+ * checks takes focus away from everything the person has open.
  */
 async function requestQuit(answer = null) {
   if (quitArmed) { app.quit(); return; }
   let ask = true;
   try { ask = (await ipc.setting('quitAsk')) !== false; }
-  catch { ask = true; }   // не прочитали настройку — спрашиваем, как обычно
+  catch { ask = true; }   // setting unreadable, ask as usual
   if (!ask) { log('выход: подтверждение выключено, закрываемся сразу'); app.quit(); return; }
 
   const dirty = await dirtyTabs();
@@ -300,19 +305,19 @@ async function requestQuit(answer = null) {
       detail,
       buttons: [tr('quit.close'), tr('quit.cancel')],
       defaultId: 0,
-      cancelId: 1,          // крестик в рамке равносилен отмене
+      cancelId: 1,          // the close box on the frame means cancel
       checkboxLabel: tr('quit.neverAgain'),
       noLink: true,
     });
   } else {
-    // Тот же путь без окна: логи и проверки теста видят то же самое, что и
-    // при живом диалоге, но фокус ни у кого не забирается.
+    // The same path without a window: the logs and the test see exactly what
+    // they see with a live dialog, but nobody loses focus.
     log('выход: подтверждение получено без диалога (тест), несохранённых ' + dirty
       + ', ответ ' + answer);
     res = { response: answer, checkboxChecked: false };
   }
   if (res.checkboxChecked) {
-    try { await ipc.setting('quitAsk', false); } catch { /* не записалось — спросим в следующий раз */ }
+    try { await ipc.setting('quitAsk', false); } catch { /* not written, we will ask next time */ }
   }
   if (res.response !== 0) { log('выход: отменён'); return; }
   log('выход: подтверждён, закрываемся'
@@ -322,23 +327,24 @@ async function requestQuit(answer = null) {
 }
 
 /*
- * Перекрытие языка из командной строки: --lang=ru, --lang=en.
+ * The command line language override: --lang=ru, --lang=en.
  *
- * Живёт до первого явного выбора языка в настройках. После выбора перекрытие
- * снимается (см. mdv:setLang): иначе выбор человека не действовал бы, пока
- * запущено с --lang, и настройка была бы недоступна вовсе.
+ * It holds until the language is picked explicitly in the settings. After that
+ * the override is dropped (see mdv:setLang): otherwise the person's choice
+ * would not take effect while running with --lang, and the setting would be
+ * unavailable altogether.
  */
 let langOverrideArmed = true;
 
 /**
- * Язык из командной строки: --lang=ru, --lang=en.
+ * The language from the command line: --lang=ru, --lang=en.
  *
- * Перекрывает сохранённую настройку, но не переписывает её. Так можно
- * запустить вторую копию на другом языке, не задев основную, — и, что важнее
- * для тестов, получить язык, заданный явно, вместо того, чтобы угадывать по
- * настройкам машины. До этого аргумент передавался в тестах, но его никто не
- * читал: язык брался из settings.json, и проверки падали или проходили в
- * зависимости от того, что там лежало.
+ * It overrides the saved setting but does not rewrite it. That way a second
+ * copy can run in another language without touching the first one — and, more
+ * importantly for the tests, the language is given explicitly instead of being
+ * guessed from the settings of the machine. Until now the argument was passed
+ * in the tests but read by nobody: the language came from settings.json, and
+ * the checks either failed or passed depending on what was in that file.
  */
 function langFromArgv() {
   if (!langOverrideArmed) return null;
@@ -349,17 +355,19 @@ function langFromArgv() {
 }
 
 /**
- * Применить сохранённый выбор языка.
+ * Apply the saved language choice.
  *
- * Отдельная функция, потому что вызывается в двух местах: на старте и при
- * смене языка из окна настроек. Само значение живёт в settings.json рядом с
- * зумом и шириной колонки — отдельный файл ради одного значения не нужен.
+ * A function of its own because it is called from two places: at startup and
+ * on a language change from the settings window. The value itself lives in
+ * settings.json next to the zoom and the column width — a separate file for a
+ * single value is not needed.
  */
 async function applyLangSetting() {
   const forced = langFromArgv();
   if (forced) {
-    // Не пишем в settings.json: аргумент — это разовое перекрытие, иначе
-    // запуск с --lang=en молча сменил бы язык у следующего обычного запуска.
+    // Not written to settings.json: the argument is a one-off override, otherwise
+    // a launch with --lang=en would silently change the language of the next
+    // ordinary launch.
     i18n.setLocale(forced);
     log('язык: задан аргументом командной строки (' + forced + ')');
     return i18n.lang;
@@ -367,30 +375,31 @@ async function applyLangSetting() {
   try {
     await ipc.setting('lang', i18n.setLocale(await ipc.setting('lang')));
   } catch (e) {
-    // Файл настроек может быть недоступен (read-only каталог, битый JSON).
-    // Тогда остаётся язык системы — приложение обязано запуститься в любом
-    // случае, выбор языка не повод падать.
+    // The settings file may be unavailable (read-only directory, broken JSON).
+    // Then the system language stands — the application must start in any case,
+    // the language choice is no reason to fall over.
     i18n.setLocale('auto');
     log('язык: настройка недоступна, беру язык системы (' + e.message + ')');
   }
   return i18n.lang;
 }
 
-/** Пересобрать меню и заголовок после смены языка, не перезапуская приложение. */
-// Renderer сначала пишет значение в settings.json сам (общий путь настроек),
-// а сюда приходит сигнал «перечитай и пересобери меню».
+/** Rebuild the menu and the title after a language change, without a restart. */
+// The renderer writes the value to settings.json itself first (the shared
+// settings path), and the signal that arrives here means "re-read and rebuild
+// the menu".
 ipcMain.handle('mdv:setLang', async () => {
-  // Язык выбрали явно — перекрытие из командной строки больше не нужно.
+  // The language was picked explicitly — the command line override is no longer needed.
   langOverrideArmed = false;
   const lang = await applyLangSetting();
   buildMenu();
   return lang;
 });
 
-// Раньше здесь жила функция plural(): mod10/mod100, три варианта окончания.
-// Формы теперь выбирает Intl.PluralRules внутри i18n, и словарь хранит все
-// нужные окончания рядом с текстом — поэтому код перевода не должен знать
-// про язык вообще.
+// A plural() function used to live here: mod10/mod100, three ending variants.
+// The forms are now chosen by Intl.PluralRules inside i18n, and the dictionary
+// keeps every needed ending next to the text — so the translation code should
+// not know about languages at all.
 
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -405,8 +414,8 @@ function buildMenu() {
         { label: tr('menu.file.downloadHtml'), click: () => send('mdv:menu', 'download-html') },
         { label: tr('menu.file.print'), accelerator: 'CmdOrCtrl+P', click: () => send('mdv:menu', 'print') },
         { type: 'separator' },
-        // CmdOrCtrl+Q вместо role: 'quit': роль закрывает приложение молча,
-        // минуя подтверждение.
+        // CmdOrCtrl+Q instead of role: 'quit': the role closes the application
+        // silently, bypassing the confirmation.
         { label: tr('menu.file.quit'), accelerator: 'CmdOrCtrl+Q', click: () => requestQuit() },
       ],
     },
@@ -451,9 +460,10 @@ function buildMenu() {
         { label: tr('menu.go.newTab'), accelerator: 'CmdOrCtrl+T', click: () => send('mdv:menu', 'new-tab') },
         { label: tr('menu.go.closeTab'), accelerator: 'CmdOrCtrl+W', click: () => send('mdv:menu', 'close-tab') },
         { type: 'separator' },
-        // Акселераторы у этих двух пунктов намеренно НЕ заданы: Windows считает
-        // Ctrl+Tab системной комбинацией и съедает её раньше меню. Перехват
-        // делает globalShortcut (registerTabShortcuts), он шлёт то же действие.
+        // These two items deliberately have NO accelerator: Windows treats
+        // Ctrl+Tab as a system combination and eats it before the menu does. The
+        // capture is globalShortcut (registerTabShortcuts), it sends the same
+        // action.
         { label: tr('menu.go.nextTab'), click: () => send('mdv:menu', 'next-tab') },
         { label: tr('menu.go.prevTab'), click: () => send('mdv:menu', 'prev-tab') },
       ],
@@ -473,20 +483,21 @@ function buildMenu() {
   ]));
 }
 
-/** Пути, переданные при запуске (аргументы, drag на .exe, ассоциация ОС). */
+/** Paths passed at launch (arguments, a drop onto the .exe, an OS association). */
 function cliPaths() {
   return process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith('-'));
 }
 
 /**
- * Ctrl+Tab / Ctrl+Shift+Tab до renderer'а не доходят: Windows считает их
- * системными (переключение окон/вкладок) и съедает раньше, чем дойдёт до
- * Chromium, поэтому keydown в renderer'е молчит. Проверено синтетическим
- * keybd_event по настоящему окну: вкладка не менялась, keydown не сработал.
+ * Ctrl+Tab / Ctrl+Shift+Tab never reach the renderer: Windows treats them as
+ * system combinations (switching windows/tabs) and eats them before they get
+ * to Chromium, so keydown in the renderer stays silent. Verified with a
+ * synthetic keybd_event against a real window: the tab did not change and
+ * keydown did not fire.
  *
- * Выход — globalShortcut, он перехватывает комбинацию до ОС. Регистрация
- * обязательно снимается на will-quit: иначе хоткей залипает и Ctrl+Tab не
- * работает во всей системе до перезагрузки.
+ * The way out is globalShortcut, which captures the combination before the OS.
+ * The registration MUST be released on will-quit: otherwise the hotkey sticks
+ * and Ctrl+Tab stops working across the whole system until a reboot.
  */
 function registerTabShortcuts() {
   const grab = (accel, action) => {
@@ -508,7 +519,7 @@ function registerTabShortcuts() {
 
 function releaseTabShortcuts() {
   for (const a of shortcuts) {
-    try { globalShortcut.unregister(a); } catch { /* уже снят */ }
+    try { globalShortcut.unregister(a); } catch { /* already released */ }
   }
   shortcuts = [];
 }
@@ -516,13 +527,13 @@ function releaseTabShortcuts() {
 app.on('will-quit', releaseTabShortcuts);
 
 /*
- * Скрытый режим + тестовый IPC для выхода.
+ * Hidden mode + the test IPC for quitting.
  *
- * Канал отдаёт индекс ответа, а не показывает окно: системный диалог закрывается
- * только настоящей мышью, поднять его из скрипта нельзя, а появление окна во
- * время автопроверок забирает фокус у того, что у человека открыто на экране.
- * Канал живёт только там, где окно и так не показывается, и в обычном запуске
- * его не существует.
+ * The channel returns the answer index instead of showing a window: the system
+ * dialog can only be closed with a real mouse, a script cannot raise it, and a
+ * window appearing during automated checks takes focus from whatever the person
+ * has open on screen. The channel exists only where the window is not shown
+ * anyway, and in a normal launch it does not exist.
  */
 if (HIDDEN) {
   ipcMain.handle('mdv:testQuit', (_e, answer = null) => {
@@ -536,8 +547,8 @@ app.whenReady()
     logPath = resolveLogPath();
     log(`--- старт JazzReader ${app.getVersion()} · electron ${process.versions.electron} · ${process.platform}/${process.arch} · portable=${app.isPackaged}`);
 
-    // Язык читаем до меню: иначе первое окно открылось бы на языке системы,
-    // а выбранный — только после перезапуска.
+    // The language is read before the menu: otherwise the first window would open
+    // in the system language, and the chosen one only after a restart.
     await applyLangSetting();
 
     ipc.register();
@@ -551,8 +562,9 @@ app.whenReady()
     log('окно создано, targets=' + JSON.stringify(targets));
   })
   .catch((err) => {
-    // Раньше здесь был bare .then() — любая ошибка становилась unhandledRejection
-    // без окна и без вывода. Теперь это явная ошибка с диалогом и кодом возврата 1.
+    // This used to be a bare .then() — any error became an unhandledRejection
+    // with no window and no output. Now it is an explicit error with a dialog and
+    // exit code 1.
     reportFatal(tr('error.windowFailed'), err);
     app.exit(1);
   });

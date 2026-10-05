@@ -84,6 +84,9 @@
 
     'error.startup': 'JazzReader — ошибка при запуске',
     'error.windowFailed': 'Не удалось создать окно',
+    'error.logAt': 'Подробности: {path}',
+    'error.noLog': '(лог недоступен)',
+    'error.sendLog': 'Если окно с приложением не появилось — пришлите этот файл, разберёмся.',
 
     // ---- settings dialog ----
     'settings.title': 'Настройки',

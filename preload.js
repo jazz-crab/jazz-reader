@@ -3,18 +3,18 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 /**
- * Мост renderer -> main. Узких API, ничего лишнего наружу не торчит.
- * webUtils.getPathForFile — единственный способ узнать путь перетащенного файла
- * в Electron 32+ (свойство File.path удалено).
+ * The renderer -> main bridge. Narrow APIs, nothing extra sticking out.
+ * webUtils.getPathForFile is the only way to learn the path of a dropped file
+ * in Electron 32+ (the File.path property is gone).
  */
 contextBridge.exposeInMainWorld('mdv', {
   /**
-   * Язык из командной строки главного процесса: --lang=ru / --lang=en.
+   * The language from the main process command line: --lang=ru / --lang=en.
    *
-   * Строка '' означает «перекрытия нет». Значение нужно до настроек по IPC —
-   * при первом кадре, поэтому оно синхронное и приходит аргументом окна:
-   * renderer к argv главного процесса не имеет доступа, а contextBridge
-   * отдаёт только функции, не значения.
+   * An empty string means "no override". The value is needed before the
+   * settings come over IPC — on the first frame — so it is synchronous and
+   * arrives as a window argument: the renderer cannot see the main process
+   * argv, and contextBridge exposes functions, not values.
    */
   forcedLang: () => {
     const arg = process.argv.find((a) => a.startsWith('--mdv-lang='));
@@ -28,17 +28,17 @@ contextBridge.exposeInMainWorld('mdv', {
   dialogFile: () => ipcRenderer.invoke('mdv:dialogFile'),
   dialogFolder: () => ipcRenderer.invoke('mdv:dialogFolder'),
   reveal: (p) => ipcRenderer.invoke('mdv:reveal', p),
-  /** Удаление в корзину Windows (не безвозвратно). {ok, error} */
+  /** Move to the Windows recycle bin (recoverable). {ok, error} */
   trash: (p) => ipcRenderer.invoke('mdv:trash', p),
   /**
-   * Ширина блока системных кнопок окна. Полоса вкладок резервирует под них
-   * место, иначе кнопка «+» уезжает под них и становится недоступной.
+   * Width of the system caption buttons. The tab strip reserves room for
+   * them, otherwise the "+" button slides under them and becomes unusable.
    */
   caption: () => ipcRenderer.invoke('mdv:caption'),
-  /** Временная заметка для Ctrl+N (tmpdir) и новая папка для Ctrl+Shift+N. */
+  /** Temporary note for Ctrl+N (tmpdir) and new folder for Ctrl+Shift+N. */
   newTemp: (seedName) => ipcRenderer.invoke('mdv:newTemp', seedName),
   newFolder: (parent, seedName) => ipcRenderer.invoke('mdv:newFolder', parent, seedName),
-  /** Меню иконки приложения */
+  /** Menu of the application icon */
   newFile: (seedName) => ipcRenderer.invoke('mdv:newFile', seedName),
   newProject: (seedName) => ipcRenderer.invoke('mdv:newProject', seedName),
   recentGet: () => ipcRenderer.invoke('mdv:recentGet'),
@@ -47,35 +47,36 @@ contextBridge.exposeInMainWorld('mdv', {
   settingsGet: () => ipcRenderer.invoke('mdv:settingsGet'),
   settingsSet: (patch) => ipcRenderer.invoke('mdv:settingsSet', patch),
   /**
-   * Сигнал главному процессу: язык сменился, пересобери меню.
-   * Значение к этому моменту уже записано в settings.json — renderer
-   * шлёт его первым, а главный процесс перечитывает файл, а не аргумент.
+   * Signal to the main process: the language changed, rebuild the menu.
+   * By this point the value is already in settings.json — the renderer sends
+   * it first, and the main process re-reads the file rather than an argument.
    */
   setLang: () => ipcRenderer.invoke('mdv:setLang'),
   print: () => ipcRenderer.invoke('mdv:print'),
   exportHtml: (payload) => ipcRenderer.invoke('mdv:exportHtml', payload),
-  /** PDF без системного диалога печати: готовый файл в Загрузках. */
+  /** PDF without the system print dialog: a finished file in Downloads. */
   exportPdf: (payload) => ipcRenderer.invoke('mdv:exportPdf', payload),
-  /** Системные шрифты для выпадающего списка в окне экспорта. */
+  /** System fonts for the drop-down in the export window. */
   fonts: () => ipcRenderer.invoke('mdv:fonts'),
   /**
-   * Выход по тому же пути, что и Ctrl+Q, — для автотеста.
+   * Quit along the same path as Ctrl+Q, for the automated test.
    *
-   * answer — индекс кнопки подтверждения (0 — выйти, 1 — отмена). Без него
-   * приложение показывает системный диалог, а его нельзя закрыть из скрипта:
-   * окно всплывает на экране и забирает фокус у того, что у человека открыто.
+   * answer is the index of the confirmation button (0 to quit, 1 to cancel).
+   * Without it the application shows the system dialog, which cannot be closed
+   * from a script: the window pops up on screen and takes focus away from
+   * whatever the person has open.
    *
-   * Обработчик живёт только в скрытом режиме (--jazzreader-hidden), так что в
-   * обычном запуске вызова нет и метод ничего не делает.
+   * The handler lives only in hidden mode (--jazzreader-hidden), so a normal
+   * launch has no call and the method does nothing.
    */
   testQuit: (answer = null) => ipcRenderer.invoke('mdv:testQuit', answer),
 
-  /** Путь файла из DataTransfer (drop) или из <input type=file>. */
+  /** File path from a DataTransfer (drop) or from <input type=file>. */
   pathForFile: (file) => {
     try { return webUtils.getPathForFile(file); } catch { return null; }
   },
 
-  /** Подписка на действия меню и на файлы, переданные при запуске. */
+  /** Subscription to menu actions and to files passed at launch. */
   onMenu: (cb) => ipcRenderer.on('mdv:menu', (_e, action) => cb(action)),
   onCli: (cb) => ipcRenderer.on('mdv:cli', (_e, paths) => cb(paths)),
 });

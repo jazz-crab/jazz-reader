@@ -50,8 +50,15 @@ console.log('\n== перевод строк ==');
 t('--lang= читается главным процессом',
   /function langFromArgv\(\)/.test(mainSrc)
   && /process\.argv\.find\(\(a\) => a\.startsWith\('--lang='\)\)/.test(mainSrc));
+// Ветка с перекрытием обязана заканчиваться до try: запись в settings.json
+// внутри неё означала бы, что запуск со вторым языком молча меняет язык и у
+// следующего обычного запуска.
+const applyLang = mainSrc.match(/async function applyLangSetting\(\) \{[\s\S]*?\n\}/);
 t('--lang= перекрытие не пишется в settings.json',
-  /async function applyLangSetting\(\) \{[\s\S]{0,200}Не пишем в settings\.json/.test(mainSrc));
+  !!applyLang
+  && applyLang[0].indexOf('ipc.setting(') > applyLang[0].indexOf('return i18n.lang'),
+  'запись в settings.json внутри ветки с перекрытием означала бы, что запуск\n'
+  + 'со вторым языком молча меняет язык у следующего обычного запуска');
 t('аргумент языка доходит до renderer',
   /additionalArguments: \['--mdv-lang='/.test(mainSrc)
   && /forcedLang: \(\) =>/.test(preloadSrc));
