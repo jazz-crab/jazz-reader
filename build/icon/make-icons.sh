@@ -1,6 +1,10 @@
 #!/bin/sh
 # Регенерация иконки из icon.svg: PNG-набор + многослойный ICO.
-# Нужны rsvg-convert и python3 (Pillow). Результат кладётся рядом с этим скриптом.
+# Второй путь, только для POSIX-машин с Lato и rsvg-convert. Основной
+# генератор — make-icons.js (node + electron), он работает везде, включая
+# Windows. Этот скрипт оставлен потому, что с Lato буквы ложатся чуть иначе,
+# чем с Arial Black, и на Linux иконка выходит ближе к исходной; после него
+# метрики в icon.svg надо сверить заново.
 #   ./build/icon/make-icons.sh
 set -eu
 

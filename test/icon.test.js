@@ -164,8 +164,8 @@ if (png[256]) {
   t('буквы найдены', !!box);
   if (box) {
     const w = box.x1 - box.x0 + 1, h = box.y1 - box.y0 + 1;
-    t('ширина «MD» ~150px (' + w + ')', near(w, 150, 4));
-    t('высота «MD» ~69px (' + h + ')', near(h, 69, 4));
+    t('ширина «JR» ~138px (' + w + ')', near(w, 138, 4));
+    t('высота «JR» ~69px (' + h + ')', near(h, 69, 4));
     t('центр букв в центре плитки', near((box.x0 + box.x1) / 2, 127.5, 2) && near((box.y0 + box.y1) / 2, 127.5, 2),
       'центр=' + ((box.x0 + box.x1) / 2) + ',' + ((box.y0 + box.y1) / 2));
     t('поля слева/справа симметричны', Math.abs(box.x0 - (255 - box.x1)) <= 2,
@@ -228,7 +228,7 @@ for (const s of SMALL) {
   const w = box.x1 - box.x0 + 1, h = box.y1 - box.y0 + 1;
   t(s + 'px: буквы не выходят за холст', box.x0 >= 0 && box.y0 >= 0 && box.x1 < s && box.y1 < s);
   t(s + 'px: капитель не мельче 29% холста (' + h + 'px)', h / s >= 0.29, 'w=' + w + ' h=' + h);
-  t(s + 'px: «MD» не шире 80% холста (' + w + 'px)', w / s <= 0.8);
+  t(s + 'px: «JR» не шире 80% холста (' + w + 'px)', w / s <= 0.8);
 }
 // Слои <=24px рисуются с увеличенным кеглем (SMALL_SCALE в make-icons.sh),
 // иначе на 16px капитель вырождается в 4 пикселя и не читается. Сверяем
@@ -248,7 +248,7 @@ const svgPath = path.join(DIR, 'icon.svg');
 t('icon.svg есть', fs.existsSync(svgPath));
 if (fs.existsSync(svgPath)) {
   const svg = fs.readFileSync(svgPath, 'utf8');
-  t('рисует ровно один <text> с содержимым MD', (svg.match(/<text\b/g) || []).length === 1 && />\s*MD\s*</.test(svg));
+  t('рисует ровно один <text> с содержимым JR', (svg.match(/<text\b/g) || []).length === 1 && />\s*JR\s*</.test(svg));
   t('цвета TokyoNight на месте',
     ['#1f2333', '#16161e', '#7aa2f7', '#7dcfff', '#3b4261'].every(c => svg.toLowerCase().includes(c)));
   t('есть запасной шрифт (иначе на машине без Lato будет мыло)', /font-family="[^"]*sans-serif/.test(svg));
@@ -257,6 +257,12 @@ if (fs.existsSync(svgPath)) {
 }
 // Право на исполнение имеет смысл только на POSIX; в git на Windows файл
 // приходит с 0644, и проверять там нечего.
+// Генератор иконок: make-icons.js — основной (работает везде, где есть node и
+// electron). make-icons.sh остаётся как путь для машин с Lato и rsvg-convert:
+// там буквы ложатся чуть иначе, и метрики в icon.svg придётся подвинуть.
+// Право на исполнение .sh проверяем только на POSIX — в git на Windows файл
+// приходит с 0644, и проверять там нечего.
+t('make-icons.js есть (генератор по умолчанию)', fs.existsSync(path.join(DIR, 'make-icons.js')));
 const iconsScript = path.join(DIR, 'make-icons.sh');
 t('make-icons.sh есть' + (process.platform === 'win32' ? ' (режим exec на Windows не проверяем)' : ' и исполняемый'),
   fs.existsSync(iconsScript)

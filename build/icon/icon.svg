@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  MDView — иконка приложения.
+  JazzReader — иконка приложения.
   Тема TokyoNight:  bg #1a1b26 / #16161e, fg #c0caf5, blue #7aa2f7, cyan #7dcfff,
                      fg_gutter #3b4261 (обводка), terminal_black #414868.
-  Метрики текста посчитаны по инку глифов (Lato Black 900, letter-spacing -4):
-  font-size 94 при x=126 / y=162.3 кладёт «MD» шириной ровно 150 и высотой 68.6
-  по центру плитки 256×256. Если правишь текст — прогони make-icons.sh и сверь
+  Метрики текста посчитаны по инку глифов (Arial Black 900, letter-spacing 4):
+  font-size 94 при x=129.5 / y=161.3 кладёт «JR» шириной 138 и высотой 69
+  по центру плитки 256×256. x не равен 127.5 из-за letter-spacing: Chromium
+  добавляет интервал и после последней буквы, поэтому середина «ink» уезжает
+  влево на letter-spacing/2. Если правишь текст — прогони make-icons.js и сверь
   test/icon.test.js, он проверяет геометрию по пикселям.
+
+  Arial Black в стеке стоит не просто так: Lato есть не на каждой машине, и без
+  жирного запасного шрифта Chromium подставит обычный Arial — буквы «JR» на
+  16 px рассыплются. На машине с Lato (Linux, где иконку собирали раньше)
+  первую строку всё равно выигрывает Lato, но метрики будут другими —
+  тогда геометрию придётся поправить по make-icons.js.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
@@ -24,7 +32,7 @@
   <rect x="8" y="8" width="240" height="240" rx="54"
         fill="url(#plate)" stroke="#3b4261" stroke-width="4"/>
 
-  <text x="126" y="162.3" text-anchor="middle"
-        font-family="Lato, 'DejaVu Sans', sans-serif" font-size="94"
-        font-weight="900" letter-spacing="-4" fill="url(#ink)">MD</text>
+  <text x="129.5" y="161.3" text-anchor="middle"
+        font-family="Lato, 'Arial Black', 'DejaVu Sans', sans-serif" font-size="94"
+        font-weight="900" letter-spacing="4" fill="url(#ink)">JR</text>
 </svg>

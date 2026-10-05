@@ -12,7 +12,7 @@
     "dist:dir": "electron-builder --win --x64 --dir",
     "test": "node test/math.test.js && node test/icons.test.js && node test/icon.test.js && node test/print.test.js && node test/quit.js",
     "test:ui": "xvfb-run -a electron --no-sandbox --disable-gpu test/smoke.js && xvfb-run -a electron --no-sandbox --disable-gpu test/audit.js",
-    "icons": "sh build/icon/make-icons.sh",
+    "icons": "node build/icon/make-icons.js",
     "postinstall": "node scripts/vendor.js",
     "test:startup": "node test/startup.js",
     "test:all": "npm test && npm run test:startup && npm run test:tabs",
