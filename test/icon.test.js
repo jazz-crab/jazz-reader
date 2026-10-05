@@ -164,8 +164,8 @@ if (png[256]) {
   t('буквы найдены', !!box);
   if (box) {
     const w = box.x1 - box.x0 + 1, h = box.y1 - box.y0 + 1;
-    t('ширина «JR» ~138px (' + w + ')', near(w, 138, 4));
-    t('высота «JR» ~69px (' + h + ')', near(h, 69, 4));
+    t('ширина «JR» ~137px (' + w + ')', near(w, 137, 4));
+    t('высота «JR» ~89px (' + h + ')', near(h, 89, 4));
     t('центр букв в центре плитки', near((box.x0 + box.x1) / 2, 127.5, 2) && near((box.y0 + box.y1) / 2, 127.5, 2),
       'центр=' + ((box.x0 + box.x1) / 2) + ',' + ((box.y0 + box.y1) / 2));
     t('поля слева/справа симметричны', Math.abs(box.x0 - (255 - box.x1)) <= 2,
@@ -251,7 +251,8 @@ if (fs.existsSync(svgPath)) {
   t('рисует ровно один <text> с содержимым JR', (svg.match(/<text\b/g) || []).length === 1 && />\s*JR\s*</.test(svg));
   t('цвета TokyoNight на месте',
     ['#1f2333', '#16161e', '#7aa2f7', '#7dcfff', '#3b4261'].every(c => svg.toLowerCase().includes(c)));
-  t('есть запасной шрифт (иначе на машине без Lato будет мыло)', /font-family="[^"]*sans-serif/.test(svg));
+  t('есть запасной моноширинный шрифт (иначе на машине без JetBrains Mono будет мыло)',
+    /font-family="[^"]*(sans-serif|monospace)/.test(svg));
   t('внешние ресурсы не тянутся (без <image>/http)',
     !/<image\b|https?:\/\/(?!www\.w3\.org)/.test(svg));
 }

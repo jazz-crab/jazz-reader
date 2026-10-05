@@ -25,6 +25,44 @@ const TMP = path.join(require('os').tmpdir(), 'jazz-reader-icons-' + process.pid
 
 const svg = fs.readFileSync(path.join(DIR, 'icon.svg'), 'utf8');
 
+/*
+ * Шрифт букв — JetBrains Mono, как во всём приложении. В системе его на
+ * Windows обычно нет, поэтому font-family из icon.svg не сработает: Chromium
+ * подставит запасной моноширинный шрифт и буквы получатся другими. Поэтому
+ * генератор сам подкладывает @font-face с woff2 из проекта.
+ *
+ * data: URI, а не путь к файлу: со страницы, открытой по file://, Chromium
+ * не грузит шрифты с диска (у file:// непрозрачный origin), и тихо отдаст
+ * запасной шрифт вместо нашего.
+ *
+ * ExtraBold (800) — самое тяжёлое начертание JetBrains Mono. В вендорённый
+ * src/fonts его не кладут (там 400/500/700 — только для интерфейса), поэтому
+ * берём из @fontsource в devDependencies, а если его нет — 700.
+ */
+const FONT_WEIGHT = 800;
+const ROOT = path.join(DIR, '..', '..');
+
+function fontFile(weight) {
+  const cands = [
+    path.join(ROOT, 'src', 'fonts', `jetbrains-mono-latin-${weight}-normal.woff2`),
+    path.join(ROOT, 'node_modules', '@fontsource', 'jetbrains-mono', 'files',
+      `jetbrains-mono-latin-${weight}-normal.woff2`),
+  ];
+  for (const c of cands) if (fs.existsSync(c)) return c;
+  return null;
+}
+
+const fontPath = fontFile(FONT_WEIGHT) || fontFile(700);
+if (!fontPath) {
+  throw new Error('не найден woff2 JetBrains Mono: поставь npm ci или положи файл в src/fonts/');
+}
+const FONT_WEIGHT_USED = fontPath.includes(`-${FONT_WEIGHT}-`) ? FONT_WEIGHT : 700;
+const fontData = fs.readFileSync(fontPath).toString('base64');
+
+const FONT_FACE = `@font-face{font-family:'JetBrains Mono';` +
+  `font-weight:${FONT_WEIGHT_USED};font-style:normal;font-display:block;` +
+  `src:url(data:font/woff2;base64,${fontData}) format('woff2')}`;
+
 // Мелкие размеры: буквы крупнее на 20%, иначе на 16 px «JR» превращается в кашу.
 function scaled(s) {
   if (!SMALL_SIZES.includes(s)) return svg;
@@ -44,6 +82,7 @@ const { app, BrowserWindow } = require('electron');
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const all = [...SIZES, 512];
+  console.log(`шрифт: JetBrains Mono ${FONT_WEIGHT_USED} (${path.basename(fontPath)})`);
 
   // Одно окно на все размеры и пересоздание: после destroy второе offscreen-окно
 // Chromium стабильно падает с ERR_FAILED. Окно просто переставляем размером.
@@ -57,7 +96,8 @@ const win = new BrowserWindow({
 for (const s of all) {
     const px = s * SS;
     const html = `<!doctype html><meta charset="utf-8">
-      <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}
+      <style>${FONT_FACE}
+      html,body{margin:0;padding:0;background:transparent;overflow:hidden}
       svg{display:block;width:${px}px;height:${px}px}</style>${scaled(s)}`;
 
     // Файл, а не data: URL — длинный data: URL Chromium периодически роняет
@@ -67,6 +107,8 @@ for (const s of all) {
 
     win.setContentSize(px, px);
     await win.loadFile(page);
+    // Без этого кадр может уйти до подгрузки шрифта — и буквы будут в запасном.
+    await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
     const img = await win.webContents.capturePage();
     fs.writeFileSync(path.join(TMP, s + '.png'), img.toPNG());
     process.stdout.write(`  ${s}px  ok\n`);
