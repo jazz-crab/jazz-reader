@@ -182,8 +182,15 @@ async function main() {
     && /ipc\.setting\('quitAsk', false\)/.test(mainSrc));
   t('список хоткеев объявлен через let',
     /let shortcuts = \[\];/.test(mainSrc) && !/const shortcuts = \[\];/.test(mainSrc));
+  // Раньше тут была проверка исходника на литерал --mdview-hidden рядом с
+  // mdv:testQuit. Она ломалась от любой безобидной правки: я заменил
+  // инлайн-проверку флага на константу HIDDEN, и регулярка перестала находить
+  // флаг, хотя смысл не изменился. Проверяем теперь обе части по отдельности:
+  // канал действительно за `if (HIDDEN)`, и HIDDEN действительно выводится из
+  // скрытого режима — иначе проверка была бы пустой.
   t('тестовый канал выхода есть только в скрытом режиме',
-    /--jazzreader-hidden[\s\S]{0,200}mdv:testQuit/.test(mainSrc));
+    /if \(HIDDEN\) \{[\s\S]{0,200}mdv:testQuit/.test(mainSrc)
+    && /const HIDDEN =[\s\S]{0,400}JAZZREADER_HIDDEN/.test(mainSrc));
 
   const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
   t('renderer сообщает число несохранённых вкладок',
