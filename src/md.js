@@ -1,22 +1,22 @@
 'use strict';
 /*
- * Рендер Markdown с поддержкой LaTeX.
+ * Markdown rendering with LaTeX support.
  *
- * ПОЧЕМУ НЕ auto-render после marked:  marked — это markdown, и он портит
- * LaTeX до неузнаваемости: `\\` -> `\`, `\{` -> `{`, `\_` -> `_`. KaTeX такое
- * не осилит. Поэтому формулы ВЫРЕЗАЮТСЯ из исходника в плейсхолдеры ДО
- * marked.parse(), а рендерятся KaTeX уже после. Код (fenced и inline)
- * при этом копируется дословно и в подстановку не попадает.
+ * WHY NOT auto-render after marked: marked is markdown, and it mangles LaTeX
+ * beyond recognition: `\\` -> `\`, `\{` -> `{`, `\_` -> `_`. KaTeX cannot
+ * cope with that. So the formulas are CUT OUT of the source into placeholders
+ * BEFORE marked.parse(), and rendered by KaTeX afterwards. Code (fenced and
+ * inline) is copied verbatim and never reaches the substitution.
  */
 (function (global) {
   const MDV = (global.MDV = global.MDV || {});
 
-  const TOK = 'MDVMATH';        // буквы+цифры: markdown такой текст не трогает
+  const TOK = 'MDVMATH';        // letters+digits: markdown leaves such text alone
   const TOK_RE = /MDVMATH(\d+)END/g;
 
-  // ---------------------------------------------------------------- сканер
+  // ---------------------------------------------------------------- scanner
 
-  /** Открывающий или закрывающий fence: до 3 пробелов, затем ` или ~ (>=3). */
+  /** An opening or closing fence: up to 3 spaces, then ` or ~ (3 or more). */
   function fenceAt(src, i) {
     let p = i, spaces = 0;
     while (p < src.length && src[p] === ' ' && spaces < 4) { p++; spaces++; }
@@ -26,14 +26,14 @@
     let run = 0;
     while (p + run < src.length && src[p + run] === ch) run++;
     if (run < 3) return null;
-    // В info-строке открывающего ``` обратных кавычек быть не должно.
+    // The info string of an opening ``` must not contain backticks.
     let q = p + run, ticks = 0;
     while (q < src.length && src[q] !== '\n') { if (src[q] === '`') ticks++; q++; }
     if (ch === '`' && ticks > 0) return null;
     return { marker: ch, len: run, bodyStart: q };
   }
 
-  /** Конец fenced-блока, начиная с его открывающего fence. */
+  /** The end of a fenced block, starting from its opening fence. */
   function skipFence(src, i) {
     const f = fenceAt(src, i);
     let p = src.indexOf('\n', f.bodyStart);
@@ -48,10 +48,10 @@
       }
       p = nl + 1;
     }
-    return src.length; // незакрытый fence — до конца файла
+    return src.length; // unclosed fence — to the end of the file
   }
 
-  /** Конец inline-кода, если он закрыт; иначе -1. */
+  /** The end of inline code if it is closed; otherwise -1. */
   function skipInlineCode(src, i) {
     let run = 0;
     while (i + run < src.length && src[i + run] === '`') run++;
@@ -60,7 +60,7 @@
       if (src[p] === '`') {
         let r = 0;
         while (p + r < src.length && src[p + r] === '`') r++;
-        if (r === run) return p + r; // закрывающий ран строго той же длины
+        if (r === run) return p + r; // the closing run is exactly the same length
         p += r;
       } else p++;
     }
@@ -73,17 +73,17 @@
     return c % 2 === 1;
   }
 
-  /** Вырезает формулы. Возвращает { text, blocks:[{tex, display}] }. */
+  /** Cut out the formulas. Returns { text, blocks:[{tex, display}] }. */
   function extractMath(src) {
     const blocks = [];
     const out = [];
     const n = src.length;
-    let plain = 0;   // начало текущего сырого куска
+    let plain = 0;   // start of the current raw chunk
     let i = 0;
     let atLineStart = true;
 
     const flush = (end) => { if (end > plain) out.push(src.slice(plain, end)); };
-    /** Заменяет src[start..end] на плейсхолдер, запоминая формулу. */
+    /** Replaces src[start..end] with a placeholder, remembering the formula. */
     const take = (tex, display, start, end) => {
       const idx = blocks.length;
       blocks.push({ tex, display });
@@ -107,28 +107,28 @@
       }
 
       if (!escapedAt(src, i)) {
-        // --- блочная: $$ ... $$
+        // --- block: $$ ... $$
         if (c === '$' && src[i + 1] === '$') {
           const close = src.indexOf('$$', i + 2);
           if (close !== -1) { take(src.slice(i + 2, close), true, i, close + 2); atLineStart = false; continue; }
         }
-        // --- блочная: \[ ... \]
+        // --- block: \[ ... \]
         if (c === '\\' && src[i + 1] === '[') {
           const close = src.indexOf('\\]', i + 2);
           if (close !== -1) { take(src.slice(i + 2, close), true, i, close + 2); atLineStart = false; continue; }
         }
-        // --- инлайновая: \( ... \)
+        // --- inline: \( ... \)
         if (c === '\\' && src[i + 1] === '(') {
           const close = src.indexOf('\\)', i + 2);
           if (close !== -1) { take(src.slice(i + 2, close), false, i, close + 2); atLineStart = false; continue; }
         }
-        // --- инлайновая: $ ... $ (только в пределах строки)
+        // --- inline: $ ... $ (only within the line)
         if (c === '$' && src[i + 1] !== '$') {
           const nxt = src[i + 1];
           if (nxt && !/\s/.test(nxt)) {
             let j = i + 1, found = -1;
             while (j < n && src[j] !== '\n') {
-              // закрывающий $: не экранирован, перед ним не пробел, после не цифра
+              // closing $: not escaped, no space before it, no digit after it
               if (src[j] === '$' && src[j + 1] !== '$' && !escapedAt(src, j)
                   && !/\s/.test(src[j - 1]) && !/\d/.test(src[j + 1] || '')) { found = j; break; }
               j++;
@@ -146,7 +146,7 @@
     return { text: out.join(''), blocks };
   }
 
-  // -------------------------------------------------------------- рендеринг
+  // --------------------------------------------------------------- rendering
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -159,8 +159,8 @@
     try {
       const body = K.renderToString(tex, {
         displayMode: display,
-        throwOnError: false,  // ошибку показываем красным, страницу не роняем
-        strict: false,        // разрешаем \text{Ом}, кириллицу, \, и {,} — привычка из Word
+        throwOnError: false,  // show the error in red rather than breaking the page
+        strict: false,        // allow \text{Om}, Cyrillic, \, and {,} — a habit from Word
         trust: false,
       });
       return display
@@ -172,27 +172,28 @@
     }
   }
 
-  /** Плейсхолдеры -> отрендеренные формулы. */
+  /** Placeholders -> rendered formulas. */
   function restoreMath(html, blocks) {
     if (!blocks.length) return html;
 
-    // Сначала блочные формулы, составляющие целый абзац: выносим из <p>,
-    // иначе внутри <p> окажется div и центрирование/переносы будут кривые.
+    // Block formulas that make up a whole paragraph come first: they are taken
+    // out of <p>, otherwise a div ends up inside <p> and the centring and line
+    // breaks come out wrong.
     for (let k = 0; k < blocks.length; k++) {
       if (!blocks[k].display) continue;
       const re = new RegExp('<p>(\\s*)' + TOK + k + 'END(\\s*)</p>', 'g');
       html = html.replace(re, () => renderTex(blocks[k].tex, true));
     }
-    // Остальные плейсхолдеры (инлайновые и «прилипшие» к тексту блочные).
+    // The remaining placeholders (inline ones and block ones stuck to text).
     return html.replace(TOK_RE, (m, n) => {
       const b = blocks[Number(n)];
       return b ? renderTex(b.tex, b.display) : m;
     });
   }
 
-  // ------------------------------------------------------- URL и ссылки
+  // ------------------------------------------------------ URLs and links
 
-  /** file:// -> путь ФС (с учётом ведущего слэша Windows). */
+  /** file:// -> file system path (accounting for the leading Windows slash). */
   function fileUrlToPath(url) {
     try {
       const u = new URL(url);
@@ -202,7 +203,7 @@
     } catch { return null; }
   }
 
-  /** Относительные src/href -> абсолютные; .md-ссылки помечаются data-mdpath. */
+  /** Relative src/href -> absolute; .md links get data-mdpath. */
   function resolveUrls(html, baseUrl) {
     if (!baseUrl) return html;
     const base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
@@ -226,17 +227,17 @@
     return html;
   }
 
-  // ------------------------------------------------------- чекбоксы task-list
+  // ------------------------------------------------------ task-list checkboxes
 
   /**
-   * marked превращает «- [x]» / «1. [ ]» в нативный <input type="checkbox">.
-   * В тёмной теме они выглядят как серые плашки из другой вселенной (и на
-   * Windows вообще рисуются системным стилем, мимо CSS), поэтому заменяем их
-   * на SVG-иконки Lucide: square-check-big для отмеченного и square для
-   * неотмеченного. Разметка остаётся в <li>, сам input исчезает.
+   * marked turns "- [x]" / "1. [ ]" into a native <input type="checkbox">.
+   * In the dark theme they look like grey slabs from another universe (and on
+   * Windows they are drawn in the system style, past the CSS), so we replace
+   * them with Lucide SVG icons: square-check-big for checked and square for
+   * unchecked. The markup stays in <li>, the input itself disappears.
    *
-   * Порядок атрибутов у marked бывает разным (checked="" disabled="" type=
-   * и наоборот), поэтому ищем по типу, а не по точному тегу.
+   * The attribute order from marked varies (checked="" disabled="" type=
+   * and the other way round), so we search by type rather than by exact tag.
    */
   const INPUT_RE = /<input\b([^>]*)\btype="checkbox"([^>]*)>/g;
   const CHECKED_RE = /\bchecked\b/;
@@ -252,7 +253,7 @@
       const done = CHECKED_RE.test(attrs);
       const cls = hasClass(attrs);
       const extra = cls ? ' ' + cls[1] : '';
-      // Без icons.js (например, в node-тестах) оставляем как есть.
+      // Without icons.js (in node tests, for instance) leave it as it is.
       if (!I || !I.icon) return _m;
       const name = done ? 'square-check-big' : 'square';
       const icon = I.icon(name, 'mdv-task' + (done ? ' mdv-task-done' : '') + extra);
@@ -260,9 +261,9 @@
     });
   }
 
-  // ------------------------------------------------------------ публичное API
+  // -------------------------------------------------------------- public API
 
-  /** src -> HTML. baseUrl — file://URL каталога файла (картинки/ссылки). */
+  /** src -> HTML. baseUrl is the file:// URL of the file's folder (images/links). */
   MDV.renderMd = function (src, baseUrl) {
     const { text, blocks } = extractMath(src);
     let html = global.marked.parse(text, { gfm: true, breaks: false });
@@ -273,22 +274,22 @@
   };
 
   /**
-   * Разметка -> обычный текст.
+   * Markup -> plain text.
    *
-   * Для экспорта в TXT. Не «вырезать теги из HTML»: в TXT человек ждёт текст,
-   * который можно прочитать в блокноте, — без решёток, звёздочек, обратных
-   * кавычек и подчёркиваний. Списки остаются списками, таблицы — табами,
-   * ссылки — своим текстом, картинки — подписью, код — кодом.
+   * For the TXT export. Not "strip the tags from the HTML": in a TXT a person
+   * expects text that can be read in a notepad — no hashes, asterisks, backticks
+   * or underscores. Lists stay lists, tables become tabs, links become their
+   * text, images become a caption, code stays code.
    *
-   * Эвристика, а не парсер: нестандартную разметку разбирать не на чем, и
-   * выдумывать тут нечего.
+   * A heuristic, not a parser: there is nothing to parse non-standard markup
+   * with, and there is nothing to invent here.
    */
   const ESC_MARK = '\uE000';
 
   function plainInline(src) {
     let x = String(src);
-    // Экранированные символы: \* не считается началом выделения. Прячем их
-    // за символ частной области — он в заметке не встречается.
+    // Escaped characters: \* does not start emphasis. We hide them behind a
+    // private-use character, which does not occur in a note.
     const esc = [];
     x = x.replace(/\\([\\`*_{}[\]()#+\-.!>|~])/g, (_m, c) => {
       esc.push(c);
@@ -325,10 +326,10 @@
       }
       if (f) { flushTable(); fence = f[1].replace(/[`~]/g, ''); out.push(''); continue; }
 
-      // Горизонтальная линия: в тексте ей нечего соответствовать.
+      // A horizontal rule: there is nothing for it to correspond to in text.
       if (/^\s{0,3}([-*_])\s*(\1\s*){2,}$/.test(raw)) { flushTable(); out.push(''); continue; }
 
-      // Таблица: строка-разделитель убирается, ячейки склеиваются табом.
+      // A table: the separator row is dropped, the cells are glued with a tab.
       if (raw.includes('|') && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(raw)) continue;
       if (raw.includes('|') && /^\s*\|/.test(raw)) {
         inTable = true;
@@ -342,7 +343,7 @@
       if (h) { out.push(plainInline(h[2])); continue; }
 
       let line = raw.replace(/^\s{0,3}>\s?/, '');
-      // Задача: галочка в тексте полезнее пустой скобки.
+      // A task: a checkbox is more useful in text than an empty bracket.
       line = line.replace(/^(\s*)([-*+]|\d+[.)])\s+\[([ xX])\]\s+/, '$1- [$3] ');
       line = line.replace(/^(\s*)([-*+]|\d+[.)])\s+/, '$1- ');
       out.push(plainInline(line));

@@ -440,7 +440,7 @@ html, body, .content { background: var(--bg) !important; color: var(--fg) !impor
  *   colour background it looks like a layout bug.
  */
 const PRINT_CSS = `
-/* печать */
+/* print */
 @page { size: A4; margin: 0; }
 .content { padding: 16mm 18mm 18mm !important; }
 .content pre, .content blockquote { border: none !important; }

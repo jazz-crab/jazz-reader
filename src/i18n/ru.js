@@ -6,8 +6,8 @@
  *
  * Plural forms are written as an object with one/few/many/other:
  *   { one: '...', few: '...', many: '...', other: '...' }
- * The form is picked by Intl.PluralRules (see i18n/index.js), so "21 заметке"
- * and "11 заметках" come out on their own.
+ * The form is picked by Intl.PluralRules (see i18n/index.js), so the Russian
+ * endings for 21 and for 11 come out on their own.
  *
  * Placeholders are in braces: {name}.
  */
