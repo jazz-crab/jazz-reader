@@ -2025,11 +2025,11 @@ async function addFolder(p) {
   roots.push({ path: p, name: basname(p), tree: res.tree, total: res.total });
   renderTree();
   // Opening a folder on a blank tab must show the tree, not the placeholder:
-  // сбрасываем флаг «пользователь хотел пустую вкладку».
+  // we clear the "the person wanted a blank tab" flag.
   const a = active();
   if (a && a.blank && !a.path) a.blank = false;
-  // Без этого рабочая область оставалась скрытой и дерево было не видно:
-  // показывать его должен renderActive, а не renderTree.
+  // Without this the workspace stayed hidden and the tree was not visible:
+  // it has to be shown by renderActive, not by renderTree.
   renderActive();
   status(res.total ? tr('status.inFolder') + res.total + ' .md — ' + basname(p) : tr('status.noMdIn') + basname(p), res.total ? 'ok' : 'err');
 }
@@ -2088,7 +2088,7 @@ function renderTree() {
           const row = document.createElement('div');
           row.className = 'tree-item';
           row.title = it.full;
-          // Открытый в любой вкладке файл — выделен, текущая вкладка — ещё и ярче.
+          // A file open in any tab is highlighted, the current tab even more strongly.
           const isCur = active() && samePath(active().path, it.full);
           const openInSome = isCur || [...tabs.values()].some((x) => samePath(x.path, it.full));
           if (openInSome) row.classList.add('is-open');
@@ -2114,15 +2114,15 @@ function renderTree() {
   }
 }
 
-// ------------------------------------------------------------------ зум
+// ------------------------------------------------------------------ zoom
 
-/* Границы масштаба. Ниже 40% текст становится нечитаемым, выше 250%
-   полосы перестают помещаться в колонку и она начинает прыгать на строках. */
+/* The zoom limits. Below 40% the text becomes unreadable, above 250% the bars
+   stop fitting in the column and it starts jumping between lines. */
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2.5;
 
-/* Пока в поле печатают, updateZoom его не трогает: иначе каждый setZoom
-   затирал бы половину набранного. */
+/* While something is being typed in the field, updateZoom does not touch it:
+   otherwise every setZoom would wipe half of what was typed. */
 let zoomEditing = false;
 
 function updateZoom() {
@@ -2138,12 +2138,12 @@ function setZoom(z) {
 }
 
 /**
- * Применить масштаб, вписанный в поле.
+ * Apply the zoom typed into the field.
  *
- * Понимаем «85», «85%», «0.85», «1,85» и пробелы вокруг. Молча ставить
- * 100% при опечатке — плохо: человек думал, что задал 130%, и получал 100%
- * без единого слова. Поэтому неудача — это строка в статусе и возврат
- * того, что было.
+ * We understand "85", "85%", "0.85", "1,85" and spaces around them. Silently
+ * putting 100% on a typo is bad: the person thought they had set 130% and got
+ * 100% without a word. So a failure is a line in the status bar and a return to
+ * what it was.
  */
 function applyZoomInput() {
   const raw = el.zoomVal.value.trim();
@@ -2155,8 +2155,8 @@ function applyZoomInput() {
     updateZoom();
     return false;
   }
-  // Без знака «%» число <= 1 читаем как долю (0.85 -> 85%), больше 1 — как
-  // проценты (85 -> 85%). Иначе «1» означал бы 1% невозможного.
+  // Without a "%" sign a number <= 1 is read as a fraction (0.85 -> 85%), above 1 —
+  // as percentages (85 -> 85%). Otherwise "1" would mean 1% of the impossible.
   const z = raw.indexOf('%') >= 0 ? n / 100 : (n <= 1 ? n : n / 100);
   if (z < ZOOM_MIN || z > ZOOM_MAX) {
     status(tr('zoom.outOfRange') + Math.round(ZOOM_MIN * 100) + '–'
@@ -2184,11 +2184,11 @@ el.zoomVal.addEventListener('keydown', (e) => {
     el.zoomVal.blur();
     return;
   }
-  // Escape — откат к настоящему масштабу, поле закрывается.
-  // stopPropagation обязателен: иначе Escape, отменявший набор в поле,
-  // долетал до обработчика окна и доходил до диалогов — там он закрывал
-  // их и откатывал настройки, то есть одно нажатие делало три разных
-  // вещи. Остальные клавиши останавливаем ниже.
+  // Escape — roll back to the real zoom, the field closes.
+  // stopPropagation is required: otherwise the Escape that cancels the entry in
+  // the field would reach the window handler and go on to the dialogs — where
+  // it would close them and roll back the settings, that is, one keypress would
+  // do three different things. The other keys are stopped below.
   if (e.key === 'Escape') {
     e.preventDefault();
     e.stopPropagation();
@@ -2197,30 +2197,30 @@ el.zoomVal.addEventListener('keydown', (e) => {
     el.zoomVal.blur();
     return;
   }
-  // Остальные клавиши не должны улетать в обработчик окна: пробел там
-  // означал бы «листать вниз», и «85 » не применилось бы.
+  // The other keys must not fly into the window handler: a space there
+  // would mean "scroll down", and "85 " would not apply.
   e.stopPropagation();
 });
 el.zoomVal.addEventListener('blur', () => {
   if (zoomEditing) applyZoomInput();
 });
-/* Ctrl+колесо над полем — грубая подстройка, раз точное значение вводится
-   руками. preventDefault обязателен: иначе страница едет от прокрутки. */
+/* Ctrl+wheel over the field — a coarse adjustment, since the exact value is
+   typed by hand. preventDefault is required: otherwise the page scrolls away. */
 el.zoomVal.addEventListener('wheel', (e) => {
   e.preventDefault();
   setZoom(zoom + (e.deltaY < 0 ? 0.05 : -0.05));
 }, { passive: false });
 
-// ------------------------------------------------------------ сохранение и т.п.
+// ------------------------------------------------------- saving and the like
 
 /**
- * Сохранить конкретную вкладку.
+ * Save a specific tab.
  *
- * Отдельная функция нужна для диалогов: при закрытии вкладки с правками
- * спрашивать можно про ЛЮБУЮ вкладку, а save() работала только с активной и
- * брала текст из редактора. Текст берём из редактора только когда вкладка
- * активна и в правке; у остальных t.raw уже актуален — он обновляется на
- * каждом нажатии клавиши.
+ * A function of its own is needed for the dialogs: when closing a tab with
+ * changes, the question may be about ANY tab, while save() worked only with the
+ * active one and took the text from the editor. We take the text from the editor
+ * only when the tab is active and in edit mode; for the others t.raw is already
+ * current — it is updated on every keypress.
  */
 async function saveTab(t) {
   if (!t || !t.path) return false;
@@ -2247,10 +2247,10 @@ async function save() {
   const t = active();
   if (!t || !t.path) return;
   if (!t.dirty) { toast(tr('status.noChanges')); return; }
-  // После сохранения выходим из правки в просмотр. Раньше save() намеренно
-  // оставлял правку включённой (мысль была «Ctrl+S не должен выбрасывать в
-  // чтение»), но это означало, что после сохранения остаёшься в редакторе уже
-  // чистого файла — зелёная «Сохранить» продолжала висеть в углу.
+  // After saving we leave edit mode and go back to reading. save() used to
+  // deliberately stay in edit mode (the thought being "Ctrl+S should not throw
+  // you into reading"), but that meant that after saving you stayed in the editor
+  // on an already clean file — and the green "Save" kept hanging in the corner.
   await saveTab(t);
 }
 
@@ -2267,16 +2267,16 @@ function download(name, text, mime) {
 }
 
 /**
- * Форматы экспорта.
+ * The export formats.
  *
- * MD и TXT — файл как есть (TXT без разметки), их видно целиком и решать
- * там нечего. HTML и PDF собираются заново, и только для них имеют смысл
- * палитра, шрифт и размер: это не оформление заметки, а оформление файла,
- * который уедет с машины.
+ * MD and TXT are the file as it is (TXT without markup), they are shown in
+ * full and there is nothing to decide there. HTML and PDF are assembled anew,
+ * and only for them do the palette, font and size make sense: that is not the
+ * styling of the note but the styling of a file that will leave the machine.
  *
- * У каждого формата свой цвет иконки. Раньше все иконки в выбранном сегменте
- * становились одинаково голубыми, и четыре формата читались как один
- * переключатель; теперь видно, где какой.
+ * Each format has its own icon colour. All the icons in the selected segment
+ * used to turn the same shade of blue, and four formats read as one toggle; now
+ * it is visible which is which.
  */
 const EXPORT_FORMATS = [
   { id: 'md', label: 'MD', icon: 'file-text', plain: true, color: 'var(--blue)',
@@ -2290,12 +2290,12 @@ const EXPORT_FORMATS = [
 ];
 
 /*
- * Цвет кнопки «Цветное».
+ * The colour of the "Colour" button.
  *
- * Один и тот же цвет каждый раз выглядел бы как часть интерфейса: человек
- * привыкает, что голубая кнопка значит «цветное», и перестаёт её читать.
- * Поэтому набор из палитры TokyoNight и шаг по нему: цвета каждый раз
- * разные, но не выпадают, а голубого здесь нет — он у MD.
+ * The same colour every time would look like part of the interface: a person
+ * gets used to a blue button meaning "colour" and stops reading it. So we take a
+ * set from the TokyoNight palette and step through it: the colours are different
+ * every time but do not clash, and there is no blue here — that one belongs to MD.
  */
 const EXPORT_TINTS = ['var(--green)', 'var(--orange)', 'var(--red)',
   'var(--yellow)', 'var(--purple)'];
@@ -2307,22 +2307,22 @@ function nextExportTint() {
   return c;
 }
 
-/** Своё имя шрифта JetBrains для показа в списке: в CSS оно без пробела. */
+/** Our own font name for showing in the list: in the CSS it is without a space. */
 function exportFontLabel(name) {
   return name === 'JetBrainsMono' ? 'JetBrains Mono' : name;
 }
 
 /**
- * Окно экспорта.
+ * The export window.
  *
- * Отдельное окно, а не список в кольце: у форматов есть параметры, а у
- * параметров — предпросмотр, и всё это не влезает в меню. В кольце осталось
- * два действия: «Экспорт» открывает это окно, «Путь» — короткое меню про
- * путь к файлу.
+ * A separate window rather than a list in the ring: the formats have parameters,
+ * the parameters have a preview, and none of that fits in a menu. Two actions
+ * are left in the ring: "Export" opens this window, "Path" — a short menu about
+ * the file path.
  *
- * Слева настройки, справа предпросмотр: подсказки убирали, карточки стали
- * низкими, и места для предпросмотра в одной колонке не хватало — он
- * получался узкой полосой, где не видно ни заголовка, ни таблицы.
+ * Settings on the left, preview on the right: the hints were dropped, the cards
+ * became low, and there was not enough room for the preview in one column — it
+ * came out a narrow strip where neither a heading nor a table was visible.
  */
 function exportDialog(preset) {
   const t = active();
@@ -2334,7 +2334,7 @@ function exportDialog(preset) {
   const box = modalBox(tr('export.title'), 860, 620);
   box.classList.add('exp-box');
 
-  // Настройки слева, предпросмотр справа.
+  // Settings on the left, preview on the right.
   const body = document.createElement('div');
   body.className = 'exp-body';
   const left = document.createElement('div');
@@ -2352,13 +2352,14 @@ function exportDialog(preset) {
     font: 'JetBrainsMono',
   };
   const fmtById = (id) => EXPORT_FORMATS.find((f) => f.id === id) || first;
-  // Карточка размера: к ней обращается syncAll, а она создаётся ниже.
+  // The size card: syncAll refers to it, and it is created below.
   let sizeCard = null;
 
   /**
-   * Одна настройка — карточка: заголовок со значением справа, контрол под ним.
-   * Подсказок нет: их было четыре, и каждая отнимала строку у предпросмотра,
-   * а сказать было нечего — подпись кнопки и так всё объясняет.
+   * One setting — a card: a title with the value on the right, the control below.
+   * There are no hints: there used to be four of them, and each took a row away
+   * from the preview while there was nothing to say — the button caption explains
+   * everything anyway.
    */
   function addCard(label, valueEl) {
     const row = document.createElement('div');
@@ -2376,7 +2377,7 @@ function exportDialog(preset) {
     return row;
   }
 
-  /** Ряд кнопок-переключателей: формат, палитра. */
+  /** A row of toggles: format, palette. */
   function segmented(options, current, onPick) {
     const wrap = document.createElement('div');
     wrap.className = 'exp-seg';
@@ -2405,7 +2406,7 @@ function exportDialog(preset) {
     return wrap;
   }
 
-  // ---------------------------------------------------------------- формат
+  // ---------------------------------------------------------------- format
   const fmtCard = addCard(tr('export.format'));
   const fmtSeg = segmented(EXPORT_FORMATS.map((f) => ({
     id: f.id, label: f.label, icon: f.icon, color: f.color,
@@ -2416,7 +2417,7 @@ function exportDialog(preset) {
   });
   fmtCard.addControl(fmtSeg);
 
-  // ---------------------------------------------------------------- палитра
+  // --------------------------------------------------------------- palette
   const palCard = addCard(tr('export.palette'));
   const palSeg = segmented([
     { id: 'colour', label: tr('export.colour'), cls: 'tinted', color: nextExportTint() },
@@ -2428,7 +2429,7 @@ function exportDialog(preset) {
   });
   palCard.addControl(palSeg);
 
-  // ------------------------------------------------------------ размер шрифта
+  // ----------------------------------------------------------- font size
   const sizeOut = document.createElement('span');
   sizeOut.className = 'set-val';
   const sizeIn = document.createElement('input');
@@ -2446,7 +2447,7 @@ function exportDialog(preset) {
   sizeCard = addCard(tr('export.fontSize'), sizeOut);
   sizeCard.addControl(sizeIn);
 
-  // ------------------------------------------------------------------ шрифт
+  // ------------------------------------------------------------------ font
   const fontSel = document.createElement('select');
   fontSel.className = 'exp-select';
   fontSel.disabled = true;
@@ -2472,10 +2473,10 @@ function exportDialog(preset) {
     fontSel.value = state.font;
     fontSel.disabled = false;
   };
-  // Шрифты читает main из реестра Windows: renderer их не перечислит.
+  // The fonts are read by main from the Windows registry: the renderer cannot enumerate them.
   Promise.resolve(api.fonts()).then(fillFonts, () => fillFonts(null));
 
-  // ------------------------------------------------------------- предпросмотр
+  // --------------------------------------------------------------- preview
   const cap = document.createElement('div');
   cap.className = 'exp-cap';
   cap.textContent = tr('export.preview');
@@ -2487,19 +2488,19 @@ function exportDialog(preset) {
   right.append(cap, prev);
 
   /*
-   * Один проход на любое изменение.
+   * A single pass on any change.
    *
-   * Предпросмотр показывает ровно то, что уедет в файл: для MD — исходный
-   * текст, для TXT — текст без разметки, для HTML и PDF — собранную заметку
-   * с выбранными палитрой, шрифтом и размером.
+   * The preview shows exactly what will go into the file: for MD — the source
+   * text, for TXT — the text without markup, for HTML and PDF — the assembled
+   * note with the chosen palette, font and size.
    */
   function syncAll() {
     const f = fmtById(state.format);
     fmtSeg.sync(state.format);
     palSeg.sync(state.bw ? 'bw' : 'colour');
     const plain = !!f.plain;
-    // У MD и TXT нет оформления — показывать палитру и шрифт было бы враньём,
-    // и человек настраивал бы то, чего в файле нет.
+    // MD and TXT have no styling — showing the palette and the font would be a
+    // lie, and a person would tune what is not in the file.
     palCard.hidden = plain;
     sizeCard.hidden = plain;
     fontCard.hidden = plain;
@@ -2518,7 +2519,7 @@ function exportDialog(preset) {
     ok.textContent = tr('export.doIt');
   }
 
-  // ----------------------------------------------------------------- кнопки
+  // ---------------------------------------------------------------- buttons
   const row = document.createElement('div');
   row.className = 'modal-row';
   const cancel = document.createElement('button');
@@ -2538,8 +2539,8 @@ function exportDialog(preset) {
   paintRange(sizeIn);
   syncAll();
 
-  // Enter в окне — экспорт. В списке шрифтов Enter открывает сам список, там
-  // подтверждением ничего не сделать.
+  // Enter in the window — export. In the font list Enter opens the list itself,
+  // there is nothing to confirm with it.
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.tagName !== 'SELECT') {
       e.preventDefault();
@@ -2553,8 +2554,8 @@ function exportDialog(preset) {
   async function run() {
     if (busy) return;
     const tab = active();
-    // Пока окно открыто, вкладку могли закрыть по Ctrl+W — тогда экспортируем
-    // не то.
+    // While the window is open the tab may have been closed with Ctrl+W — then we
+    // would export the wrong thing.
     if (!tab || tab.path !== t.path) { closeModal(false); return; }
     if (tab.mode === 'edit' && tab.dirty) { toast(tr('export.saveFirst')); closeModal(false); return; }
 
@@ -2589,7 +2590,7 @@ function exportDialog(preset) {
   }
 }
 
-// ------------------------------------------------------------------ поиск
+// ------------------------------------------------------------------- find
 
 function openFind() {
   if (findBar) { findBar.input.focus(); return; }
@@ -2681,9 +2682,9 @@ function stepFind(dir) {
   bar.box.querySelector('.cnt').textContent = (bar.cur + 1) + '/' + bar.marks.length;
 }
 
-// ============================================================ обработчики
+// ============================================================ handlers
 
-// --- клики по контенту: .md-ссылки -> новая вкладка, формулы -> исходник
+// --- clicks in the content: .md links -> a new tab, formulas -> the source
 el.content.addEventListener('click', (e) => {
   const a = e.target.closest('a[data-mdpath]');
   if (a) {
@@ -2715,13 +2716,14 @@ el.content.addEventListener('click', (e) => {
   }
 });
 
-// --- кнопки
-// Плюсик снова просто открывает пустую вкладку: меню ради одной кнопки было
-// лишним кликом, а открыть файл/папку и так есть чем в тулбаре.
+// --- buttons
+// The plus simply opens a blank tab again: a menu for a single button was an
+// extra click, and opening a file/folder has other means in the toolbar.
 el.btnNewTab.onclick = () => newTab();
 /*
- * ПКМ по «+» открывает то же, что ЛКМ делает раньше: открыть файл или
- * папку. Сам «+» остаётся новой пустой вкладкой — так привычнее.
+/**
+ * A right click on the "+" does what a left click used to do: open a file or a
+ * folder. The "+" itself stays a new blank tab — that is the familiar habit.
  */
 el.btnNewTab.oncontextmenu = (e) => {
   e.preventDefault();
@@ -2732,59 +2734,61 @@ el.btnNewTab.oncontextmenu = (e) => {
   ], { width: 232, height: 80, anchorRect: r });
 };
 
-/* ------------------------------------------------- круговое меню заметки
+/* ------------------------------------------------- the note ring
 
- * Правый клик внутри заметки открывает кольцо кнопок вокруг точки клика.
- * Состав зависит от режима, поэтому меню собирается кодом, а не разметкой:
- *   сверху   буфер обмена — копировать, вырезать, вставить;
- *   снизу    правка — карандаш в чтении, «Сохранить» и «Отмена» в правке;
- *   справа   экспорт: раскрывает обычное меню экспорта у этой кнопки;
- *   слева    «+»: открыть файл или папку.
+ * A right click inside the note opens a ring of buttons around the point of the
+ * click. The set depends on the mode, so the menu is built by code rather than
+ * by markup:
+ *   top      editing — copy, cut, paste;
+ *   bottom   clipboard — the pencil in reading, "Save" and "Discard" in edit;
+ *   right    export: opens the ordinary export menu at this button;
+ *   left     "+": open a file or a folder.
  *
- * Копирование и вырезание работают с текущим выделением. Вставка осмысленна
- * только в правке: в чтении полем некуда, поэтому кнопка там неактивна — но
- * показана, чтобы кольцо не меняло форму от заметки к заметке.
+ * Copying and cutting work with the current selection. Pasting only makes
+ * sense in edit mode: in reading there is nowhere to paste, so the button is
+ * inactive there — but it is shown, so that the ring does not change shape from
+ * note to note.
  *
- * Меню закрывается: кликом вне, Esc, прокруткой, переходом на другую
- * заметку. На export и «+» не закрывается — вместо этого открывается второе
- * меню прямо у нажатой кнопки.
+ * The menu closes on: a click outside, Esc, a scroll, a switch to another note.
+ * On export and "+" it does not close — instead a second menu opens right at the
+ * pressed button.
  */
 
 /*
- * Раскладка кольца.
+ * The layout of the ring.
  *
- * Углы не заданы жёстко: пунктов в секции столько, сколько имеет смысл
- * показать, и секция центрируется по своему низу/верху. Иначе кольцо то
- * перекашивало (три кнопки сверху и одна слева снизу), то выглядело пустым.
+ * The angles are not hardcoded: a section has as many items as it makes sense to
+ * show, and the section is centred on its bottom/top. Otherwise the ring either
+ * looked crooked (three buttons at the top and one at the bottom left) or empty.
  *
- * slot — где пункт по смыслу: верхняя секция (буфер обмена), нижняя (правка),
- * либо фиксированные позиции справа и слева.
+ * slot is where the item belongs by meaning: the top section (clipboard), the
+ * bottom one (editing), or the fixed positions on the right and the left.
  *
- * Мёртвых кнопок нет: то, что сейчас бесполезно, просто не показывается.
- * Раньше кнопки оставались на месте, но становились серыми и не нажимались —
- * выглядело это как «иконка сломалась».
+ * There are no dead buttons: what is useless right now is simply not shown.
+ * The buttons used to stay in place but turn grey and stop working — which
+ * looked like "the icon broke".
  */
 const RADIAL_LAYOUT = [
-  // Правка сверху, буфер обмена снизу. Секции кольца делятся дугами, а не
-  // кнопками на окружности: в круглый кружок попадать неудобно, в сектор —
-  // легко. Отдельно стоящие действия занимают свои дуги целиком.
+  // Editing at the top, the clipboard at the bottom. The sections of the ring are
+  // divided by arcs rather than by buttons on a circle: hitting a round dot is
+  // awkward, hitting a sector is easy. Standalone actions take their arcs whole.
   //
-  // tip хранится ключом, а не текстом: эта таблица собирается один раз при
-  // загрузке скрипта, когда язык ещё не применён. С текстом подписи
-  // запекались на стартовом языке навсегда и не переводились при смене.
+  // tip is stored as a key rather than as text: this table is built once when the
+  // script loads, before the language has been applied. With text the captions
+  // were baked in the starting language forever and did not follow a change.
   { act: 'mode', slot: 'top', icon: 'pencil', tipKey: 'ring.editTip' },
   { act: 'save', slot: 'top', icon: 'save', tipKey: 'ring.saveTip', cls: 'r-save' },
   { act: 'cancel', slot: 'top', icon: 'x', tipKey: 'ring.cancelTip', cls: 'r-cancel' },
-  // Справа — всё, что делают с файлом целиком: экспорт и путь. Слева — только
-  // открытие. Раньше «Путь» стоял слева рядом с «Открыть», и две кнопки,
-  // которые делают одно и то же — показывают файл, — делили одну дугу между
-  // собой; на открытие файла оставалось 39 градусов, столько же, сколько на
-  // один из трёх секторов буфера обмена.
+  // On the right — everything done to the file as a whole: export and path. On the
+  // left — only opening. "Path" used to stand on the left next to "Open", and
+  // the two buttons that do the same thing — show the file — shared one arc
+  // between them; opening a file was left with 39 degrees, the same as one of
+  // the three clipboard sectors.
   //
-  // Границы правых секторов заданы руками, а не делением дуги пополам: шов
-  // пополам приходился бы ровно на 0 градусов, то есть на «строго вправо».
-  // Выбор по направлению и наведение целятся именно туда, и в этой точке
-  // кольцо решало бы, экспорт это или путь.
+  // The borders of the right sectors are set by hand rather than by halving the
+  // arc: a halved seam would land exactly on 0 degrees, that is, on "strictly
+  // right". Selection by direction and hover aim precisely there, and at that
+  // point the ring would have to decide between export and path.
   { act: 'export', slot: 'right', from: -39, to: 9, icon: 'folder-output',
     tipKey: 'ring.exportTip', cls: 'r-export' },
   { act: 'path', slot: 'right', from: 9, to: 39, icon: 'signpost',
@@ -2796,62 +2800,61 @@ const RADIAL_LAYOUT = [
 ];
 
 let radialOpen = false;
-/** Выбранное действие: по нему идёт и подсветка, и клавиатурный обход. */
 let radialCur = null;
-/**
- * Где стоял значок выбранного сектора — на момент, когда кольцо ещё было
- * открыто.
+/*
+ * Where the icon of the selected sector stood while the ring was still open.
  *
- * Нужно меню, которое открывается под нажатой иконкой: в режиме «зажать и
- * вести» решение принимается на отпускании, и к этому моменту кольцо уже
- * закрыто. У скрытого элемента getBoundingClientRect() отдаёт нули, поэтому
- * меню и вылезало в левый верхний угол окна. Запоминаем прямоугольник, пока
- * кольцо живо.
+ * In the "hold and drag" mode we need the menu that opens under the pressed
+ * icon: the decision is made on release, and by then the ring is already closed.
+ * For a hidden element getBoundingClientRect() returns zeros, which is why the
+ * menu came out in the top left corner of the window. We remember the rectangle
+ * while the ring is alive.
  */
 let radialDotRect = null;
-/** Действия кольца в порядке по часовой стрелке от верха — для клавиатуры. */
+/** The ring actions clockwise from the top — for the keyboard. */
 let radialOrder = [];
-/** Идёт ли «зажать и вести»: точка нажатия и признак, что кольцо уже открыто. */
+/** Whether we are in "hold and drag": the press point and the sign that the ring is already open. */
 let radialDrag = null;
 /**
- * Правый клик при уже открытом кольце: закрыть и НЕ открывать новое.
+ * A right click with the ring already open: close it and do NOT open a new one.
  *
- * Отдельный флаг, потому что закрытие происходит на нажатии, а решение
- * «открыть ли кольцо» принимается на отпускании. Без флага отпускание после
- * закрытия тут же открывало второе кольцо — то есть закрытие было бесполезным.
+ * A separate flag, because the closing happens on press while the decision
+ * "should the ring open" is made on release. Without the flag, the release after
+ * the close immediately opened a second ring — that is, closing was useless.
  */
 let radialCancelPress = false;
 
-/** Радиус красной зоны отмены в центре. */
+/** The radius of the red cancel zone in the centre. */
 const RADIAL_KILL_R = 44;
-/** Радиус значка внутри кольца. */
+/** The radius of an icon inside the ring. */
 const RADIAL_MID = 88;
-/** Внешний радиус кольца: дальше сектора не видно. */
+/** The outer radius of the ring: beyond it the sector is not visible. */
 const RADIAL_OUT = 126;
 /**
- * Насколько кольцо удерживается от края окна, чтобы кольцо и подписи не срезало.
+ * How far the ring is kept from the edge of the window, so that neither the ring
+ * nor the captions get cut.
  */
 const RADIAL_KEEP = 150;
 /**
- * Запас, в пределах которого мышь ещё считается «у кольца».
+ * The margin within which the mouse still counts as "at the ring".
  *
- * Подпись выбранного действия выходит за край кольца, и без запаса кольцо
- * закрывалось бы, пока человек ведёт курсор к подписи. 190px покрывают диск
- * (126px) и подпись с полями.
+ * The caption of the selected action goes past the edge of the ring, and without
+ * a margin the ring would close while a person is leading the cursor to the
+ * caption. 190px covers the disc (126px) and the caption with its paddings.
  */
 const RADIAL_LEAVE = 190;
-/** Дуги секций в градусах: 0 — право, по часовой. Сумма = 360. */
+/** The arcs of the sections in degrees: 0 — right, clockwise. The sum is 360. */
 const RADIAL_ARCS = {
   top: [-141, -39],
   right: [-39, 39],
   bottom: [39, 141],
-  // Слева одна секция: открытие. Раньше её делили с «Путь»-ом.
+  // One section on the left: opening. It used to be shared with "Path".
   left: [141, 219],
 };
-/** Насколько сдвинулся курсор, прежде чем жест признаётся перетаскиванием. */
+/** How far the cursor has to move before the gesture counts as a drag. */
 const DRAG_PX = 14;
 
-/** Есть ли что копировать или вырезать. */
+/** Whether there is anything to copy or cut. */
 function hasSelection() {
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed && sel.toString().length) return true;
@@ -2860,15 +2863,16 @@ function hasSelection() {
 }
 
 /**
- * Что кольцо показывает.
+ * What the ring shows.
  *
- * Буфер обмена показывается ВСЕГДА, в любом режиме: три его сектора стоят на
- * своих местах и просто гаснут, когда действие сейчас невозможно. Иначе
- * кольцо меняло форму от выделения к отсутствию выделения, и приходилось
- * искать глазами, где сектор вообще.
+ * The clipboard is shown ALWAYS, in every mode: its three sectors stay in their
+ * places and simply go dim when the action is currently impossible. Otherwise
+ * the ring changed shape from "there is a selection" to "there is not", and
+ * the sector had to be hunted for with the eye.
  *
- * Правка, наоборот, меняется по режиму: в чтении карандаш, в правке «Сохранить»
- * и «Отмена». Зависимость тут не от наличия правок, а от самого режима.
+ * Editing, on the contrary, changes with the mode: in reading a pencil, in edit
+ * mode "Save" and "Discard". The dependency here is on the mode itself, not on
+ * whether there are changes.
  */
 function radialVisible(act) {
   const t = active();
@@ -2884,11 +2888,12 @@ function radialVisible(act) {
 }
 
 /**
- * Что из показанного работает прямо сейчас.
+ * What of the shown things works right now.
  *
- * Копировать нечего без выделения, вырезать и вставлять некуда вне поля
- * правки. Такие сектора остаются на месте, но гаснут: место в кольце не
- * меняется, и рука, привыкшая к одному и тому же, попадает туда же.
+ * There is nothing to copy without a selection, and cutting and pasting have
+ * nowhere to go outside the edit field. Such sectors stay in place but go dim:
+ * the place in the ring does not change, and a hand used to it lands in the same
+ * spot.
  */
 function radialEnabled(act) {
   const t = active();
@@ -2902,24 +2907,24 @@ function radialEnabled(act) {
 }
 
 /**
- * Точка сектора в процентах квадрата сектора.
+ * A point of the sector as percentages of the sector square.
  *
- * Квадрат сектора много больше видимого кольца — см. комментарий к
- * .radial-sector. Поэтому и точки берутся по его краю: хорда треугольника
- * оказывается за пределами кольца, и внешний край задаёт только маска.
+ * The sector square is much larger than the visible ring — see the comment on
+ * .radial-sector. That is why the points are taken along its edge: the chord of
+ * the triangle ends up outside the ring, and only the mask sets the outer edge.
  */
 function polarPct(deg) {
   const r = deg * Math.PI / 180;
   return { x: (50 + 50 * Math.cos(r)).toFixed(3) + '%', y: (50 + 50 * Math.sin(r)).toFixed(3) + '%' };
 }
 
-/** Собрать кольцо под текущее состояние заметки. */
+/** Assemble the ring for the current state of the note. */
 function buildRadial() {
   const acts = RADIAL_LAYOUT.filter((i) => radialVisible(i.act));
 
-  // Каждая дуга делится между своими действиями поровну. Одна «Сохранить»
-  // получает всю верхнюю дугу в 102 градуса, три сектора буфера обмена — по
-  // 34, и место в кольце остаётся тем же при любом составе.
+  // Every arc is divided equally between its actions. A single "Save"
+  // gets the whole top arc of 102 degrees, the three clipboard sectors 34 each,
+  // and the place in the ring stays the same whatever the set is.
   const groups = new Map();
   for (const i of acts) {
     if (!groups.has(i.slot)) groups.set(i.slot, []);
@@ -2928,8 +2933,8 @@ function buildRadial() {
   for (const [slot, list] of groups) {
     const [from, to] = RADIAL_ARCS[slot];
     if (list.every((i) => i.from != null && i.to != null)) {
-      // Границы заданы вручную: делить дугу поровну нельзя, иначе шов между
-      // секторами встанет ровно туда, куда целится рука.
+      // The borders are set by hand: the arc must not be halved, or the seam
+      // between the sectors lands exactly where the hand is aiming.
       list.forEach((i) => {
         i.a0 = i.from;
         i.a1 = i.to;
@@ -2954,8 +2959,8 @@ function buildRadial() {
     b.className = 'radial-sector' + (item.cls ? ' ' + item.cls : '');
     b.type = 'button';
     b.dataset.act = item.act;
-    // Границы сектора храним и в разметке: по ним же работает выбор по
-    // направлению, и брать их каждый раз из CSS-переменных нельзя.
+    // The sector borders are stored in the markup as well: selection by
+    // direction works off them, and they cannot be read from CSS variables each time.
     b.dataset.a0 = item.a0.toFixed(3);
     b.dataset.a1 = item.a1.toFixed(3);
     const p0 = polarPct(item.a0);
@@ -2968,12 +2973,12 @@ function buildRadial() {
     b.title = tr(item.tipKey);
     b.setAttribute('aria-label', b.title);
     /*
-     * Квадрат под попадание мыши — ровно по размеру кольца.
+     * A square for mouse hits — exactly the size of the ring.
      *
-     * Маска не участвует в hit-testing: у сектора остаётся клип по углу, и
-     * кнопкой считался весь треугольник до 240px. Клик в двухстах пикселях от
-     * кольца запускал действие вместо того, чтобы закрыть меню. Видимую часть
-     * по-прежнему рисует сектор, а ловит клики этот квадрат.
+     * The mask does not take part in hit-testing: the sector keeps its angle clip,
+     * and the whole triangle out to 240px counted as the button. A click two
+     * hundred pixels from the ring ran an action instead of closing the menu. The
+     * sector still draws the visible part, and this square catches the clicks.
      */
     b.innerHTML = '<span class="rd-hit"></span>'
       + '<span class="rd-dot">' + ICONS.icon(item.icon) + '</span>';
@@ -2994,9 +2999,9 @@ function buildRadial() {
   el.radial.append(kill);
 
   /*
-   * Подпись одна и следует за выбором. Внутри сектора ей нельзя: у сектора
-   * маска, срезающая кольцо из квадрата, и маска режет всех потомков — подпись
-   * обрезалась бы по краю.
+   * There is one caption and it follows the selection. It cannot be inside the
+   * sector: the sector has a mask that cuts the ring out of the square, and the
+   * mask cuts every descendant — the caption would be cut at the edge.
    */
   radialLabel = document.createElement('span');
   radialLabel.className = 'radial-label';
@@ -3004,7 +3009,7 @@ function buildRadial() {
   el.radial.append(radialLabel);
 }
 
-/** Подпись кольца: следует за выбранным сектором. */
+/** The caption of the ring: follows the selected sector. */
 let radialLabel = null;
 
 function radialSetLabel(tip, x, y) {
@@ -3017,12 +3022,12 @@ function radialSetLabel(tip, x, y) {
 }
 
 /**
- * Мышью внутри кольца (с запасом на подпись и на неточность).
+ * The mouse is inside the ring (with a margin for the caption and for inaccuracy).
  *
- * В обычном режиме расстояние важно: выбор идёт по попаданию в кольцо, и мышь
- * мимо него должна означать «закрыть», как в любом меню. Запас нужен, чтобы
- * не закрывать кольцо, пока человек ведёт курсор к подписи выбранного
- * действия или слегка промахивается мимо края.
+ * In the normal mode the distance matters: selection goes by hitting the ring,
+ * and the mouse past it must mean "close", as in any menu. The margin keeps the
+ * ring from closing while a person leads the cursor to the caption of the
+ * selected action or misses the edge slightly.
  */
 function inRingBounds(x, y) {
   const box = el.radial.getBoundingClientRect();
@@ -3031,12 +3036,12 @@ function inRingBounds(x, y) {
   return Math.abs(x - cx) <= RADIAL_LEAVE && Math.abs(y - cy) <= RADIAL_LEAVE;
 }
 
-/** Углы в (-180, 180]. */
+/** Angles in (-180, 180]. */
 function normDeg(d) {
   return ((d + 180) % 360 + 360) % 360 - 180;
 }
 
-/** Попадает ли угол в сектор с границами a0…a1 (дуга может переходить через ±180). */
+/** Whether an angle falls into the sector a0…a1 (the arc may cross ±180). */
 function inArc(a, a0, a1) {
   const x = normDeg(a);
   const lo = normDeg(a0);
@@ -3045,14 +3050,14 @@ function inArc(a, a0, a1) {
 }
 
 /**
- * Что выбрано под точкой (x, y).
+ * What is selected under the point (x, y).
  *
- * В режиме «зажать и вести» выбор идёт ТОЛЬКО ПО НАПРАВЛЕНИЮ: расстояние не
- * важно, поэтому курсор вправо выбирает экспорт, даже если он далеко за кольцом.
- * Так можно вести мышь быстро, не целясь в рамку.
+ * In the "hold and drag" mode the selection goes by DIRECTION ONLY: the distance
+ * does not matter, so a cursor to the right selects export even if it is far past
+ * the ring. That way the mouse can be moved fast without aiming at a frame.
  *
- * В обычном режиме расстояние важно: мышь мимо кольца должна означать «закрыть»,
- * а не «случайно выбрать».
+ * In the normal mode the distance matters: the mouse past the ring must mean
+ * "close", not "accidentally select".
  */
 function radialPick(x, y) {
   if (!el.radial || !radialOpen) return null;
@@ -3077,7 +3082,7 @@ function radialPick(x, y) {
   return hit;
 }
 
-/** Подсветить выбранный сектор и показать его подпись. */
+/** Highlight the selected sector and show its caption. */
 function radialHighlight(hit) {
   for (const b of el.radial.querySelectorAll('.radial-sector, .radial-kill')) {
     b.classList.toggle('sel', b === hit);
@@ -3099,11 +3104,11 @@ function radialHighlight(hit) {
 }
 
 /**
- * Переход по кольцу с клавиатуры.
+ * Moving around the ring with the keyboard.
  *
- * Действия обходятся в порядке по часовой стрелке от верха: так список
- * укладывается в одну строку и не зависит от того, сколько градусов занимает
- * сектор. Enter и Space подтверждают выбор.
+ * The actions are walked clockwise from the top: that way the list fits in one
+ * row and does not depend on how many degrees a sector takes. Enter and Space
+ * confirm the choice.
  */
 function radialStep(dir) {
   const order = radialOrder;
@@ -3147,16 +3152,16 @@ function radialClearPick() {
 function openRadial(x, y) {
   if (!el.radial) return;
   buildRadial();
-  // Держим кольцо целиком на экране: у края заметки часть секторов уезжала бы
-  // за окно, и выбрать их было бы нельзя.
+  // We keep the ring whole on the screen: at the edge of the note part of the
+  // sectors would run off the window, and they could not be chosen.
   const cx = Math.max(RADIAL_KEEP, Math.min(x, innerWidth - RADIAL_KEEP));
   const cy = Math.max(RADIAL_KEEP, Math.min(y, innerHeight - RADIAL_KEEP));
   el.radial.style.left = cx + 'px';
   el.radial.style.top = cy + 'px';
   el.radial.hidden = false;
   radialOpen = true;
-  // Кадр без класса .on, потом добавляем: без этого переход opacity не
-  // проиграет и кольцо просто появится готовым.
+  // A frame without the .on class, then we add it: without this the opacity
+  // transition does not play and the ring simply appears ready-made.
   requestAnimationFrame(() => el.radial.classList.add('on'));
 }
 
@@ -3172,28 +3177,28 @@ function closeRadial() {
 }
 
 function radialAct(act) {
-  // Экспорт — отдельное окно: у форматов есть параметры и предпросмотр, и
-  // они не помещаются в меню.
+  // Export is a separate window: the formats have parameters and a preview, and
+  // they do not fit in a menu.
   if (act === 'export') { closeRadial(); exportDialog(); return; }
   if (act === 'path' || act === 'open') { radialToMenu(act); return; }
   closeRadial();
   if (act === 'mode') { toggleEditMode(); return; }
-  // Именно exitEdit(true), а не save(): сектор в кольце — это «покинуть
-  // правку», и выйти надо даже когда сохранять нечего. Ctrl+S остаётся
-  // save(): там «Изменений нет» — правильный ответ.
+  // Specifically exitEdit(true), not save(): the sector in the ring means "leave
+  // edit mode", and we have to leave even when there is nothing to save. Ctrl+S
+  // stays save(): there "No changes" is the right answer.
   if (act === 'save') { exitEdit(true); return; }
   if (act === 'cancel') { exitEdit(false); return; }
   if (act === 'copy' || act === 'cut' || act === 'paste') { radialClipboard(act); return; }
 }
 
 /*
- * Буфер обмена.
+ * The clipboard.
  *
- * execCommand работает с текущим выделением и с фокусом в поле правки — то
- * есть ровно так, как ведёт себя обычный правый клик в тексте. Вставку
- * execCommand в Chromium разрешает не всегда, поэтому если она не сработала,
- * пробуем буфер обмена и вставляем текст в редактор вручную. Если и это не
- * вышло — говорим в статус, а не делаем вид, что получилось.
+ * execCommand works with the current selection and with the focus in the edit
+ * field — exactly like an ordinary right click in text behaves. Chromium does not
+ * always allow execCommand for pasting, so if it did not work we try the
+ * clipboard and insert the text into the editor by hand. And if that fails too —
+ * we say so in the status bar rather than pretend it worked.
  */
 function radialClipboard(act) {
   const ed = el.editor;
@@ -3219,9 +3224,9 @@ function radialClipboard(act) {
 }
 
 /**
- * Export и «+» не закрывают кольцо, а раскрывают обычное меню у самого
- * сектора. Иначе кольцо исчезло бы раньше, чем палец доедет до вложенного
- * меню, и нажать было бы не на что.
+ * Export and "+" do not close the ring but open the ordinary menu at the sector
+ * itself. Otherwise the ring would disappear before the finger reaches the
+ * nested menu, and there would be nothing to press.
  */
 function radialToMenu(which) {
   const sec = el.radial.querySelector('[data-act="' + which + '"]');
@@ -3229,17 +3234,17 @@ function radialToMenu(which) {
   const live = dot ? dot.getBoundingClientRect() : null;
   const r = live && live.width ? live
     : radialDotRect || {
-      // Совсем без кольца (например, из теста): центр экрана — внятнее, чем
-      // ноль в левом верхнем углу.
+      // With no ring at all (from a test, for instance): the centre of the screen
+      // is more comprehensible than a zero in the top left corner.
       left: innerWidth / 2, right: innerWidth / 2,
       top: innerHeight / 2, bottom: innerHeight / 2,
     };
   closeRadial();
   /*
-   * Меню открывается так, чтобы его ПЕРВЫЙ пункт стоял ровно под нажатой
-   * иконкой: левый край меню совпадает с левым краем значка, верх — под его
-   * низом. Раньше «Экспорт» уезжал вправо от значка, а «Открыть» вбок, и
-   * пункты оказывались мимо того, что нажали.
+   * The menu opens so that its FIRST item stands exactly under the pressed icon:
+   * the left edge of the menu matches the left edge of the icon, the top — below
+   * its bottom. "Export" used to run off to the right of the icon and "Open"
+   * sideways, so the items ended up next to nothing that was pressed.
    */
   const x = r.left;
   const y = r.bottom + 6;
@@ -3257,26 +3262,27 @@ function radialToMenu(which) {
 }
 
 /*
- * Правый клик в заметке: кольцо без переключателя, режим определяется самим
- * жестом.
+ * A right click in the note: a ring with no switch, the mode is decided by the
+ * gesture itself.
  *
- *   ПКМ         -> открыть меню, ЛКМ -> выбрать действие;
- *   зажать ПКМ  -> открыть меню, отпустить -> выбрать действие.
+ *   right click -> open the menu, left click -> choose an action;
+ *   hold right  -> open the menu, release   -> choose an action.
  *
- * Порядок событий в Chromium для правой кнопки: mousedown -> contextmenu ->
- * mouseup. Поэтому решение принимается на mouseup:
- *   - курсор отошёл дальше DRAG_PX — человек ВЁЛ кольцо, выбираем тем, в
- *     какую сторону он смотрит;
- *   - не двигался — обычный правый клик, открываем кольцо и ждём левой кнопки.
+ * The order of events in Chromium for the right button: mousedown -> contextmenu
+ * -> mouseup. So the decision is made on mouseup:
+ *   - the cursor went further than DRAG_PX — the person DREW the ring, we select
+ *     by which side they are looking at;
+ *   - it did not move — an ordinary right click, we open the ring and wait for
+ *     the left button.
  *
- * Правый клик при уже открытом кольце закрывает его и ничего не открывает:
- * иначе закрыление было бесполезным — кольцо исчезало и тут же появлялось
- * снова.
+ * A right click with the ring already open closes it and opens nothing:
+ * otherwise closing was useless — the ring disappeared and appeared again at
+ * once.
  */
 function radialDown(e) {
   if (e.button !== 2) return;
-  // Гасим стандартное выделение мышью: пока человек ведёт курсор к кольцу,
-  // он не должен выделять текст под ним.
+  // We suppress the standard mouse selection: while a person leads the cursor to
+  // the ring, it must not select the text under it.
   e.preventDefault();
   if (radialOpen) {
     radialCancelPress = true;
@@ -3284,11 +3290,11 @@ function radialDown(e) {
     return;
   }
   /*
-   * Свежий жест снимает любой недособранный флаг. Раньше флаг ставил ещё и
-   * обработчик вне кольца, а тот срабатывал на клике ПО САМОМУ кольцу, где
-   * radialDown уже не вызывается, — и флаг оставался висеть до следующего
-   * жеста. Тот следующий жест справедливо выглядел отменой и ничего не
-   * делал.
+   * A fresh gesture clears any flag that was not collected. The flag used to be set
+   * by the handler outside the ring as well, and that one fired on a click ON
+   * the ring itself, where radialDown is no longer called — so the flag stayed
+   * hanging until the next gesture. That next gesture fairly looked like a cancel
+   * and did nothing.
    */
   radialCancelPress = false;
   if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
@@ -3308,8 +3314,8 @@ function radialMove(e) {
     radialPick(e.clientX, e.clientY);
     return;
   }
-  // Кольцо открыто и ждёт левую кнопку: подсветка появляется сразу, как только
-  // курсор вошёл в сектор, а не по клику. Уход за кольцо закрывает меню.
+  // The ring is open and waiting for the left button: the highlight appears as soon
+  // as the cursor enters a sector, not on a click. Leaving the ring closes the menu.
   if (!radialOpen) return;
   if (!inRingBounds(e.clientX, e.clientY)) { closeRadial(); return; }
   radialPick(e.clientX, e.clientY);
@@ -3322,7 +3328,7 @@ function radialUp(e) {
   const d = radialDrag;
   radialDrag = null;
   if (eat) return;
-  // Отпустили, не поведя мышь: обычный правый клик, кольцо ждёт левую кнопку.
+  // Released without moving the mouse: an ordinary right click, the ring waits for the left button.
   if (!d.opened) {
     openRadial(d.x, d.y);
     return;
@@ -3334,10 +3340,11 @@ function radialUp(e) {
 }
 
 /*
- * Где стоит курсор и когда он последний раз двигался.
+ * Where the cursor is and when it last moved.
  *
- * Нужно для Ctrl+Space: кольцо должно открываться там, где человек указал
- * мышью, а если мышь давно стояла — по центру заметки.
+ * This is needed for Ctrl+Space: the ring must open where the person pointed with
+ * the mouse, and if the mouse has been standing still for a long time — in the
+ * centre of the note.
  */
 const lastMouse = { x: 0, y: 0, at: 0 };
 const MOUSE_FRESH_MS = 4000;
@@ -3347,12 +3354,12 @@ window.addEventListener('mousemove', (e) => {
   lastMouse.at = Date.now();
 }, { passive: true });
 
-// ------------------------------------------------------- временный файл / папка
+// ---------------------------------------------- temporary file / folder
 
 /**
- * Ctrl+N: заметка без пути — в tmpdir, чтобы можно было набрать текст и сразу
- * читать, не создавая файл в живом месте. При сохранении такой вкладки
- * предлагаем «Сохранить как…».
+ * Ctrl+N: a note without a path — in tmpdir, so that text can be typed and read at
+ * once without creating a file in a live location. When such a tab is saved we
+ * offer "Save as…".
  */
 async function newTempNote() {
   let res;
@@ -3366,8 +3373,8 @@ async function newTempNote() {
 }
 
 /**
- * Ctrl+Shift+N: папка внутри открытой. Без открытой папки пункт недоступен —
- * создавать папку «где-то» незачем.
+ * Ctrl+Shift+N: a folder inside the open one. Without an open folder the item is
+ * unavailable — creating a folder "somewhere" serves no purpose.
  */
 function folderForNew() {
   const t = active();
@@ -3388,7 +3395,7 @@ async function newFolderInOpen() {
   status(tr('status.folderCreated') + res.name, 'ok');
 }
 
-/** Перечитать деревья открытых папок после появления новой. */
+/** Re-read the trees of the open folders after a new one appears. */
 async function refreshRoots() {
   for (const r of roots) {
     const fresh = await api.listMd(r.path).catch(() => null);
@@ -3398,9 +3405,9 @@ async function refreshRoots() {
   refreshTreeSelection();
 }
 
-// ------------------------------------------------- меню иконки приложения
+// ----------------------------------------------- the application icon menu
 
-/** Пункты «Вид» с галочками. Значения берутся из view, а не хранятся в меню. */
+/** The View items with checkmarks. The values come from view, not from the menu. */
 function viewMenuItems() {
   return [
     { sep: true },
@@ -3409,9 +3416,9 @@ function viewMenuItems() {
     { label: tr('view.topbar'), check: view.topbar, act: () => toggleView('topbar') },
     { label: tr('view.statusbar'), check: view.statusbar, act: () => toggleView('statusbar') },
     { sep: true },
-    // Разделение удобнее всего получить перетаскиванием вкладки в поле
-    // заметки, но пункт в меню нужен тоже: перетаскивать нечем, когда
-    // открыта одна вкладка и вторую ещё не открывали.
+    // Splitting is easiest by dragging a tab into the note area, but the menu
+    // item is needed too: there is nothing to drag when one tab is open and the
+    // second has not been opened yet.
     { label: tr('view.split'), hint: tr('view.splitHint'), act: splitScreen, off: tabs.size < 2 },
     { label: tr('view.closeRight'), act: closeSecond, off: secondId === null },
   ];
@@ -3474,18 +3481,19 @@ async function newProjectAction() {
 }
 
 /**
- * «Недавние» открывают не выпадающим списком, а отдельным окном со списком:
- * пути длинные, их надо читать целиком, а в меню места нет. Пропускаем
- * исчезнувшие файлы — метку «не найден» в списке показывать незачем.
+ * "Recent" opens a separate window with a list rather than a drop-down: the
+ * paths are long and have to be read whole, and a menu has no room for them. We
+ * skip files that have disappeared — a "not found" mark in the list would be of
+ * no use.
  */
 async function recentDialog() {
   /*
-   * Закрывать это окно можно только через closeModal (= close из
-   * wireModal). back.remove() сам по себе сносит узел, но НЕ снимает
-   * слушатель Escape, который wireModal вешает на document в фазе
-   * захвата: тот остаётся жить, и следующий Escape во всём приложении
-   * «закрывает» уже несуществующее окно — для настроек это откат только
-   * что подтверждённых значений.
+   * This window can only be closed through closeModal (= close from wireModal).
+   * back.remove() on its own tears down the node but does NOT remove the Escape
+   * listener that wireModal puts on document in the capture phase: it stays
+   * alive, and the next Escape across the whole application "closes" a
+   * non-existent window — for the settings that is a rollback of values just
+   * confirmed.
    */
   let closeModal = () => back.remove();
   let st;
