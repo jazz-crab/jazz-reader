@@ -2231,13 +2231,13 @@ const SILENCE_CONFIRM = `(() => {
   t('в шапке — имя заметки', (r.headTitle || '').length > 3, r.headTitle);
   t('шапка узкая', r.headHeight > 0 && r.headHeight <= 40, String(r.headHeight));
   // Regression: .content is declared in the file AFTER the split block, and at equal
-  // и заголовки ломались на два слова. Поэтому селектор из двух классов.
+  // and headings would break after two words. Hence the two-class selector.
   t('у второй панели свои, меньшие поля', r.pad2 > 0 && r.pad2 < 40, r.pad2 + 'px');
   t('полоса вкладок общая, вкладок столько же', r.strip === 3, String(r.strip));
   t('в правой панели помечена ровно одна вкладка', r.marked === 1, String(r.marked));
   t('помечена именно та, что справа', r.markedId === r.wantId);
 
-  // Пункты оглавления левой панели относятся к рабочей заметке, а не к правой
+  // The contents items of the left pane belong to the working note, not the right one
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     return JSON.stringify({
@@ -2247,7 +2247,7 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
   t('во второй панели есть свои заголовки', r.content2Headings > 0, String(r.content2Headings));
 
-  // Клик по вкладке правой панели меняет панели местами
+  // A click on the tab of the right pane swaps the panes
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const wasActive = M.active().id;
@@ -2269,7 +2269,7 @@ const SILENCE_CONFIRM = `(() => {
   t('панели после перестановки те же две', r.panelHidden === false);
   t('тексты в панелях разные', r.mainText !== r.secondText);
 
-  // Крестик в шапке убирает правую панель
+  // The close box in the header removes the right pane
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.getElementById('btnHideSecond').click();
@@ -2290,7 +2290,7 @@ const SILENCE_CONFIRM = `(() => {
   t('метка на вкладке снята', r.marked === 0, String(r.marked));
   t('рабочая область вернулась на всю ширину', r.mainRight === r.splitRight, r.mainRight + '/' + r.splitRight);
 
-  // Закрытие вкладки правой панели убирает и панель
+  // Closing the tab of the right pane removes the pane too
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const ids = [...M.tabs.keys()];
@@ -2314,17 +2314,17 @@ const SILENCE_CONFIRM = `(() => {
   t('в панели ничего не осталось', r.content2 === 0, String(r.content2));
   t('метка на вкладках снята', r.marked === 0, String(r.marked));
 
-  // Разделить одной вкладкой нельзя: нечего показывать рядом
+  // A single tab cannot be split: there is nothing to show beside it
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
     await new Promise(r2 => setTimeout(r2, 400));
-    // Закрытие последней вкладки оставляет пустую — она и есть единственный
-    // источник для splitScreen(), и разделить нечего.
+    // Closing the last tab leaves a blank one — it is the only source left for
+    // splitScreen(), and there is nothing to split.
     const one = M.splitScreen();
-    // openPath переиспользует пустую вкладку, поэтому одной заметки мало:
-    // вкладок всё равно одна.
+    // openPath reuses the blank tab, so one note is not enough: there would
+    // still be only one tab.
     await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[0])}, { newTab: true });
     await new Promise(r2 => setTimeout(r2, 300));
     const afterOne = M.tabs.size;
@@ -2343,7 +2343,7 @@ const SILENCE_CONFIRM = `(() => {
   t('со второй вкладкой разделение получается', r.two === true && r.second !== null);
   t('в разделении две вкладки', r.tabs === 2, String(r.tabs));
 
-  // Меню «Вид»: пункт есть и умеет разделять
+  // The View menu: the item exists and knows how to split
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
@@ -2377,7 +2377,7 @@ const SILENCE_CONFIRM = `(() => {
   t('пункт «Закрыть правую панель» появился при разделении',
     (r.labels || []).includes('Закрыть правую панель'), JSON.stringify(r.labels));
 
-  // ------------------------------------------------------ масштаб числом
+  // ------------------------------------------------------ zoom by number
   console.log('\n== масштаб числом ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -2387,8 +2387,8 @@ const SILENCE_CONFIRM = `(() => {
     out.tag = z.tagName;
     out.initial = z.value;
 
-    // Ввод числа с клавиатуры. Фокус снимаем и ставим заново на каждый набор:
-    // focus() на уже сфокусированном поле не присылает событие focus.
+    // Typing a number with the keyboard. We blur and focus again on every entry:
+    // focus() on an already focused field does not send a focus event.
     const setter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype, 'value').set;
     const key = (k) => z.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
@@ -2411,7 +2411,7 @@ const SILENCE_CONFIRM = `(() => {
     await type('175%');
     out.after175 = { val: z.value, font: document.getElementById('content').style.fontSize };
 
-    // Запятая как десятичный разделитель: без blur Enter тоже годится
+    // A comma as the decimal separator: without blur, Enter works too
     await type('0,6');
     out.after06 = { val: z.value, font: document.getElementById('content').style.fontSize };
 
@@ -2427,7 +2427,7 @@ const SILENCE_CONFIRM = `(() => {
   t('вписали 0,6 через запятую — это 60%', r.after06.val === '60%'
     && Math.abs(parseFloat(r.after06.font) - 9) < 0.1, JSON.stringify(r.after06));
 
-  // Кнопки продолжают работать, поле показывает их результат
+  // The buttons keep working, the field shows their result
   r = JSON.parse(await js(`(async () => {
     const z = document.getElementById('zoomVal');
     const before = parseFloat(z.value);
@@ -2442,7 +2442,7 @@ const SILENCE_CONFIRM = `(() => {
   t('кнопка «+» меняет масштаб', parseFloat(r.up) > parseFloat(r.before), r.before + ' -> ' + r.up);
   t('кнопка «−» возвращает', parseFloat(r.back) < parseFloat(r.up), r.up + ' -> ' + r.back);
 
-  // Мусор и выход за границы не применяются молча
+  // Junk and out-of-range values are not applied silently
   r = JSON.parse(await js(`(async () => {
     const z = document.getElementById('zoomVal');
     const setter = Object.getOwnPropertyDescriptor(
@@ -2450,7 +2450,7 @@ const SILENCE_CONFIRM = `(() => {
     const key = (k) => z.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
     const bad = [];
     const type = async (v) => {
-      // focus() на уже сфокусированном элементе не шлёт событие focus
+      // focus() on an already focused element does not send a focus event
       z.blur();
       await new Promise(r2 => setTimeout(r2, 60));
       z.focus();
@@ -2480,7 +2480,7 @@ const SILENCE_CONFIRM = `(() => {
   t('на выход за границу есть сообщение', /вне/.test(r[1].status || ''), r[1].status);
   t('пустое поле не обнуляет масштаб', parseFloat(r[2].now) === parseFloat(r[2].kept), JSON.stringify(r[2]));
 
-  // Escape откатывает набор
+  // Escape rolls back the entry
   r = JSON.parse(await js(`(async () => {
     const z = document.getElementById('zoomVal');
     const setter = Object.getOwnPropertyDescriptor(
@@ -2504,7 +2504,7 @@ const SILENCE_CONFIRM = `(() => {
     r.good + ' -> ' + r.after + ' зум=' + r.zoom + ' окон=' + r.modalsLeft);
   t('Escape снимает фокус с поля', r.focused === false);
 
-  // Пробел не уводит фокус (иначе «85 » не применилось бы)
+  // Space does not move the focus (otherwise "85 " would not apply)
   r = JSON.parse(await js(`(async () => {
     const z = document.getElementById('zoomVal');
     const setter = Object.getOwnPropertyDescriptor(
@@ -2518,9 +2518,9 @@ const SILENCE_CONFIRM = `(() => {
     setter.call(z, '70');
     await new Promise(r2 => setTimeout(r2, 60));
 
-    // Слушаем ТОЛЬКО на время пробела: Enter поле обрабатывает сам и тоже не
-    // выпускает событие наружу, но проверять это здесь незачем — важен пробел,
-    // потому что в обработчике окна он означает «листать вниз».
+    // We listen ONLY while the space is held: the field handles Enter itself and
+    // does not let the event out either, but checking that here is pointless — the
+    // space matters, because in the window handler it means "scroll down".
     document.addEventListener('keydown', spy);
     z.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 120));
@@ -2533,14 +2533,14 @@ const SILENCE_CONFIRM = `(() => {
 
   t('пробел не улетает в обработчик окна', r.bubbled === 0, String(r.bubbled));
   t('пробел внутри числа не мешает', r.val === '70%', r.val);
-  // ------------------------------------------- подменю: наведение и уход
+  // ------------------------------------------- submenu: hover in and out
   console.log('\n== подменю: наведение и уход ==');
 
-  // Регресс, о котором сообщил пользователь:
-  //   Файл -> наведение на Вид -> Вид раскрылся -> возврат на Файл не
-  //   раскрывает его, а «Вид» так и висит -> мышь уходит, меню остаётся.
-  // Причина была в флажке _keep: он ставился подменю навсегда, и закрыть
-  // цепочку можно было только кликом мимо.
+  // A regression reported by a user:
+  //   File -> hover View -> View opened -> going back to File does not
+  //   open it, and "View" just stays there -> the mouse leaves, the menu stays.
+  // The cause was the _keep flag: it turned the submenu on forever, and the
+  // chain could only be closed by a click outside.
   r = JSON.parse(await js(`(async () => {
     const tick = () => new Promise(r2 => setTimeout(r2, 260));
     const menus = () => [...document.querySelectorAll('.ctxmenu')];
@@ -2554,31 +2554,31 @@ const SILENCE_CONFIRM = `(() => {
     };
     const out = {};
 
-    // 1. Файл раскрыт
+    // 1. File is open
     let top = await open();
     itemIn(top, /Файл/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
     out.afterFile = menus().length;
 
-    // 2. Уводим на Вид: подменю Файла должно закрыться, Вид — раскрыться
+    // 2. We move to View: the File submenu must close, View must open
     itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
     out.afterView = menus().length;
     out.viewSub = [...menus().pop().querySelectorAll('.ctxmenu-label')]
       .map(x => x.textContent.replace('✓', ''));
-    // Подменю Файла где-то осталось?
+    // Did the File submenu survive somewhere?
     const subs = menus().slice(1);
     out.fileStillOpen = subs.some((m) => /Открыть .md/.test(m.textContent));
     out.viewOpen = subs.some((m) => /Проводник/.test(m.textContent));
 
-    // 3. Возврат на Файл: он снова раскрывается, Вид закрывается
+    // 3. Back to File: it opens again, View closes
     itemIn(top, /Файл/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
     out.backToFile = menus().length;
     out.fileReopened = menus().slice(1).some((m) => /Открыть .md/.test(m.textContent));
     out.viewClosedAfterBack = !menus().slice(1).some((m) => /Проводник/.test(m.textContent));
 
-    // 4. Подменю не пересоздаётся при простом движении туда-сюда
+    // 4. The submenu is not rebuilt on a plain move back and forth
     const subBefore = menus()[1];
     itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
@@ -2588,13 +2588,13 @@ const SILENCE_CONFIRM = `(() => {
     await tick();
     out.reusedSameNode = menus()[1] === subBefore || menus().length === 2;
 
-    // 5. Уход курсора из меню закрывает всё
+    // 5. Leaving the menu with the cursor closes everything
     const far = document.getElementById('content');
     far.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     await tick();
     out.afterLeave = menus().length;
 
-    // 6. Клик мимо по-прежнему закрывает
+    // 6. A click outside still closes
     top = await open();
     itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
@@ -2603,7 +2603,7 @@ const SILENCE_CONFIRM = `(() => {
     await tick();
     out.afterClickOutside = menus().length;
 
-    // 7. Esc закрывает
+    // 7. Esc closes
     top = await open();
     itemIn(top, /Вид/).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
@@ -2611,7 +2611,7 @@ const SILENCE_CONFIRM = `(() => {
     await tick();
     out.afterEsc = menus().length;
 
-    // 8. Два независимых открытия не накапливаются
+    // 8. Two independent openings do not pile up
     await open();
     await open();
     out.twoRoots = menus().length;
@@ -2635,9 +2635,10 @@ const SILENCE_CONFIRM = `(() => {
   t('Esc закрывает меню', r.afterEsc === 0, String(r.afterEsc));
   t('повторное открытие не копит меню', r.twoRoots === 1, String(r.twoRoots));
 
-  // 5a. КОРИДОР. Между гамбургером и открывшимся под ним меню есть пустое
-  // место, и наведение на него раньше закрывало меню: нажал на гамбургер,
-  // повёл вниз на «Файл» — по дороге всё исчезало, выбрать было нельзя.
+  // 5a. THE CORRIDOR. Between the hamburger and the menu that opened under it
+  // there is empty space, and hovering it used to close the menu: you pressed
+  // the hamburger, moved down to "File" — and on the way everything vanished,
+  // so nothing could be chosen.
   r = JSON.parse(await js(`(async () => {
     const tick = () => new Promise(r2 => setTimeout(r2, 260));
     const menus = () => [...document.querySelectorAll('.ctxmenu')];
@@ -2652,20 +2653,20 @@ const SILENCE_CONFIRM = `(() => {
     out.gap = Math.round(m.top - b.bottom);
     out.mid = [Math.round(b.left + b.width / 2), Math.round((b.bottom + m.top) / 2)];
 
-    // Наводимся в пустоту МЕЖДУ кнопкой и меню
+    // We hover the emptiness BETWEEN the button and the menu
     document.body.dispatchEvent(new MouseEvent('mouseover', {
       bubbles: true, clientX: out.mid[0], clientY: out.mid[1],
     }));
     await tick();
     out.afterCorridor = menus().length;
 
-    // Наводимся на сам пункт «Файл» — он должен открыться
+    // We hover the "File" item itself — it must open
     const file = [...menu.querySelectorAll('.ctxmenu-item')].find(b2 => /Файл/.test(b2.textContent));
     file.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     await tick();
     out.afterFileHover = menus().length;
 
-    // И уводим курсор далеко — закрылось
+    // And we move the cursor away — it closed
     document.getElementById('content').dispatchEvent(
       new MouseEvent('mouseover', { bubbles: true, clientX: 5, clientY: 500 }));
     await tick();
@@ -2680,13 +2681,14 @@ const SILENCE_CONFIRM = `(() => {
   t('уход далеко по-прежнему закрывает', r.afterFar === 0, String(r.afterFar));
 
 
-  // ------------------------- направление ресайзера и фокус панели
+  // ------------------------- resizer direction and pane focus
   console.log('\n== ресайз разделения и фокус панели ==');
 
-  // Регресс: ширина правой панели считалась как e.clientX - box.left, то есть
-  // росла ВМЕСТЕ с движением мыши вправо. Тянешь рамку вправо — панель
-  // становится шире, едет навстречу курсору. У боковых панелей такого не
-  // было: там считается от своего края (слева clientX, справа innerWidth-clientX).
+  // Regression: the width of the right pane was computed as e.clientX - box.left,
+  // that is, it grew TOGETHER with the mouse moving right. Drag the frame right
+  // — the pane becomes wider and runs towards the cursor. The side panes never
+  // behaved that way: they are counted from their own edge (clientX on the left,
+  // innerWidth-clientX on the right).
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
@@ -2701,21 +2703,21 @@ const SILENCE_CONFIRM = `(() => {
     const split = document.getElementById('split');
     const div = document.getElementById('splitDivider');
     const panel = document.getElementById('panel2');
-    // Ставим ширину руками: по умолчанию панель занимает 40%, и при отмахе
-    // вправо она упёрлась бы в минимум 260px, а не в ожидаемое значение.
+    // We set the width by hand: by default the pane takes 40%, and on a swing to
+    // the right it would hit the 260px minimum rather than the expected value.
     panel.style.width = '500px';
     await new Promise(r2 => setTimeout(r2, 150));
     const start = panel.getBoundingClientRect().width;
 
     const box = split.getBoundingClientRect();
-    // Тянем рамку ВПРАВО на 120px — панель должна стать УЖЕ
+    // We drag the frame RIGHT by 120px — the pane must become NARROWER
     div.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: box.right - start }));
     window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: box.right - start + 120 }));
     await new Promise(r2 => setTimeout(r2, 150));
     const afterRight = panel.getBoundingClientRect().width;
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    // И теперь ВЛЕВО на 240px — панель должна стать ШИРЕ
-    // 120, а не 240: у области ширина ~750px, и панель упирается в 78% (585px).
+    // And now LEFT by 240px — the pane must become WIDER.
+    // 120, not 240: the area is ~750px wide and the pane runs into 78% (585px).
     div.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: box.right - afterRight }));
     window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: box.right - afterRight - 120 }));
     await new Promise(r2 => setTimeout(r2, 150));
@@ -2729,14 +2731,14 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
 
-  // Панель по умолчанию 40% области, но мы выставили 500px: иначе отмах вправо
-  // упёрся бы в минимум 260px и это ничего не проверяло.
+  // The default pane is 40% of the area, but we set 500px: otherwise a swing to
+  // the right would hit the 260px minimum and verify nothing.
   t('рамка вправо -> панель УЖЕ', Math.abs(r.afterRight - (r.start - 120)) <= 6,
     r.start + ' -> ' + r.afterRight);
   t('рамка влево -> панель ШИРЕ', Math.abs(r.afterLeft - (r.afterRight + 120)) <= 6,
     r.afterRight + ' -> ' + r.afterLeft);
 
-  // Новая вкладка открывается в панели в фокусе
+  // A new tab opens in the pane that has focus
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
@@ -2747,16 +2749,16 @@ const SILENCE_CONFIRM = `(() => {
     const out = {};
     out.focusAtStart = M.paneFocus();
 
-    // Заглянули в правую панель.
+    // We looked into the right pane.
     //
-    // Читаем фокус сразу, без паузы: обработчик mousedown синхронный, а любая
-    // пауза означала гонку — за 200ms успевает сработать что угодно, что
-    // переключает вкладку (selectTab и openSecond намеренно возвращают фокус
-    // влево). Именно из-за этого проверка падала через раз.
+    // We read the focus immediately, without a pause: the mousedown handler is
+    // synchronous, and any pause means a race — in 200ms anything that switches
+    // the tab can fire (selectTab and openSecond deliberately return the focus
+    // to the left). That is exactly why this check failed every other run.
     panel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     out.focusAfterClick = M.paneFocus();
 
-    // Теперь открываем новую заметку: она обязана оказаться СПРАВА
+    // Now we open a new note: it must end up on the RIGHT
     const leftBefore = main.querySelector('.content').textContent.slice(0, 30);
     const rightBefore = content2.textContent.slice(0, 30);
     await M.openPath(D + '/' + ${JSON.stringify(MANY_FILES[3])}, { newTab: true });
@@ -2767,7 +2769,7 @@ const SILENCE_CONFIRM = `(() => {
     out.rightGotNew = out.rightAfter !== rightBefore;
     out.focusAfterOpen = M.paneFocus();
 
-    // Вернулись в левую панель — следующая вкладка должна уйти влево
+    // Back in the left pane — the next tab must go left
     main.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     out.focusBack = M.paneFocus();
     const rightNow = content2.textContent.slice(0, 30);
@@ -2789,7 +2791,7 @@ const SILENCE_CONFIRM = `(() => {
   t('правая панель сохранила свою заметку', r.rightKept === true);
   t('новая вкладка ушла в левую панель', r.leftGotNew === true);
 
-  // ------------------------------- перетаскивание: щель и предпросмотр
+  // ------------------------------- dragging: the gap and the preview
   console.log('\n== перетаскивание: щель и предпросмотр ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -2829,20 +2831,20 @@ const SILENCE_CONFIRM = `(() => {
     out.gapBefore300 = gap ? out.gapWidth > 40 : false;
     out.hintAlsoOn = third.classList.contains('drop-before');
 
-    // Щель переехала, когда навели на правую половину третьей вкладки
+    // The gap moved when the pointer went over the right half of the third tab
     hover(third, false);
     await new Promise(r2 => setTimeout(r2, 350));
     gap = tabsEl.querySelector('.tab-gap');
     out.gapAfterThird = gap ? [...tabsEl.children].indexOf(gap) === 3 : false;
     out.hintAfter = third.classList.contains('drop-after');
 
-    // Уход из ленты — щель исчезает
+    // Leaving the strip — the gap disappears
     const content = document.getElementById('content');
     hover(content, false);
     await new Promise(r2 => setTimeout(r2, 350));
     out.gapGoneOverContent = !tabsEl.querySelector('.tab-gap');
 
-    // Предпросмотр разделения
+    // The split preview
     const split = document.getElementById('split');
     const main = document.getElementById('mainPane');
     const panel = document.getElementById('panel2');
@@ -2852,7 +2854,7 @@ const SILENCE_CONFIRM = `(() => {
     out.panelShown = panel.getBoundingClientRect().width > 10;
     out.panelEmpty = getComputedStyle(panel.querySelector('.content-second')).display === 'none';
 
-    // Уход с рабочей области — предпросмотр исчезает
+    // Leaving the workspace — the preview disappears
     first.dispatchEvent(new Event('dragend', { bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 250));
     out.previewGone = !split.classList.contains('split-preview');
@@ -2878,13 +2880,13 @@ const SILENCE_CONFIRM = `(() => {
   t('вторая панель снова скрыта', r.panelHiddenAgain === true);
   t('после отпускания щели нет', r.gapAfterEnd === true);
 
-  // ------------------------------- кнопки правки при наведении и прогресс
+  // ------------------------------- edit buttons on hover and progress
   console.log('\n== кнопки правки и прогресс чтения ==');
 
-  // При наведении кнопки правки не должны «обесцвечиваться»: раньше фон был
-  // rgba(158,206,106,.18) — на тёмном фоне это читалось как «кнопка стала
-  // прозрачной», и наведение делало её незаметнее, а не заметнее. Проверяем на
-  // кнопках кругового меню: в интерфейсе их больше нет.
+  // On hover the edit buttons must not "fade": the background used to be
+  // rgba(158,206,106,.18) — on a dark background that read as "the button went
+  // transparent", and hovering made it less noticeable rather than more.
+  // We check on the ring menu buttons: they are no longer in the interface.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
@@ -2899,8 +2901,9 @@ const SILENCE_CONFIRM = `(() => {
     const box = ed.getBoundingClientRect();
     await window.__mdvTest.openRingIn('editor', Math.round(box.left + 160), Math.round(box.top + 90));
     await new Promise(r2 => setTimeout(r2, 450));
-    // Точка — центр плашки значка. Центр сектора не годится: сектор это
-    // квадрат во всю подложку, и его середина совпадает с центром кольца.
+    // A point — the centre of the icon plate. The centre of the sector does not
+    // work: the sector is a square the size of the whole base, and its middle
+    // coincides with the centre of the ring.
     const mid = (sel) => {
       const q = document.querySelector('#radial ' + sel + ' .rd-dot').getBoundingClientRect();
       return [q.left + q.width / 2, q.top + q.height / 2];
@@ -2912,8 +2915,8 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
 
-  // Фон берём с плашки значка (.rd-dot), а не с сектора: сектор теперь
-  // полупрозрачный клин, и его цвет ничего не говорит о наведении.
+  // The background is taken from the icon plate (.rd-dot), not from the sector:
+  // the sector is now a translucent wedge, and its colour says nothing about hover.
   const readBtn = (sel) => js(`(() => {
     const b = document.querySelector('#radial ${sel} .rd-dot');
     const cs = getComputedStyle(b);
@@ -2923,8 +2926,8 @@ const SILENCE_CONFIRM = `(() => {
       hovered: b.matches(':hover'),
       bgAlpha: bg.length > 3 ? bg[3] : 1,
       bgLum: bg.length >= 3 ? (bg[0] + bg[1] + bg[2]) / 3 : 0,
-      // Рамки у значка нет: на 40px она съедала иконку, и кольцо читалось как
-      // россыпь кружков с обводками.
+      // The icon has no border: at 40px it ate the icon, and the ring read as a
+      // scatter of outlined circles.
       borderW: cs.borderTopWidth,
       icon: getComputedStyle(b.querySelector('.ico-svg')).stroke,
     });
@@ -2955,9 +2958,9 @@ const SILENCE_CONFIRM = `(() => {
   const ch = JSON.parse(cancelHover);
 
   t('курсор действительно наведён на «Сохранить»', sh.hovered === true);
-  // Подложка кольца теперь голубая и достаточно насыщенная, поэтому плашка
-  // наводится полупрозрачной заливкой поверх неё: важно, что заливка
-  // становится заметнее, а не что она непрозрачная.
+  // The ring base is now blue and saturated enough, so the plate is hovered with
+  // a translucent fill over it: what matters is that the fill becomes more
+  // noticeable, not that it is opaque.
   t('наведение на «Сохранить» видно', sh.bgAlpha > saveRest.bgAlpha + 0.1,
     'было ' + saveRest.bgAlpha + ', стало ' + sh.bgAlpha);
   t('фон «Сохранить» при наведении светлеет', sh.bgLum >= 45, 'lum=' + Math.round(sh.bgLum));
@@ -2970,8 +2973,8 @@ const SILENCE_CONFIRM = `(() => {
   t('рамки у значка «Отменить» нет', ch.borderW === '0px', ch.borderW);
   t('иконка «Отменить» остаётся красной', /247,\s*118,\s*142/.test(ch.icon), ch.icon);
 
-  // Линия прогресса чтения. Файл создаём здесь: браузеру нечем писать на
-  // диск, а заметка должна быть достаточно длинной, чтобы было что прокручивать.
+  // The reading progress line. We create the file here: the browser has no way to
+  // write to disk, and the note has to be long enough to have something to scroll.
   const longFile = path.join(notesDir, 'progress.md');
   fs.writeFileSync(longFile,
     '# Длинная\n\n' + Array.from({ length: 220 }, (_, k) => 'абзац ' + k).join('\n\n') + '\n',
@@ -2980,7 +2983,7 @@ const SILENCE_CONFIRM = `(() => {
     const M = window.__mdvTest;
     const bar = document.getElementById('readProgress');
     const c2 = document.getElementById('content');
-    // Заметка, которой есть куда прокручивать
+    // A note with something to scroll
     await M.openPath(${JSON.stringify(notesDir.replace(/\\/g, '/'))} + '/progress.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 400));
     const out = {};
@@ -2999,7 +3002,7 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 350));
     out.endWidth = parseFloat(bar.style.width);
 
-    // В правке полосы быть не должно: прокручивается редактор, а не статья
+    // In edit mode there should be no bar: the editor scrolls, not the article
     const t = M.active();
     t.mode = 'edit'; t.dirty = true;
     M.renderActive();
@@ -3010,9 +3013,9 @@ const SILENCE_CONFIRM = `(() => {
 
   t('линия прогресса есть', r.exists === true && r.inMain === true);
   t('заметка прокручивается', r.span > 200, r.span + 'px');
-  // В начале полоса видна, но пуста: это «рельс», который потом заполняется.
-  // Прятать её совсем было бы хуже — исчезала бы сама шкала, и при начале
-  // прокрутки линия возникала бы из ниоткуда.
+  // At the start the bar is visible but empty: it is the "rail" that fills later.
+  // Hiding it completely would be worse — the scale itself would disappear, and
+  // at the start of a scroll the line would come out of nowhere.
   t('в начале заметки полоса видна, но пуста', r.startOff === true && parseFloat(r.startWidth) === 0,
     r.startOff + ' ' + r.startWidth);
   t('на середине полоса наполовину', r.midOn === true && r.midWidth > 35 && r.midWidth < 65,
@@ -3020,7 +3023,7 @@ const SILENCE_CONFIRM = `(() => {
   t('в конце полоса заполнена', r.endWidth >= 99, r.endWidth + '%');
   t('в режиме правки полосы нет', r.editOn === false);
 
-  // Заметка без прокрутки: полосы быть не должно — показывать её незачем
+  // A note with nothing to scroll: there should be no bar — there is no reason to show it
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const bar = document.getElementById('readProgress');
@@ -3038,14 +3041,14 @@ const SILENCE_CONFIRM = `(() => {
     document.getElementById('content').scrollTop = 0;
     return 1;
   })()`);
-  // Заметка для проверки прокрутки была изменена на диске: возвращаем как было
+  // The note used for the scrolling check was changed on disk — we put it back
   fs.rmSync(longFile, { force: true });
 
-  // ------------------------------------------- окно экспорта
+  // ------------------------------------------- the export window
   console.log('\n== окно экспорта ==');
 
-  // Чистая заметка в чтении: в правке экспорт честно отказывается («сначала
-  // сохрани»), и проверять окно было бы негде.
+  // A clean note in reading mode: in edit mode the export honestly refuses
+  // ("save first"), and there would be no window to check.
   await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -3057,9 +3060,9 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // Список из кольца разросся бы: у форматов есть параметры, у параметров —
-  // предпросмотр. Поэтому «Экспорт» открывает окно, а «Путь» — короткое
-  // меню из двух пунктов, и проверяем оба.
+  // The list in the ring would have grown unwieldy: the formats have parameters,
+  // the parameters have a preview. So "Export" opens a window and "Path" — a
+  // short menu of two items, and we check both.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -3084,8 +3087,8 @@ const SILENCE_CONFIRM = `(() => {
       const items = [...m.querySelectorAll('.ctxmenu-item')];
       out.labels = items.map((b) => b.textContent.trim());
       out.count2 = items.length;
-      // Иконка слева от надписи: тот же дефект был у пунктов меню, когда
-      // .ico вставал отдельной строкой.
+      // The icon to the left of the caption: the menu items had the same defect
+      // when .ico stood on its own line.
       out.allRows = items.every((b) => {
         const icon = b.querySelector('.ctxmenu-label .ico');
         if (!icon) return false;
@@ -3117,7 +3120,7 @@ const SILENCE_CONFIRM = `(() => {
   t('иконка и надпись в одной строке', r.allRows === true, JSON.stringify(r.labels));
   t('высота пункта нормальная', r.height >= 24 && r.height <= 40, r.height + 'px');
 
-  // Окно экспорта
+  // The export window
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -3147,7 +3150,7 @@ const SILENCE_CONFIRM = `(() => {
     out.prevText = (back.querySelector('.exp-doc').textContent || '').slice(0, 60);
     out.prevChildren = back.querySelector('.exp-doc').children.length;
     out.cards = back.querySelectorAll('.set-row').length;
-    // Предпросмотр уехал в правую колонку и больше не карточка.
+    // The preview moved to the right column and is no longer a card.
     out.cols = back.querySelectorAll('.exp-body > .exp-col').length;
     out.previewInRight = !!back.querySelector('.exp-right .exp-preview');
     out.hints = back.querySelectorAll('.set-hint').length;
@@ -3157,14 +3160,14 @@ const SILENCE_CONFIRM = `(() => {
       .map((b) => getComputedStyle(b.querySelector('.ico-svg')).stroke).join('|');
     out.tint = [...back.querySelectorAll('.exp-seg')][1]
       .querySelector('.exp-segbtn[data-id="colour"]').style.getPropertyValue('--seg');
-    // Габариты окна: узкое окно прячет предпросмотр
+    // The window size: a narrow window hides the preview
     const r2 = box2.getBoundingClientRect();
     out.w = Math.round(r2.width);
     out.h = Math.round(r2.height);
     out.prevH = Math.round(back.querySelector('.exp-preview').getBoundingClientRect().height);
-    // Главное требование к окну: кнопка экспорта должна быть видна целиком.
-    // Раньше предпросмотр имел свою высоту, окно уезжало в прокрутку, и
-    // «Экспортировать» оказывалась под нижним краем.
+    // The main requirement for the window: the export button must be fully
+    // visible. The preview used to have its own height, the window scrolled as a
+    // whole, and "Export" ended up past the bottom edge.
     const okb = [...back.querySelectorAll('.dlgbtn')].pop().getBoundingClientRect();
     out.okVisible = okb.bottom <= innerHeight && okb.top >= 0 && okb.right <= innerWidth;
     out.okBox = [Math.round(okb.top), Math.round(okb.bottom), innerHeight];
@@ -3200,7 +3203,7 @@ const SILENCE_CONFIRM = `(() => {
     r.buttons && r.buttons[0] === 'Отмена' && r.buttons[1] === 'Экспортировать',
     JSON.stringify(r.buttons));
 
-  // Переключение формата: у MD и TXT нет оформления — карточки прячутся
+  // Switching the format: MD and TXT have no styling — the cards hide themselves
   r = JSON.parse(await js(`(async () => {
     const back = document.querySelector('.modal-back');
     const rows = [...back.querySelectorAll('.set-row')];
@@ -3246,7 +3249,7 @@ const SILENCE_CONFIRM = `(() => {
     r.htmlPrevTag + '/' + r.pdfPrevTag);
   t('предпросмотр помечен как «простой текст»', r.mdPlain === true);
 
-  // Палитра, размер и шрифт применяются к предпросмотру
+  // Palette, size and font apply to the preview
   r = JSON.parse(await js(`(async () => {
     const back = document.querySelector('.modal-back');
     const seg = [...back.querySelectorAll('.exp-seg')];
@@ -3255,11 +3258,10 @@ const SILENCE_CONFIRM = `(() => {
     const doc = back.querySelector('.exp-doc');
     const range = back.querySelector('input[type=range]');
     const sel = back.querySelector('.exp-select');
-    // Не <p>: в тестовой заметке его может не быть, и проверка молча падала бы
-    // на пустом месте.
-    // Узел переспрашиваем каждый раз: любое изменение пересобирает
-    // предпросмотр, и пойманный раньше элемент оказывается в отброшенном
-    // дереве — getComputedStyle на нём молчит.
+    // Not <p>: the test note may not have one, and the check would fail silently
+    // We ask for the node every time: any change rebuilds the
+    // preview, and an element caught earlier ends up in a discarded
+    // tree — getComputedStyle on it stays silent.
     const first = () => doc.firstElementChild;
     const out = {
       darkBg: getComputedStyle(prev).backgroundColor,
@@ -3305,7 +3307,7 @@ const SILENCE_CONFIRM = `(() => {
     !!r.chosen && String(r.fontAfter).indexOf(r.chosen) >= 0,
     r.chosen + ' / ' + r.fontAfter);
 
-  // Экспорт HTML с параметрами: собираем настоящий файл
+  // HTML export with parameters: we build a real file
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -3330,9 +3332,9 @@ const SILENCE_CONFIRM = `(() => {
     t('файл HTML создан на диске', false, String(r.path));
   }
 
-  // ------------------------------------------- экспорт PDF: настоящий файл
-  // Проверяем на живом API, а не по исходнику: printToPDF в скрытом окне —
-  // единственное место, где ошибка не видна в коде, а всплывает пустым листом.
+  // ------------------------------------------- PDF export: a real file
+  // We check against the live API, not the source: printToPDF in a hidden window is
+  // the one place where an error is invisible in the code and surfaces as a blank sheet.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -3348,8 +3350,8 @@ const SILENCE_CONFIRM = `(() => {
   if (r.path && fs.existsSync(r.path)) {
     const head = fs.readFileSync(r.path).slice(0, 5).toString('latin1');
     t('файл начинается с %PDF-', head === '%PDF-', JSON.stringify(head));
-    // Ищем в потоке страницу: одна пустая страница — тоже «файл», только
-    // бесполезная. Считаем /Type /Page (без /Pages).
+    // We look for a page in the stream: a single blank page is also a "file", only
+    // useless. We count /Type /Page (without /Pages).
     const raw = fs.readFileSync(r.path).toString('latin1');
     const pages = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length;
     t('в PDF есть страницы с содержимым', pages >= 1, String(pages));
@@ -3359,7 +3361,7 @@ const SILENCE_CONFIRM = `(() => {
   }
 
 
-  // ------------------------------------------- кольцо: сектора и зона отмены
+  // ------------------------------------------- the ring: sectors and the cancel zone
   console.log('\n== кольцо: сектора ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -3372,8 +3374,8 @@ const SILENCE_CONFIRM = `(() => {
     const box = c.getBoundingClientRect();
     const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true,
       clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + 220) });
-    // Каждая проба начинается с закрытого кольца: правый клик при открытом
-    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    // Every probe starts from a closed ring: a right click with the ring
+    // already open means "close", and without this the next gesture would be a cancel.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 200));
     await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
@@ -3390,7 +3392,7 @@ const SILENCE_CONFIRM = `(() => {
       acts: secs.map((b) => b.dataset.act),
       arcs: secs.map((b) => [+b.dataset.a0, +b.dataset.a1]),
       disabled: secs.filter((b) => b.disabled).length,
-      // Секторы должны делить круг без щелей и перекрытий
+      // The sectors must divide the circle with no gaps and no overlaps
       tiling: (() => {
         let edge = -141;
         for (const [a0, a1] of secs.map((b) => [+b.dataset.a0, +b.dataset.a1])) {
@@ -3399,7 +3401,7 @@ const SILENCE_CONFIRM = `(() => {
         }
         return Math.abs(edge - 219) < 0.01;
       })(),
-      // Зона отмены в центре, круглая, с крестиком
+      // The cancel zone in the centre, round, with a cross
       killExists: !!kill,
       killIsCircle: kill ? getComputedStyle(kill).borderRadius === '50%' : false,
       killRadius: kill ? getComputedStyle(kill).borderRadius : '',
@@ -3412,13 +3414,13 @@ const SILENCE_CONFIRM = `(() => {
         const q = kill.getBoundingClientRect();
         return Math.abs(q.left + q.width / 2 - cx) < 2 && Math.abs(q.top + q.height / 2 - cy) < 2;
       })() : false,
-      // Крестик лежит поверх кнопки, поэтому смотрим ближайшего предка.
+      // The cross lies on top of the button, so we look at the nearest ancestor.
       killHits: (() => {
         const e = document.elementFromPoint(Math.round(cx), Math.round(cy));
         const k = e ? e.closest('.radial-kill') : null;
         return k ? 'radial-kill' : (e ? String(e.className) : 'нет');
       })(),
-      // Внутри кольца, но на радиусе 90 — это уже сектор, а не пустота
+      // Inside the ring, but at a radius of 90 — that is already a sector, not emptiness
       bandHit: (() => {
         const e = document.elementFromPoint(Math.round(cx + 90), Math.round(cy));
         const s = e ? e.closest('.radial-sector') : null;
@@ -3457,14 +3459,14 @@ const SILENCE_CONFIRM = `(() => {
   t('экспорт убран из тулбара', r.exportBtnGone === true);
   t('«Наверх» внутри заметки', r.toTopInsideNote === 'mainPane', r.toTopInsideNote);
 
-  // 2. Выбор по направлению: в режиме «зажать и вести» расстояние не важно
+  // 2. Selection by direction: in the "hold and drag" mode the distance does not matter
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
     const px = Math.round(box.left + box.width / 2), py = Math.round(box.top + 220);
-    // Каждая проба начинается с закрытого кольца: правый клик при открытом
-    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    // Every probe starts from a closed ring: a right click with the ring
+    // already open means "close", and without this the next gesture would be a cancel.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 200));
     c.dispatchEvent(new MouseEvent('mousedown', {
@@ -3479,19 +3481,19 @@ const SILENCE_CONFIRM = `(() => {
       return h ? h.dataset.act : null;
     };
     const out = { far: {}, near: {} };
-    // Далеко за кольцом, но по направлению
+    // Far past the ring, but in the right direction
     out.far.up = at(q.left, q.top - 240);
     out.far.right = at(q.left + 300, q.top);
     out.far.down = at(q.left, q.top + 240);
-    // Слева один сектор — открытие, и он занимает всю левую дугу, поэтому
-    // точки берём и выше, и ниже горизонтали: обе должны дать «Открыть».
+    // One sector on the left — open — and it takes the whole left arc, so we
+    // take points both above and below the horizontal: both must give "Open".
     out.far.leftUp = at(q.left - 240, q.top - 120);
     out.far.leftLow = at(q.left - 240, q.top + 120);
-    // Справа два сектора: «Экспорт» сверху (центр -19.5°), «Путь» снизу
-    // (центр +19.5°).
+    // Two sectors on the right: "Export" above (centre -19.5°), "Path" below
+    // (centre +19.5°).
     out.far.exportUp = at(q.left + 240, q.top - 82);
     out.far.pathDown = at(q.left + 240, q.top + 82);
-    // Радиус кольца = 122, значит 240 — точно за ним
+    // The radius of the ring is 122, so 240 is exactly past it
     out.outsideIsFar = 240 > 122;
     return JSON.stringify(out);
   })()`));
@@ -3506,15 +3508,15 @@ const SILENCE_CONFIRM = `(() => {
     String(r.far.down));
   t('точки проверки — за пределами кольца', r.outsideIsFar === true);
 
-  // 3. В обычном режиме за кольцом ничего не выбирается
+  // 3. In the normal mode nothing past the ring is selected
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 250));
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
-    // Каждая проба начинается с закрытого кольца: правый клик при открытом
-    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    // Every probe starts from a closed ring: a right click with the ring
+    // already open means "close", and without this the next gesture would be a cancel.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 200));
     await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
@@ -3537,7 +3539,7 @@ const SILENCE_CONFIRM = `(() => {
   t('в обычном режиме внутри кольца выбирается', r.near === 'export', String(r.near));
   t('в обычном режиме кольцо не «перетаскиваемое»', r.dragging === false);
 
-  // 3a. Обычный режим: мышь за кольцом закрывает меню
+  // 3a. Normal mode: the mouse past the ring closes the menu
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -3548,8 +3550,8 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 400));
     const q = document.getElementById('radial').getBoundingClientRect();
     const out = { opened: !document.getElementById('radial').hidden };
-    // Запас на подпись: подпись выходит за край кольца, и кольцо из-за неё
-    // закрываться не должно.
+    // A margin for the caption: the caption goes past the edge of the ring, and
+    // the ring must not close because of it.
     const move = async (x, y) => {
       document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
       await new Promise(r2 => setTimeout(r2, 200));
@@ -3567,7 +3569,7 @@ const SILENCE_CONFIRM = `(() => {
   t('за кольцом кольцо закрывается', r.far === false, String(r.far));
   t('под кольцом кольцо закрывается', r.below === false, String(r.below));
 
-  // 3b. Рамки у кольца нет, фон непрозрачный
+  // 3b. The ring has no border, the background is opaque
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const c = document.getElementById('content');
@@ -3588,25 +3590,25 @@ const SILENCE_CONFIRM = `(() => {
       killFound: !!kill,
       ringAlpha: alpha(bg.backgroundColor),
       ringBg: bg.backgroundColor,
-      // Рамки на внешнем краю нет: слой ::after убран вовсе
+      // No border on the outer edge: the ::after layer is gone entirely
       noEdgeLayer: after.content === 'none' || after.backgroundImage === 'none',
-      // Зона отмены осталась полупрозрачной
+      // The cancel zone stayed translucent
       killAlpha: kill ? alpha(getComputedStyle(kill).backgroundColor) : -1,
       ringSize: Math.round(q.width),
-      // Цвет подложки против цвета полосы вкладок: кольцо должно стоять в
-      // одном ряду с интерфейсом.
+      // The base colour against the tab strip colour: the ring must belong to
+      // the same row as the interface.
       discBg: bg.backgroundColor,
       topbarBg: getComputedStyle(document.getElementById('tabbar')).backgroundColor,
       /*
-       * Край заливки сектора против края подложки.
+       * The fill edge of the sector against the edge of the base.
        *
-       * Числа маски идут подряд: 0, 44, 44, ВНЕШНИЙ, ВНЕШНИЙ. Внешний радиус
-       * обязан совпадать у обоих концов (тогда круглый) и с радиусом
-       * подложки (тогда полоски чистого фона по краю нет).
+       * The mask numbers go in a row: 0, 44, 44, OUTER, OUTER. The outer radius
+       * must match at both ends (so that it is round) and match the radius of the
+       * base (so that there is no strip of bare background along the edge).
        *
-       * Считываем без обратных слэшей намеренно: в строке-шаблоне Node \s
-       * превращается в «s», и регулярка молча перестаёт совпадать — так
-       * проверка выглядела бы работающей, но ничего бы не проверяла.
+       * We read without backslashes on purpose: in a Node template literal \s
+       * turns into "s" and the regex silently stops matching — the check would
+       * look like it worked while verifying nothing.
        */
       maskRadii: (() => {
         const sec = document.querySelector('#radial .radial-sector');
@@ -3622,9 +3624,9 @@ const SILENCE_CONFIRM = `(() => {
   t('рамки по краю кольца нет', r.noEdgeLayer === true);
   t('зона отмены полупрозрачная', r.killFound === true && r.killAlpha > 0
     && r.killAlpha < 1, String(r.killAlpha));
-  // Рамка приходила отсюда: клин сектора красился до 121px, а подложка была
-  // 126px, и по краю оставалась полоска чистого фона подложки без заливки —
-  // на фоне заметки она читалась как обводка кольца.
+  // The border came from here: the wedge of the sector was painted out to 121px
+  // while the base was 126px, and a strip of bare base background was left along
+  // the edge — on the note background it read as a ring outline.
   t('подложка кольца того же цвета, что тулбары',
     r.discBg === r.topbarBg, r.discBg + ' против ' + r.topbarBg);
   t('у маски сектора пять радиусов', (r.maskRadii || []).length === 5,
@@ -3634,14 +3636,14 @@ const SILENCE_CONFIRM = `(() => {
   t('по краю кольца нет обводки',
     r.maskRadii[3] === r.maskRadii[4], r.maskRadii[3] + '/' + r.maskRadii[4]);
 
-  // 4. Подпись следует за выбором и ничего не обрезана
+  // 4. The caption follows the selection and is not cut off
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const rad = document.getElementById('radial');
     const q = rad.getBoundingClientRect();
     const sec = rad.querySelector('[data-act="open"]');
-    // «Открыть» занимает всю левую дугу 141..219, середина — 180°, то есть
-    // ровно влево.
+    // "Open" takes the whole left arc 141..219, the middle is 180°, that is,
+    // exactly to the left.
     const out2 = { opened: !rad.hidden, before: M.radialPick(Math.round(q.left - 90), Math.round(q.top)) };
     out2.beforeAct = out2.before ? out2.before.dataset.act : null;
     await new Promise(r2 => setTimeout(r2, 250));
@@ -3653,7 +3655,7 @@ const SILENCE_CONFIRM = `(() => {
       text: lab.textContent,
       on: cs.opacity === '1',
       oneLine: lab.offsetHeight < 30,
-      // Подпись не маскирована, в отличие от сектора
+      // The caption is not masked, unlike the sector
       mask: cs.maskImage || cs.webkitMaskImage || 'none',
       clip: cs.clipPath,
       insideWindow: l.left >= 0 && l.right <= innerWidth,
@@ -3669,15 +3671,15 @@ const SILENCE_CONFIRM = `(() => {
   t('подпись стоит под значком', r.nearDot === true);
   t('подпись помещается в окно', r.insideWindow === true);
 
-  // 5. Кольцо у края экрана остаётся целиком в окне
+  // 5. The ring at the edge of the screen stays whole inside the window
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 250));
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
-    // Каждая проба начинается с закрытого кольца: правый клик при открытом
-    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    // Every probe starts from a closed ring: a right click with the ring
+    // already open means "close", and without this the next gesture would be a cancel.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 200));
     await M.openRingIn('content', box.left + 4, box.top + 4);
@@ -3699,15 +3701,15 @@ const SILENCE_CONFIRM = `(() => {
   t('зона отмены тоже в окне', r.killsInside === true);
   t('секторов столько же', r.count >= 5, String(r.count));
 
-  // 6. Клик по сектору работает (маска не съедает попадания)
+  // 6. A click on a sector works (the mask does not eat the hits)
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 250));
     const c = document.getElementById('content');
     const box = c.getBoundingClientRect();
-    // Каждая проба начинается с закрытого кольца: правый клик при открытом
-    // кольце означает «закрыть», и без этого следующий жест был бы отменой.
+    // Every probe starts from a closed ring: a right click with the ring
+    // already open means "close", and without this the next gesture would be a cancel.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 200));
     await M.openRingIn('content', box.left + box.width / 2, box.top + 220);
@@ -3715,14 +3717,15 @@ const SILENCE_CONFIRM = `(() => {
     const rad = document.getElementById('radial');
     const q = rad.getBoundingClientRect();
     const sec = rad.querySelector('[data-act="open"]');
-    // целимся в самый край сектора, а не в значок
-    // Сектор — это клип по углу плюс маска-кольцо. Проверяем попадание в
-    // разных радиусах: у самого края кольца, посередине и у внешней границы.
-    // Целимся по УГЛАМ секторов, а не по «влево от центра»: слева теперь два
-    // сектора, «Путь» и «Открыть», и точка «ровно влево» попадает на их
-    // границу — проверка зависела бы от того, куда граница отнесла этот угол.
-    // Радиусы 60/90/100 — толщина кольца: у самого края, посередине и у
-    // внешней границы.
+    // we aim at the very edge of the sector, not at the icon
+    // A sector is an angle clip plus a ring mask. We check the hit at different
+    // radii: at the very edge of the ring, in the middle and at the outer border.
+    // We aim at the ANGLES of the sectors rather than at "left of the centre": on
+    // the left there are now two sectors, "Path" and "Open", and the point "exactly
+    // left" lands on their boundary — the check would depend on which side the
+    // boundary assigned that angle to.
+    // Radii 60/90/100 — the thickness of the ring: at the very edge, in the middle
+    // and at the outer border.
     const rad2 = (deg, rr) => {
       const a = deg * Math.PI / 180;
       return [Math.round(Math.cos(a) * rr), Math.round(Math.sin(a) * rr)];
@@ -3742,8 +3745,8 @@ const SILENCE_CONFIRM = `(() => {
       labels: document.querySelectorAll('.ctxmenu-label').length,
     });
   })()`));
-  // «Открыть» держим от края, посередине и у внешней границы, дальше —
-  // экспорт, путь, правка и один из секторов буфера обмена.
+  // "Open" we hold from the edge, in the middle and at the outer border, beyond it —
+  // export, path, edit and one of the clipboard sectors.
   t('секторы кликабельны по всей толщине кольца',
     r.edgeIs === 'open|open|open|export|path|mode|copy', r.edgeIs);
   t('клик по сектору открывает его меню', r.labels === 2, String(r.labels));
@@ -3760,16 +3763,16 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // --------------------------------------------------- отмена и повтор
+  // --------------------------------------------------- undo and redo
   console.log('\n== отмена и повтор ==');
 
   const undoFile = path.join(tabsDir, 'undo.md');
   fs.writeFileSync(undoFile, '# Отмена\n\nпервая\n\nвторая\n', 'utf8');
 
-  // Печатаем в поле по-настоящему: событие input с корректным inputType.
-  // Иначе склейка шагов и история проверялись бы вхолостую.
+  // We type into the field for real: an input event with a correct inputType.
+  // Otherwise the coalescing of steps and the history are checked in vain.
 
-  // 1. Ctrl+Z отменяет правку
+  // 1. Ctrl+Z undoes the edit
   let u1;
   u1 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
@@ -3793,8 +3796,8 @@ const SILENCE_CONFIRM = `(() => {
       undoLen: M.active().undo.length,
     });
   })()`));
-  // Текст ДО и ПОСЛЕ набора нужен обеим следующим пробам, поэтому держим его
-  // в отдельных константах: u1 перезаписывается каждой пробой.
+  // The text BEFORE and AFTER typing is needed by both next probes, so we keep it
+  // in separate constants: u1 is overwritten by every probe.
   const uBefore = u1.before;
   const uTyped = u1.typed;
   t('в правке отменять есть что', u1.undoLen >= 1, String(u1.undoLen));
@@ -3816,7 +3819,7 @@ const SILENCE_CONFIRM = `(() => {
   t('Ctrl+Z снял флаг правок', u1.dirty === false);
   t('после отмены есть что повторить', u1.redoLen >= 1, String(u1.redoLen));
 
-  // 2. Ctrl+Y возвращает
+  // 2. Ctrl+Y returns
   u1 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -3824,7 +3827,7 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r3 => setTimeout(r3, 250));
     const ed = document.getElementById('editor');
     const a = { v: ed.value, dirty: M.active().dirty, redoLeft: M.active().redo.length };
-    // и Ctrl+Shift+Z — то же самое
+    // and Ctrl+Shift+Z is the same thing
     document.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'z', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
     await new Promise(r3 => setTimeout(r3, 250));
@@ -3839,7 +3842,7 @@ const SILENCE_CONFIRM = `(() => {
     u1.afterShift === uTyped && u1.dirty2 === true,
     'длина ' + u1.afterShift.length + ' против ' + uTyped.length);
 
-  // 3. Правка после отмены стирает redo
+  // 3. An edit after an undo wipes redo
   u1 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -3857,7 +3860,7 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
   t('новая правка стирает повтор', u1.redo === 0, String(u1.redo));
 
-  // 4. Отмена в началу говорит об этом
+  // 4. Undoing at the start says so
   u1 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.resetUndo(M.active());
@@ -3871,7 +3874,7 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
   t('отменять в пустоте не молчит', /Отменять нечего/.test(u1.text), u1.text);
 
-  // 5. В просмотре Ctrl+Z не съедается и не ломает текст
+  // 5. In reading mode Ctrl+Z is not swallowed and does not break the text
   u1 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.exitEdit(true);
@@ -3891,7 +3894,7 @@ const SILENCE_CONFIRM = `(() => {
   t('в просмотре Ctrl+Z не мешает', u1.mode === 'read' && u1.untouched === true);
   t('в просмотре Ctrl+Z не перехватывается', u1.notPrevented === true);
 
-  // 6. Набор текста — один шаг, а не по букве
+  // 6. Typing is one step, not one per letter
   u1 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR.replace(/\\/g, '/'))};
@@ -3906,7 +3909,7 @@ const SILENCE_CONFIRM = `(() => {
     ed.setSelectionRange(ed.value.length, ed.value.length);
     await new Promise(r3 => setTimeout(r3, 800));
     ed.value = ed.value + 'привет';
-    // пять букв — пять событий, как от настоящей клавиатуры
+    // five letters — five events, as from a real keyboard
     for (let i = 0; i < 5; i += 1) {
       ed.value = before + 'привет'.slice(0, i + 1);
       ed.dispatchEvent(new InputEvent('input', {
@@ -3931,11 +3934,11 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // ----------------------------------------- кольцо: два режима без переключателя
+  // ----------------------------------------- the ring: two modes with no switch
   console.log('\n== кольцо: два режима ==');
 
-  // Заметка нужна: без открытого файла кольцо состоит из одной кнопки
-  // «открыть файл», и проверять было бы нечего.
+  // A note is needed: without an open file the ring consists of a single
+  // "open file" button, and there would be nothing to check.
   await js(`(async () => {
     const M = window.__mdvTest;
     await M.openPath(${JSON.stringify(TABS_DIR)} + '/' + ${JSON.stringify(MANY_FILES[0])},
@@ -3956,8 +3959,9 @@ const SILENCE_CONFIRM = `(() => {
       const r = document.getElementById('radial').getBoundingClientRect();
       return [Math.round(r.left), Math.round(r.top)];
     };
-    // Точка — центр плашки значка. Центр сектора не годится: сектор это
-    // квадрат во всю подложку, и его середина совпадает с центром кольца.
+    // A point — the centre of the icon plate. The centre of the sector does not
+    // work: the sector is a square the size of the whole base, and its middle
+    // coincides with the centre of the ring.
     const midOf = (act) => {
       const b = document.querySelector('#radial [data-act="' + act + '"] .rd-dot')
         .getBoundingClientRect();
@@ -3967,8 +3971,8 @@ const SILENCE_CONFIRM = `(() => {
       const s = document.querySelector('#radial .radial-sector.sel');
       return s ? s.dataset.act : null;
     };
-    // Правый клик целиком: нажатие, отпускание, и системное меню, которое
-    // Chromium шлёт следом.
+    // The whole right click: press, release, and the system menu that
+    // Chromium sends right after.
     const click = async (target, x, y) => {
       right(target, x, y, 'mousedown');
       right(target, x, y, 'mouseup');
@@ -3982,7 +3986,7 @@ const SILENCE_CONFIRM = `(() => {
     };
   `;
 
-  // 1. Переключателя в настройках нет
+  // 1. There is no switch in the settings
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.settingsDialog();
@@ -4000,7 +4004,7 @@ const SILENCE_CONFIRM = `(() => {
     JSON.stringify(r.labels));
   t('остался один переключатель (автосохранение)', r.switches === 1, String(r.switches));
 
-  // 2. Правый клик без перемещения: кольцо и ожидание левой кнопки
+  // 2. A right click without movement: the ring and the wait for the left button
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4010,12 +4014,12 @@ const SILENCE_CONFIRM = `(() => {
     const out = {};
     await click(c, x, y);
     out.opened = ringOpen();
-    // отпускание в центре ничего не выбрало
+    // releasing in the centre selected nothing
     out.sel = selNow();
     out.err = window.__err;
     out.ringLog = (window.__ringLog || []).join(' | ');
     out.mode = M.active().mode;
-    // левая кнопка выбирает
+    // the left button selects
     const pen = midOf('mode');
     document.querySelector('#radial [data-act="mode"]').click();
     await new Promise(r2 => setTimeout(r2, 500));
@@ -4029,9 +4033,9 @@ const SILENCE_CONFIRM = `(() => {
   t('левая кнопка выбирает действие', r.afterClick === 'edit', r.afterClick);
   t('после выбора кольцо закрыто', r.closed === true);
 
-  // 2a. Правый клик при уже открытом кольце закрывает его — и НЕ открывает
-  // заново. Раньше кольцо исчезало и тут же появлялось снова, то есть закрыть
-  // его было нечем.
+  // 2a. A right click with the ring already open closes it, and does NOT open
+  // it again. The ring used to disappear and appear again at once, that is, there
+  // was no way to close it.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4041,12 +4045,12 @@ const SILENCE_CONFIRM = `(() => {
     const out = {};
     await click(c, x, y);
     out.firstOpen = ringOpen();
-    // ещё один правый клик по заметке
+    // one more right click on the note
     await click(c, x, y);
     await new Promise(r2 => setTimeout(r2, 400));
     out.closedBySecondClick = !ringOpen();
     out.againOpened = ringOpen();
-    // и правый клик по самому кольцу
+    // and a right click on the ring itself
     await click(c, x, y);
     await new Promise(r2 => setTimeout(r2, 350));
     const rad = document.getElementById('radial');
@@ -4067,7 +4071,7 @@ const SILENCE_CONFIRM = `(() => {
   t('правый клик по самому кольцу закрывает его', r.closedByClickOnRing === true);
   t('после закрытия кольцо скрыто', r.hidden === true);
 
-  // 2b. Распознавание срабатывает по наведению, до клика
+  // 2b. Detection fires on hover, before a click
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4077,13 +4081,13 @@ const SILENCE_CONFIRM = `(() => {
     await click(c, x, y);
     const q = document.getElementById('radial').getBoundingClientRect();
     const out = { opened: ringOpen(), before: selNow() };
-    // наводим на сектор экспорта — ещё без всяких кнопок
+    // we hover the export sector — with no buttons at all yet
     document.dispatchEvent(new MouseEvent('mousemove', {
       bubbles: true, clientX: Math.round(q.left + 100), clientY: Math.round(q.top) }));
     await new Promise(r2 => setTimeout(r2, 250));
     out.afterHover = selNow();
     out.dragging = document.getElementById('radial').classList.contains('dragging');
-    // Режим заметки здесь не важен: важно, что наведение ничего не изменило.
+    // The note mode does not matter here: what matters is that hovering changed nothing.
     const before = M.active().mode;
     await new Promise(r2 => setTimeout(r2, 250));
     out.sameMode = M.active().mode === before;
@@ -4097,7 +4101,7 @@ const SILENCE_CONFIRM = `(() => {
   t('наведение ничего не выполняет', r.sameMode === true);
   t('наведение кольцо не закрывает', r.stillOpen === true);
 
-  // 3. Зажать и вести: кольцо открывается само, выбирает то, над чем отпустили
+  // 3. Hold and drag: the ring opens by itself and selects whatever we release over
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4129,14 +4133,14 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 200));
     out.selOnPencil = selNow();
     const pb = document.querySelector('#radial [data-act="mode"]');
-    // Сектор выделяется заливкой и рамкой плашки, а не увеличением.
+    // The sector is marked by the fill and the plate border, not by growing.
     out.selFill = getComputedStyle(pb).backgroundColor;
     out.selBorder = getComputedStyle(pb.querySelector('.rd-dot')).borderTopColor;
-    // Подпись теперь одна и следует за выбором.
+    // The caption is now single and follows the selection.
     const lab = document.getElementById('radialLabel');
     out.tipText = lab ? lab.textContent : '';
     out.tipShown = !!lab && getComputedStyle(lab).opacity === '1';
-    // отпускаем и шлём следом системное меню, как это делает Chromium
+    // we release and send the system menu after it, as Chromium does
     window.__err = null;
     window.addEventListener('error', (ev) => {
       window.__err = (ev.message || '') + ' @ ' + (ev.filename || '') + ':' + (ev.lineno || '');
@@ -4165,15 +4169,16 @@ const SILENCE_CONFIRM = `(() => {
     r.tipText);
   t('отпускание выбрало действие', r.mode === 'edit',
     'режим ' + r.mode + ', кольцо скрыто: ' + r.hidden + ', секторов ' + r.rings);
-  // Регресс, о котором сообщили: после отпускания кольцо открывалось заново,
-  // потому что следом приходил contextmenu и открывал второе кольцо.
+  // A regression that was reported: after releasing, the ring opened again,
+  // because a contextmenu arrived next and opened a second ring.
   t('после отпускания кольцо закрыто и не открылось заново',
     r.closed === true && r.hidden === true, 'rings=' + r.rings);
 
-  // 3a. Побочное меню открывается под иконкой и в режиме «зажать и вести»
-  // Ошибка была ровно в этом режиме: решение принимается на отпускании, и к
-  // этому моменту кольцо уже закрыто. У скрытого элемента getBoundingClientRect()
-  // отдаёт нули, и меню вылезало в левый верхний угол окна.
+  // 3a. The submenu opens under the icon and in the "hold and drag" mode
+  // The error was exactly in this mode: the decision is made on release, and by
+  // that moment the ring is already closed. For a hidden element
+  // getBoundingClientRect() returns zeros, and the menu came out in the top left
+  // corner of the window.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4185,8 +4190,8 @@ const SILENCE_CONFIRM = `(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
     await new Promise(r2 => setTimeout(r2, 250));
-    // Дуга «Путь» — в правой половине кольца, середина 19.5°: вправо и
-    // чуть вниз.
+    // The "Path" arc is in the right half of the ring, middle 19.5°: right and
+    // slightly down.
     right(c, x, y, 'mousedown');
     document.dispatchEvent(new MouseEvent('mousemove', {
       bubbles: true, clientX: x + 95, clientY: y + 35, button: 2 }));
@@ -4221,7 +4226,7 @@ const SILENCE_CONFIRM = `(() => {
     JSON.stringify(r.menu) + ' против значка ' + JSON.stringify(r.dot));
   t('в меню два пункта', r.count === 2, String(r.count));
 
-  // 4. Отпускание в центре кольца — отмена
+  // 4. Releasing in the centre of the ring is a cancel
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4246,7 +4251,7 @@ const SILENCE_CONFIRM = `(() => {
   t('отпускание в центре кольца закрывает без действия',
     r.closed === true && r.mode === 'read', r.mode);
 
-  // 5. Отпускание мимо кольца — тоже отмена
+  // 5. Releasing past the ring is a cancel too
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4268,7 +4273,7 @@ const SILENCE_CONFIRM = `(() => {
   t('отпускание мимо кольца закрывает без действия',
     r.closed === true && r.mode === 'read', r.mode);
 
-  // 6. Esc во время перетаскивания — отмена
+  // 6. Esc while dragging is a cancel
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     ${GESTURE}
@@ -4296,7 +4301,7 @@ const SILENCE_CONFIRM = `(() => {
     r.closed === true && r.dragging === false);
   t('Esc ничего не выбрал', r.mode === 'read', r.mode);
 
-  // 7. Системное меню на заметке подавлено, а на вкладке — живое
+  // 7. The system menu is suppressed on the note and alive on the tab
   r = JSON.parse(await js(`(async () => {
     ${GESTURE}
     const c = document.getElementById('content');
@@ -4322,11 +4327,11 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // ------------------------------------------- клавиатура: меню и кольцо
+  // ------------------------------------------- keyboard: menu and ring
   console.log('\n== клавиатура: меню и кольцо ==');
 
-  // Вне правки: в правке у кольца другой состав (Сохранить/Отмена), и проверки
-  // идут по чтению.
+  // Outside edit mode: in edit mode the ring has a different set (Save/Discard), and
+  // the checks run on reading.
   await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -4338,7 +4343,7 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // 1. Меню иконки приложения: стрелки, jk, Enter, Esc
+  // 1. The application icon menu: arrows, jk, Enter, Esc
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
@@ -4368,9 +4373,9 @@ const SILENCE_CONFIRM = `(() => {
     key('ArrowUp');
     await new Promise(r2 => setTimeout(r2, 120));
     out.afterUp = cur();
-    // Разделители пропускаются
+    // Separators are skipped
     out.skipsSep = !/^$/.test(String(out.afterUp));
-    // Переход в подменю и обратно
+    // Into a submenu and back
     const parent = [...root.querySelectorAll('.ctxmenu-item.ctxmenu-parent')][0];
     out.hasParent = !!parent;
     const stepToParent = () => {
@@ -4411,8 +4416,8 @@ const SILENCE_CONFIRM = `(() => {
   t('стрелка влево возвращает назад', r.afterLeft === 1, String(r.afterLeft));
   t('Esc закрывает меню', r.afterEsc === 0, String(r.afterEsc));
 
-  // 2. Enter и Space: у первых пунктов меню иконки есть подменю, поэтому Enter
-  //    их раскрывает, а не выполняет. На простом пункте Enter выполняет.
+  // 2. Enter and Space: the first items of the icon menu have submenus, so Enter
+  //    opens them rather than running them. On a plain item Enter runs it.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
@@ -4430,7 +4435,7 @@ const SILENCE_CONFIRM = `(() => {
     const afterEnterOnParent = document.querySelectorAll('.ctxmenu').length;
     key('Escape');
     await new Promise(r2 => setTimeout(r2, 250));
-    // Теперь простой пункт: последний в меню — «Настройки»
+    // Now a plain item: the last one in the menu — "Settings"
     document.getElementById('appBrand').click();
     await new Promise(r2 => setTimeout(r2, 350));
     const root2 = document.querySelector('.ctxmenu');
@@ -4457,14 +4462,14 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // 3. Ctrl+Space открывает кольцо по центру заметки, когда мышь не двигалась
+  // 3. Ctrl+Space opens the ring in the centre of the note when the mouse has not moved
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
     await new Promise(r2 => setTimeout(r2, 250));
     const q = document.getElementById('content').getBoundingClientRect();
-    // Мышь «давно не двигалась»: состариваем метку последнего движения
+    // The mouse "has not moved for a long time": we age the mark of the last movement
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 40, clientY: 500 }));
     M.lastMouse.at = 0;
     document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -4478,7 +4483,7 @@ const SILENCE_CONFIRM = `(() => {
       onCentre: Math.abs(p.left - cx) < 6,
       ringX: Math.round(p.left), noteX: cx,
     };
-    // Повторное нажатие закрывает
+    // Pressing again closes
     document.dispatchEvent(new KeyboardEvent('keydown', {
       key: ' ', ctrlKey: true, bubbles: true, cancelable: true }));
     await new Promise(r2 => setTimeout(r2, 300));
@@ -4490,7 +4495,7 @@ const SILENCE_CONFIRM = `(() => {
     r.ringX + ' против ' + r.noteX);
   t('повторный Ctrl+Space закрывает кольцо', r.closed === true);
 
-  // 3a. Свежий курсор — кольцо открывается под мышью
+  // 3a. A fresh cursor — the ring opens under the mouse
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -4507,7 +4512,7 @@ const SILENCE_CONFIRM = `(() => {
     Math.abs(r.x - 420) < 6 && Math.abs(r.y - 300) < 6, r.x + ',' + r.y);
   await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
 
-  // 4. Навигация по кольцу с клавиатуры
+  // 4. Keyboard navigation around the ring
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -4534,15 +4539,15 @@ const SILENCE_CONFIRM = `(() => {
     key('k');
     await new Promise(r2 => setTimeout(r2, 150));
     out.afterK = sel();
-    // Enter сразу на первом действии: кольцо открыто мышью, выбора ещё нет,
-    // поэтому k возвращает на «Правку».
+    // Enter right on the first action: the ring is opened with the mouse, there
+    // is no selection yet, so k returns to "Edit".
     key('Enter');
     await new Promise(r2 => setTimeout(r2, 500));
     out.mode = M.active().mode;
     out.closed = document.getElementById('radial').hidden;
-    // Список закольцован проверяем на втором открытии, уже без нажатия Enter:
-    // последним в обходе идёт «Открыть», а нажать его нельзя — откроется
-    // диалог файла.
+    // We check the ring on a second opening, with no Enter this time:
+    // the last item in the walk is "Open", and pressing it must not happen — it
+    // would open the file dialog.
     await M.exitEdit(true);
     await new Promise(r2 => setTimeout(r2, 400));
     await M.openRingIn('content', b.left + b.width / 2, b.top + 220);
@@ -4562,7 +4567,7 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 250));
     return JSON.stringify(out);
   })()`));
-  // Кольцо открыто мышью и ещё ничего не выбрано: сначала ждём наведения.
+  // The ring is opened with the mouse and nothing is selected yet: first we wait for a hover.
   t('мышь открыла кольцо без выбора', r.first === null, String(r.first));
   t('до выбора подписи нет', String(r.labelBefore).trim() === '',
     JSON.stringify(r.labelBefore));
@@ -4579,9 +4584,9 @@ const SILENCE_CONFIRM = `(() => {
   await js(`window.__mdvTest.exitEdit(true)`);
   await new Promise((x) => setTimeout(x, 300));
 
-  // ------------------------------------------------- удаление в корзину
-  // Проверяем на НАСТОЯЩЕМ временном файле: реальный вызов shell.trashItem
-  // через IPC. Отмену тоже проверяем — файл должен остаться на месте.
+  // ------------------------------------------------- delete to the recycle bin
+  // We check on a REAL temporary file: a real call of shell.trashItem
+  // through IPC. The cancel is checked too — the file must stay in place.
   console.log('\n== удаление в корзину ==');
   const doomed = path.join(notesDir, 'doomed.md');
   fs.writeFileSync(doomed, '# удалить меня\n', 'utf8');
@@ -4600,7 +4605,7 @@ const SILENCE_CONFIRM = `(() => {
   t('в вопросе есть имя файла', /doomed\.md/.test(String(r.asked)), String(r.asked));
   t('после отказа файл на месте', fs.existsSync(doomed) === true);
 
-  // теперь соглашаемся
+  // now we agree
   await js(`(async () => {
     const M = window.__mdvTest;
     M.setConfirm(() => true);
@@ -4611,7 +4616,7 @@ const SILENCE_CONFIRM = `(() => {
 
   t('после согласия файл исчез с диска', !fs.existsSync(doomed));
 
-  // Несохранённая вкладка блокирует удаление
+  // An unsaved tab blocks the delete
   const guard = path.join(notesDir, 'guard.md');
   fs.writeFileSync(guard, '# страж\n', 'utf8');
   await js(`(async () => {
@@ -4637,7 +4642,7 @@ const SILENCE_CONFIRM = `(() => {
     /удаление отменено/.test(await js("document.getElementById('statusText').textContent")),
     await js("document.getElementById('statusText').textContent"));
 
-  // приводим дерево в порядок к следующим секциям
+  // we put the tree in order for the next sections
   await js(`(async () => {
     const M = window.__mdvTest;
     M.setConfirm(null);
@@ -4647,10 +4652,10 @@ const SILENCE_CONFIRM = `(() => {
   })()`);
 
   /*
-   * Переключение языка — в самом конце набора, потому что блок открывает окно
-   * настроек, а оно переоткрывается при смене языка. Проверяем результат, а не
-   * наличие элемента: нарисованный <select>, который ничего не делает, проходит
-   * любой тест на существование.
+   * The language switch is at the very end of the set, because the block opens the
+   * settings window, and it reopens on a language change. We check the result,
+   * not the presence of an element: a drawn <select> that does nothing passes
+   * any existence test.
    */
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
@@ -4663,8 +4668,8 @@ const SILENCE_CONFIRM = `(() => {
     await new Promise(r2 => setTimeout(r2, 300));
     const before = { labels: labels(), lang: document.documentElement.lang, options: sel() ? sel().options.length : 0 };
 
-    // Меняем язык и ждём, пока окно переоткроется само: подписи в нём
-    // выставляются при сборке, поэтому сразу после change ещё старые.
+    // We change the language and wait for the window to reopen by itself: the
+    // captions in it are set while it is built, so right after change they are old.
     sel().value = 'en';
     sel().dispatchEvent(new Event('change', { bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 900));
