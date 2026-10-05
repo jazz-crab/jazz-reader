@@ -1,7 +1,7 @@
 {
-  "name": "mdview-desktop",
+  "name": "jazz-reader",
   "version": "1.0.13",
-  "description": "MDView — офлайн-читалка Markdown (порт github.com/jazz-crab/jazz-reader) с поддержкой LaTeX/KaTeX",
+  "description": "JazzReader — офлайн-читалка Markdown (порт github.com/jazz-crab/jazz-reader) с поддержкой LaTeX/KaTeX",
   "main": "main.js",
   "author": "jc",
   "license": "MIT",
@@ -27,7 +27,7 @@
   },
   "build": {
     "appId": "com.jazzcrab.jazzreader",
-    "productName": "MDView",
+    "productName": "JazzReader",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -68,15 +68,15 @@
       ]
     },
     "nsis": {
-      "artifactName": "MDView-Setup-${version}-${arch}.${ext}",
+      "artifactName": "JazzReader-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MDView"
+      "shortcutName": "JazzReader"
     },
     "portable": {
-      "artifactName": "MDView-Portable-${version}-${arch}.${ext}"
+      "artifactName": "JazzReader-Portable-${version}-${arch}.${ext}"
     },
     "afterPack": "scripts/after-pack.js"
   }

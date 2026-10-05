@@ -93,7 +93,7 @@ const SILENCE_CONFIRM = `(() => {
 (async function main() {
   console.log('== правка, вкладки, оглавление ==');
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdview-tabs-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-tabs-'));
   const notesDir = path.join(tmpDir, 'notes');
   fs.mkdirSync(path.join(notesDir, 'sub'), { recursive: true });
   for (const n of ['a.md', 'b.md', 'c.md']) {
@@ -123,7 +123,7 @@ const SILENCE_CONFIRM = `(() => {
   const child = spawn(electron, [
     ROOT, '--remote-debugging-port=' + port, '--no-sandbox', '--disable-gpu',
     // Окно не показываем: тесты не должны выскакивать поверх работы.
-    '--mdview-hidden',
+    '--jazzreader-hidden',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', (b) => { stderr += b.toString(); });
@@ -547,9 +547,9 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('новая пустая вкладка показывает дефолтную заглушку', r.blankWelcome === true);
-  t('заглушка с заголовком MDView', r.hasWelcomeTitle === true);
+  t('заглушка с заголовком JazzReader', r.hasWelcomeTitle === true);
   t('на заглушке рабочая область скрыта', r.blankWorkspace === true);
-  t('заголовок окна без имени файла', r.title === 'MDView', r.title);
+  t('заголовок окна без имени файла', r.title === 'JazzReader', r.title);
   t('вкладка без файла при открытой папке показывает дерево', r.folderWelcome === true);
   t('дерево видно в этом состоянии', r.treeVisible === true);
 

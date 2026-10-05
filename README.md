@@ -1,4 +1,4 @@
-# MDView — офлайн-читалка Markdown с LaTeX
+# JazzReader — офлайн-читалка Markdown с LaTeX
 
 Порт веб-инструмента [`github.com/jazz-crab/jazz-reader/`](https://github.com/jazz-crab/jazz-reader/) в
 десктопное Electron-приложение для Windows.
@@ -78,17 +78,17 @@ npm run dist:dir     # только распакованная папка dist\w
 
 | файл | размер | что это |
 |---|---|---|
-| `MDView-Setup-1.0.0-x64.exe` | ~75.8 МБ | установщик (папка на выбор, ярлыки на стол и в «Пуск») |
-| `MDView-Portable-1.0.0-x64.exe` | ~75.6 МБ | портативный, распаковать и запустить |
+| `JazzReader-Setup-1.0.0-x64.exe` | ~75.8 МБ | установщик (папка на выбор, ярлыки на стол и в «Пуск») |
+| `JazzReader-Portable-1.0.0-x64.exe` | ~75.6 МБ | портативный, распаковать и запустить |
 
 Подпись не настроена, так что SmartScreen покажет «Windows protected your PC» →
 «Подробнее» → «Выполнить в любом случае». Если exe скачан из браузера, у него
 есть метка Mark-of-the-Web; при запуске вручную с диска Windows может тихо
-отказаться его запускать — снять метку: `Unblock-File .\MDView-Portable-*.exe`.
+отказаться его запускать — снять метку: `Unblock-File .\JazzReader-Portable-*.exe`.
 
 ### Тихий запуск: почему exe «ничего не делал»
 
-Если `MDView.exe` запускается, процесс жив, а окна нет — это тот самый баг, что
+Если `JazzReader.exe` запускается, процесс жив, а окна нет — это тот самый баг, что
 был в сборке 1.0.0 с MDView. `main.js` вызывал `win.setTitleBarOverlay()` без
 включения overlay в конструкторе `BrowserWindow`. Electron бросает
 `Titlebar overlay is not enabled`, исключение уходит в `app.whenReady().then()`
@@ -108,7 +108,7 @@ npm run dist:dir     # только распакованная папка dist\w
 Теперь в `main.js` overlay включается в конструкторе окна, а старт обёрнут так,
 что промах больше не может стать тихим:
 
-- лог в `mdview.log` рядом с exe (в `userData`, если каталог не для записи);
+- лог в `jazzreader.log` рядом с exe (в `userData`, если каталог не для записи);
 - `dialog.showErrorBox` + код возврата 1, если окно создать не удалось;
 - обработчики `uncaughtException` / `unhandledRejection`;
 - окно показывается по `ready-to-show` **или** по таймауту в 6 с;
@@ -123,7 +123,7 @@ npm run dist:dir     # только распакованная папка dist\w
 
 | что | распакованный | комментарий |
 |---|---|---|
-| `MDView.exe` | 180.0 МБ | сам Electron — тут и живут почти все 75 МБ |
+| `JazzReader.exe` | 180.0 МБ | сам Electron — тут и живут почти все 75 МБ |
 | `locales/*.pak` (55 шт.) | 1.4 МБ | было 40.3 МБ; вырезано через `electronLanguages: ["ru","en-US"]` |
 | `app.asar` | 6.6 МБ | **весь наш код, шрифты и KaTeX** |
 | `ffmpeg.dll` | 2.8 МБ | медиакодеки; **нельзя вырезать**, см. ниже |
@@ -133,7 +133,7 @@ npm run dist:dir     # только распакованная папка dist\w
 Итого было 274.6 МБ распакованных и 82.1 МБ в exe, стало 232.9 МБ и 75.6 МБ
 (`compression: "maximum"` + вырезанные локали).
 
-Чего дальше ужать нельзя: `MDView.exe` — один файл, и внутри него весь Chromium.
+Чего дальше ужать нельзя: `JazzReader.exe` — один файл, и внутри него весь Chromium.
 Дальше только смена рантайма (Tauri использует системный WebView2 и даёт
 3–8 МБ, но это переписывание оболочки, а не сборки).
 
@@ -301,7 +301,7 @@ ICO и что слои малых размеров действительно у
 (asar-пути, шрифты из архива, потерянные при сборке файлы):
 
 ```bash
-xvfb-run -a node test/packaged-check.js dist/linux-unpacked/mdview-desktop "файл.md"
+xvfb-run -a node test/packaged-check.js dist/linux-unpacked/jazz-reader "файл.md"
 ```
 
 ## Структура

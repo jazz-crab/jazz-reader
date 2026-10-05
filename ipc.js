@@ -447,7 +447,7 @@ const PRINT_CSS = `
  */
 async function buildPdf(title, body, opts) {
   const built = await buildStandaloneHtml(title, body, Object.assign({}, opts, { print: true }));
-  const file = path.join(app.getPath('temp'), 'mdview-print-' + process.pid + '.html');
+  const file = path.join(app.getPath('temp'), 'jazz-reader-print-' + process.pid + '.html');
   await fsp.writeFile(file, built.html, 'utf8');
 
   const w = new BrowserWindow({
@@ -675,13 +675,13 @@ function register() {
   });
 
   /*
-   * Ctrl+N: временная заметка в os.tmpdir()/mdview. Имена «Безымянный-N.md»
+   * Ctrl+N: временная заметка в os.tmpdir()/jazz-reader. Имена «Безымянный-N.md»
    * перебираются, пока не найдётся свободное: заметка не должна молча
    * перезаписать прошлую, если пользователь её не сохранил.
    */
   ipcMain.handle('mdv:newTemp', async (_e, seedName) => {
     try {
-      const dir = path.join(os.tmpdir(), 'mdview');
+      const dir = path.join(os.tmpdir(), 'jazz-reader');
       await fsp.mkdir(dir, { recursive: true });
       const base = String(seedName || 'Безымянный');
       let file = '';

@@ -1,6 +1,6 @@
 'use strict';
 /* ============================================================================
- *  MDView — renderer. Вкладки, дерево папок, оглавление, история навигации.
+ *  JazzReader — renderer. Вкладки, дерево папок, оглавление, история навигации.
  * ========================================================================== */
 
 const api = window.mdv;
@@ -354,7 +354,7 @@ let loadSeq = 0;
  * ушёл на экран.
  *
  * requestAnimationFrame в свёрнутом или скрытом окне не срабатывает (так
- * работает и наш собственный --mdview-hidden), поэтому ждём кадр, но
+ * работает и наш собственный --jazzreader-hidden), поэтому ждём кадр, но
  * страхуемся таймером: иначе openPath() навечно завис бы на скрытом окне.
  */
 function nextPaint() {
@@ -1533,13 +1533,13 @@ function renderActive() {
     el.toTop.hidden = true;
     el.statusbar.hidden = true;
     // Док режима целиком прячем: файла нет — правки негде и нечего.
-    document.title = 'MDView';
+    document.title = 'JazzReader';
     updateNavButtons();
     return;
   }
   el.statusbar.hidden = !view.statusbar;
 
-  document.title = t.name + ' — MDView';
+  document.title = t.name + ' — JazzReader';
   el.fileName.textContent = t.path;
   el.fileName.title = t.path;
 

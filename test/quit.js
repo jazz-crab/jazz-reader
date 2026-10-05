@@ -5,7 +5,7 @@
  *
  * Падение было настоящим: releaseTabShortcuts() присваивала пустой массив
  * const'у прямо в will-quit, и вместо закрытия на экране появлялось окно
- * «MDView — ошибка при запуске». Ни один тест этого не ловил: все закрывали
+ * «JazzReader — ошибка при запуске». Ни один тест этого не ловил: все закрывали
  * экземпляр kill'ом, а не через выход из приложения.
  *
  * Настройки читаем из отдельного --user-data-dir, чтобы не трогать
@@ -82,7 +82,7 @@ async function launch(userData, sample) {
     '--remote-debugging-port=' + port,
     '--no-sandbox',
     '--disable-gpu',
-    '--mdview-hidden',
+    '--jazzreader-hidden',
     '--user-data-dir=' + userData,
     sample,
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -114,7 +114,7 @@ function waitExit(child, ms) {
 async function main() {
   console.log('\n== выход из приложения ==');
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdview-quit-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-quit-'));
   const userData = path.join(tmpDir, 'userdata');
   const sample = path.join(tmpDir, 'sample.md');
   fs.mkdirSync(userData, { recursive: true });
@@ -183,7 +183,7 @@ async function main() {
   t('список хоткеев объявлен через let',
     /let shortcuts = \[\];/.test(mainSrc) && !/const shortcuts = \[\];/.test(mainSrc));
   t('тестовый канал выхода есть только в скрытом режиме',
-    /--mdview-hidden[\s\S]{0,200}mdv:testQuit/.test(mainSrc));
+    /--jazzreader-hidden[\s\S]{0,200}mdv:testQuit/.test(mainSrc));
 
   const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
   t('renderer сообщает число несохранённых вкладок',

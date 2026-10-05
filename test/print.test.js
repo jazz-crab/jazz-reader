@@ -21,7 +21,7 @@ const ROOT = path.join(__dirname, '..');
 // а вне Electron модуль 'electron' отдаёт строку с путём к бинарнику. Поэтому
 // подменяем его в кэше: папка назначения — временная, чтобы тест не оставлял
 // HTML в Загрузках пользователя.
-const fakeDownloads = fs.mkdtempSync(path.join(os.tmpdir(), 'mdview-dl-'));
+const fakeDownloads = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-dl-'));
 const electronEntry = require.resolve('electron');
 require.cache[electronEntry] = {
   id: electronEntry,
@@ -49,7 +49,7 @@ async function main() {
 
 console.log('\n== экспорт HTML ==');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mdview-export-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-export-'));
 const src = [
   '# Заголовок',
   '',

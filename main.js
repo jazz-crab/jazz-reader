@@ -19,7 +19,7 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
 // на старте выглядела как «программа ничего не делает». Поэтому пишем лог на
 // диск и показываем диалог, а не падаем молча.
 
-// Скрытый режим: MDVIEW_HIDDEN=1 или ключ --mdview-hidden.
+// Скрытый режим: JAZZREADER_HIDDEN=1 или ключ --jazzreader-hidden.
 // Окно создаётся и работает, но не показывается ни разу: на экране ничего
 // нет, в панели задач и Alt+Tab его нет, тыкнуть некуда. Нужен, чтобы
 // автотесты и разработка не выскакивали окном поверх работы.
@@ -28,7 +28,13 @@ if (process.platform === 'linux' && process.getuid?.() === 0) {
 // с этой сборки (COM-класс IVirtualDesktopManager не зарегистрирован),
 // горячая клавиша требует передать фокус окну, а отдельный Win32-стол
 // убивает Chromium до старта main.js.
-const HIDDEN = process.env.MDVIEW_HIDDEN === '1' || process.argv.includes('--mdview-hidden');
+//
+// Имена до переименования (MDVIEW_HIDDEN, --mdview-hidden) принимаются
+// и дальше: старые сценарии и ярлыки не должны падать из-за переименования.
+const HIDDEN = process.env.JAZZREADER_HIDDEN === '1'
+  || process.env.MDVIEW_HIDDEN === '1'
+  || process.argv.includes('--jazzreader-hidden')
+  || process.argv.includes('--mdview-hidden');
 
 /*
  * Полоса, которую Windows рисует под системными кнопки окна, и наш резерв.
@@ -98,7 +104,7 @@ function resolveLogPath() {
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.accessSync(dir, fs.constants.W_OK);
-      return path.join(dir, 'mdview.log');
+      return path.join(dir, 'jazzreader.log');
     } catch { /* пробуем следующий */ }
   }
   return null;
@@ -120,7 +126,7 @@ function reportFatal(where, err) {
   fatalShown = true;
   try {
     dialog.showErrorBox(
-      'MDView — ошибка при запуске',
+      'JazzReader — ошибка при запуске',
       `${where}\n\n${text}\n\n` +
       `Подробности: ${logPath || '(лог недоступен)'}\n` +
       'Если окно с приложением не появилось — пришлите этот файл, разберёмся.'
@@ -142,7 +148,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1320, height: 880, minWidth: 760, minHeight: 480,
     backgroundColor: '#1a1b26',
-    title: 'MDView',
+    title: 'JazzReader',
     show: false,
     // titleBarStyle — только опция конструктора (метода setTitleBarStyle нет).
     // Прячем системный заголовок, чтобы полоса вкладок шла до самого верха.
@@ -182,7 +188,7 @@ function createWindow() {
   // Страховка от «невидимого» окна: показываем по ready-to-show, но если событие
   // не пришло за 6 с — показываем всё равно.
   if (HIDDEN) {
-    log('скрытый режим: окно создано, но не показывается (MDVIEW_HIDDEN)');
+    log('скрытый режим: окно создано, но не показывается (JAZZREADER_HIDDEN)');
   } else {
     const showTimer = setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 6000);
     win.once('ready-to-show', () => { clearTimeout(showTimer); win.show(); });
@@ -263,7 +269,7 @@ async function requestQuit() {
   const res = await dialog.showMessageBox(targetWindowSafe(), {
     type: 'question',
     title: 'Закрыть?',
-    message: 'Закрыть MDView?',
+    message: 'Закрыть JazzReader?',
     detail,
     buttons: ['Закрыть', 'Отмена'],
     defaultId: 0,
@@ -361,8 +367,8 @@ function buildMenu() {
       submenu: [{
         label: 'О программе',
         click: () => require('electron').dialog.showMessageBox(win, {
-          type: 'info', title: 'MDView',
-          message: 'MDView ' + app.getVersion(),
+          type: 'info', title: 'JazzReader',
+          message: 'JazzReader ' + app.getVersion(),
           detail: 'Офлайн-читалка Markdown с поддержкой LaTeX (KaTeX).\n'
             + 'Порт инструмента github.com/jazz-crab/jazz-reader/.\n\n'
             + 'Ctrl+O — открыть .md\nCtrl+Shift+O — открыть папку\n'
@@ -429,7 +435,7 @@ app.on('will-quit', releaseTabShortcuts);
  * Канал живёт только там, где окно и так не показывается, и в обычном
  * запуске его не существует.
  */
-if (process.argv.includes('--mdview-hidden') || process.env.MDVIEW_HIDDEN === '1') {
+if (HIDDEN) {
   const { ipcMain } = require('electron');
   ipcMain.handle('mdv:testQuit', () => { requestQuit(); return true; });
 }
@@ -437,7 +443,7 @@ if (process.argv.includes('--mdview-hidden') || process.env.MDVIEW_HIDDEN === '1
 app.whenReady()
   .then(() => {
     logPath = resolveLogPath();
-    log(`--- старт MDView ${app.getVersion()} · electron ${process.versions.electron} · ${process.platform}/${process.arch} · portable=${app.isPackaged}`);
+    log(`--- старт JazzReader ${app.getVersion()} · electron ${process.versions.electron} · ${process.platform}/${process.arch} · portable=${app.isPackaged}`);
 
     ipc.register();
     buildMenu();

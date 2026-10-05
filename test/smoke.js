@@ -94,8 +94,8 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript('document.getElementById("btnMode").click(); void 0');
     await sleep(500);
     const img = await win.webContents.capturePage();
-    fs.writeFileSync('/tmp/mdview-shot.png', img.toPNG());
-    console.log('скриншот: /tmp/mdview-shot.png');
+    fs.writeFileSync('/tmp/jazz-reader-shot.png', img.toPNG());
+    console.log('скриншот: /tmp/jazz-reader-shot.png');
   } catch (e) { errors.push('capture: ' + e.message); }
 
   console.log('\n=== РЕЗУЛЬТАТ ===');

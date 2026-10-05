@@ -101,7 +101,7 @@ function evaluate(wsUrl, expression) {
   console.log('== запуск реального окна ==');
 
   // Файл с формулами: если рендер сломан, .katex в DOM не появится.
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdview-startup-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-startup-'));
   const sample = path.join(tmpDir, 'sample.md');
   fs.writeFileSync(sample, [
     '# Заголовок',
@@ -132,7 +132,7 @@ function evaluate(wsUrl, expression) {
     '--no-sandbox',
     '--disable-gpu',
     // Окно не показываем: тесты не должны выскакивать поверх работы.
-    '--mdview-hidden',
+    '--jazzreader-hidden',
     sample,
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
 

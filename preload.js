@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld('mdv', {
   /**
    * Выход по тому же пути, что и Ctrl+Q, — для автотеста.
    *
-   * Обработчик живёт только в скрытом режиме (--mdview-hidden), так что в
+   * Обработчик живёт только в скрытом режиме (--jazzreader-hidden), так что в
    * обычном запуске вызова нет и метод ничего не делает.
    */
   testQuit: () => ipcRenderer.invoke('mdv:testQuit'),
