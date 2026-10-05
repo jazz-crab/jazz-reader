@@ -1,11 +1,11 @@
 ﻿/*
- * Правка, вкладки, оглавление, дерево — регрессии, которые не видно на
- * статичном скриншоте.
+ * Editing, tabs, contents, tree — regressions that a static screenshot cannot
+ * show.
  *
  *   node test/tabs.js
  *
- * Всё через CDP по живому окну, как в startup.js. Хук renderer'а
- * window.__mdvTest используется, чтобы не открывать системные диалоги.
+ * Everything goes through CDP against a live window, as in startup.js. The
+ * renderer's window.__mdvTest hook is used so that no system dialogs open.
  */
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -21,10 +21,11 @@ const ROOT = path.join(__dirname, '..');
 // MDV_SAMPLE_DIR. Without it these blocks are skipped rather than silently
 // run against nothing.
 const SAMPLE = process.env.MDV_SAMPLE_DIR || '';
-// Путь склеивается с именем файла («D + 'AAA.md'»), поэтому завершающий
-// разделитель обязателен. Без него получается «keysampleAAA.md»: файлы не
-// открываются, диалог «Недавние» пустеет, и тесты падают на несвязанном с
-// правкой месте. Образец ниже держит слеш, переменная окружения — нет.
+// The path is glued to the file name ("D + 'AAA.md'"), so the trailing
+// separator is required. Without it you get "keysampleAAA.md": the files do
+// not open, the "Recent" dialog stays empty, and the tests fail in a place
+// unrelated to the edit. The literal below keeps the slash, the environment
+// variable does not.
 const SAMPLE_DIR = SAMPLE && !/[\\/]$/.test(SAMPLE) ? SAMPLE + '/' : SAMPLE;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -79,10 +80,10 @@ function cdp(wsUrl) {
     js: (expression) => send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
       .then((r) => { if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; }),
     /*
-     * Настоящее наведение мышью. Псевдокласс :hover нельзя включить из
-     * JavaScript — только реальным движением мыши, поэтому проверки вида
-     * «кнопка не бледнеет при наведении» иначе пришлось бы делать по тексту
-     * правила в CSS, а это ничего не проверяет.
+     * A real mouse hover. The :hover pseudo-class cannot be switched on from
+     * JavaScript — only by really moving the mouse — so checks like "the button
+     * does not fade on hover" would otherwise have to look at the text of a CSS
+     * rule, which verifies nothing.
      */
     hover: (x, y) => send('Input.dispatchMouseEvent', {
       type: 'mouseMoved', x: Math.round(x), y: Math.round(y), buttons: 0,
@@ -93,7 +94,7 @@ function cdp(wsUrl) {
   };
 }
 
-/** Диалог подтверждения в renderer — глушим, чтобы тест не завис. */
+  /** The confirmation dialog in the renderer — silenced, so the test cannot hang. */
 const SILENCE_CONFIRM = `(() => {
   window.__asked = [];
   const orig = window.confirm;
@@ -106,8 +107,8 @@ const SILENCE_CONFIRM = `(() => {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-tabs-'));
   const notesDir = path.join(tmpDir, 'notes');
-  // Настройки и лента недавних — тоже во временном каталоге, иначе тест
-  // читает и переписывает настоящие файлы пользователя.
+  // Settings and the recent list also live in the temporary directory, otherwise
+  // the test reads and rewrites the real files of the user.
   const userData = path.join(tmpDir, 'userdata');
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(path.join(notesDir, 'sub'), { recursive: true });
@@ -116,9 +117,9 @@ const SILENCE_CONFIRM = `(() => {
   }
   fs.writeFileSync(path.join(notesDir, 'sub', 'd.md'), '# d\n\nтекст\n', 'utf8');
 
-  // Отдельная папка для проверки ленты вкладок: длинные имена нужны, чтобы
-  // 18 вкладок гарантированно переполняют ленту и обрезка в середине была
-  // видна — в notes имена короткие и влезают без обрезки.
+  // A separate folder for checking the tab strip: long names are needed so that
+  // 18 tabs certainly overflow the strip and the cut-off in the middle is
+  // visible — in notes the names are short and fit without being cut.
   const tabsDir = path.join(tmpDir, 'many');
   fs.mkdirSync(tabsDir, { recursive: true });
   const MANY_FILES = [];
@@ -128,26 +129,26 @@ const SILENCE_CONFIRM = `(() => {
     fs.writeFileSync(path.join(tabsDir, f), '# Заметка ' + i + '\n\nтекст\n', 'utf8');
     MANY_FILES.push(f);
   }
-  // Отдельный файл: его открытие проверяет индикатор загрузки
+  // A separate file: opening it is what checks the loading indicator
   fs.writeFileSync(path.join(tabsDir, 'Открываемый.md'), '# Открываемый\n\nтекст\n', 'utf8');
 
-  // Путь для renderer: слэши вперёд, как ждёт openPath
+  // The path for the renderer: forward slashes, as openPath expects
   const TABS_DIR = tabsDir.replace(/\\/g, '/');
 
   const port = await freePort();
   const child = spawn(electron, [
     ROOT, '--remote-debugging-port=' + port, '--no-sandbox', '--disable-gpu',
-    // Язык зафиксирован: иначе подписи зависят от локали машины,
-    // и проверки ниже падают на любом нерусском Windows.
+    // The language is pinned: otherwise the captions depend on the locale of the
+    // machine, and the checks below fail on any non-Russian Windows.
     '--lang=ru',
 
-    // Свой каталог настроек. Без этого тест работал на личном
-    // settings.json: проверки зависели от того, что там сохранилось, а блок
-    // переключения языка в конце оставлял после себя en — то есть прогон
-    // менял настройки того, кто его запустил.
+    // Its own settings directory. Without it the test ran on the personal
+    // settings.json: the checks depended on what happened to be saved there, and
+    // the language switch block at the end left en behind — that is, a run
+    // changed the settings of whoever started it.
     '--user-data-dir=' + userData,
 
-    // Окно не показываем: тесты не должны выскакивать поверх работы.
+    // The window is not shown: tests must not pop up on top of the work.
     '--jazzreader-hidden',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
@@ -167,12 +168,12 @@ const SILENCE_CONFIRM = `(() => {
   const js = (e) => c.js(e);
 
   /*
-   * Закрытие модальных окон по-человечески: крестик, иначе главная
-   * кнопка, иначе Escape (его ловит сам диалог). Сносить узел напрямую
-   * нельзя: слушатель Escape, который wireModal вешает на document в
-   * фазе захвата, остаётся жить, и дальше каждый Escape в приложении
-   * «закрывает» все накопленные окна — настройки откатывают масштаб и
-   * колонку, портя состояние несвязанных проверок.
+   * Closing modal windows the human way: the close box, otherwise the main
+   * button, otherwise Escape (which the dialog catches itself). Removing the
+   * node directly is not allowed: the Escape listener that wireModal puts on
+   * document in the capture phase stays alive, and afterwards every Escape in
+   * the application "closes" all the accumulated windows — the settings roll
+   * back the zoom and the column, spoiling the state of unrelated checks.
    */
   const closeModals = () => js(`(async () => {
     for (const m of document.querySelectorAll('.modal-back')) {
@@ -186,14 +187,14 @@ const SILENCE_CONFIRM = `(() => {
     return document.querySelectorAll('.modal-back').length;
   })()`);
 
-  // Дожидаемся готовности renderer'а
+  // Wait for the renderer to be ready
   for (let i = 0; i < 40; i++) {
     const ok = await js('!!(window.__mdvTest && window.mdv)');
     if (ok === true) break;
     await sleep(250);
   }
 
-  // ---------------------------------------------------------------- правка
+  // ---------------------------------------------------------------- editing
   console.log('\n== режим правки ==');
   const openOne = `window.__mdvTest.openPath(${JSON.stringify(path.join(notesDir, 'a.md'))}, { newTab: true })`;
 
@@ -202,9 +203,9 @@ const SILENCE_CONFIRM = `(() => {
     await ${openOne};
     const t = M.active();
     const res = { before: t.mode };
-    // Карандаша, «Сохранить» и «Отменить» в интерфейсе больше нет: они живут
-    // в круговом меню по правому клику. Проверяем, что старого дока не
-    // осталось и в правку можно войти.
+    // The pencil, "Save" and "Discard" are no longer in the interface: they live
+    // in the ring menu on the right click. We check that the old dock is gone
+    // and that edit mode can still be entered.
     res.dockGone = !document.getElementById('modeDock');
     res.buttonsGone = !document.getElementById('btnMode')
       && !document.getElementById('btnSave')
@@ -220,7 +221,7 @@ const SILENCE_CONFIRM = `(() => {
   t('отдельных кнопок правки больше нет', r.buttonsGone === true);
   t('в правке открыт редактор', r.editorVisible === true);
 
-  // Отмена без вопроса не должна проходить при несохранённых правках
+  // Discarding without a question must not go through with unsaved changes
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const ed = document.getElementById('editor');
@@ -229,13 +230,13 @@ const SILENCE_CONFIRM = `(() => {
     const t = window.__mdvTest.active();
     const res = { dirty: t.dirty };
 
-    // Подменяем askConfirm: тест не должен зависнуть на диалоге
+    // We replace askConfirm: the test must not hang on a dialog
     window.__asked = [];
     window.__mdvTest.setConfirm((title) => { window.__asked.push(title); return null; });
 
-    // Кольцо в этот момент показывает активные «Сохранить» и «Отмена»:
-    // без несохранённых правок они были бы серыми, и правку можно было бы
-    // потерять, не заметив.
+    // At this moment the ring shows "Save" and "Discard" as active: with no
+    // unsaved changes they would be grey, and the edits could be lost without
+    // anyone noticing.
     const ed2 = document.getElementById('editor');
     const bx = ed2.getBoundingClientRect();
     await window.__mdvTest.openRingIn('editor', Math.round(bx.left + 160), Math.round(bx.top + 90));
@@ -251,7 +252,7 @@ const SILENCE_CONFIRM = `(() => {
     res.askedOnDirty = window.__asked.length;
     res.stillEditing = window.__mdvTest.active().mode;
 
-    // Соглашаемся — правки должны откатиться к диску
+    // We agree — the changes must roll back to the disk
     window.__mdvTest.setConfirm(() => true);
     M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
@@ -263,8 +264,8 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('правка в редакторе помечает вкладку как изменённую', r.dirty === true);
-  // «Есть несохранённое» теперь видно по кольцу: без правок кнопки
-  // «Сохранить» и «Отмена» неактивны, с правками — активны.
+  // "There are unsaved changes" is now visible on the ring: with no changes the
+  // buttons "Save" and "Discard" are inactive, with changes they are active.
   t('при несохранённых правках «Сохранить» и «Отмена» доступны',
     r.ringSaveOn === true && r.ringCancelOn === true,
     'save=' + r.ringSaveOn + ' cancel=' + r.ringCancelOn);
@@ -275,24 +276,24 @@ const SILENCE_CONFIRM = `(() => {
   t('после отмены dirty сброшен', r.dirtyAfter === false);
   t('после отмены текст = диску', r.rawMatchesDisk === true);
 
-  // ------------------------------------------------------- Ctrl+Tab по кругу
+  // ------------------------------------------------------- Ctrl+Tab in a loop
   console.log('\n== Ctrl+Tab по порядку вкладок ==');
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    // Три вкладки: a.md уже открыта, добавим b и c
+    // Three tabs: a.md is already open, we add b and c
     await M.openPath(${JSON.stringify(path.join(notesDir, 'b.md'))}, { newTab: true });
     await M.openPath(${JSON.stringify(path.join(notesDir, 'c.md'))}, { newTab: true });
     const names = () => [...M.tabs.values()].map(t => t.name);
     const cur = () => { const a = M.active(); return a ? a.name : null; };
     const res = { order: names(), start: cur(), steps: [] };
-    // Раньше Ctrl+Tab шёл по стеку visit: с конца туда-сюда. Проверяем порядок.
+    // Ctrl+Tab used to walk a visit stack: back and forth from the end. We check the order.
     for (let i = 0; i < 4; i++) { M.stepTab(1); res.steps.push(cur()); }
     for (let i = 0; i < 2; i++) { M.stepTab(-1); res.steps.push(cur()); }
     return JSON.stringify(res);
   })()`));
 
   t('открыто три вкладки', r.order.length === 3, JSON.stringify(r.order));
-  // порядок вкладок: a,b,c — старт на c (последняя открытая)
+  // tab order: a,b,c — starting at c (the last one opened)
   const fwd = r.steps.slice(0, 4);
   t('Ctrl+Tab идёт по порядку вкладок',
     JSON.stringify(fwd) === JSON.stringify(['a.md', 'b.md', 'c.md', 'a.md']),
@@ -302,7 +303,7 @@ const SILENCE_CONFIRM = `(() => {
     JSON.stringify(back) === JSON.stringify(['c.md', 'b.md']),
     'шаги назад: ' + JSON.stringify(back));
 
-  // ---------------------------------------------------- ПКМ по вкладке
+  // ---------------------------------------------------- right click on a tab
   console.log('\n== контекстное меню вкладки ==');
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
@@ -316,7 +317,7 @@ const SILENCE_CONFIRM = `(() => {
       labels: [...menu.querySelectorAll('.ctxmenu-item')].map(b => b.querySelector('span').textContent),
       disabled: [...menu.querySelectorAll('.ctxmenu-item')].map(b => b.disabled),
     };
-    // Закрыть все справа от второй
+    // Close everything to the right of the second
     const btn = [...menu.querySelectorAll('.ctxmenu-item')]
       .find(b => b.textContent.indexOf('справа') !== -1);
     btn.click();
@@ -342,12 +343,12 @@ const SILENCE_CONFIRM = `(() => {
     JSON.stringify(r.afterCloseRight));
   t('меню закрылось после клика', r.menuGone === true);
 
-  // --------------------------------------------------- оглавление и дерево
+  // --------------------------------------------------- contents and tree
   console.log('\n== оглавление и дерево ==');
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const res = {};
-    // Закрываем всё, открываем файл с заголовками
+    // Close everything, open a file with headings
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
     fs_writeStub;
     return JSON.stringify(res);
@@ -357,7 +358,7 @@ const SILENCE_CONFIRM = `(() => {
   fs.writeFileSync(tocFile,
     '# Один\n\nтекст\n\n## Два\n\nтекст\n\n### Три\n\nтекст\n\n## Четыре\n', 'utf8');
 
-  // Оглавление: постоянная панель слева, дерево со сворачиванием.
+  // Contents: a permanent pane on the left, a tree with collapsing.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const tocSide = document.getElementById('tocSide');
@@ -376,24 +377,24 @@ const SILENCE_CONFIRM = `(() => {
     res.filesOnRight = Math.round(
       innerWidth - document.getElementById('filesSide').getBoundingClientRect().right) === 0;
 
-    // Шапок панелей больше нет
+    // The pane headers are gone
     res.noTocHead = !tocSide.querySelector('.side-head');
     res.noFilesHead = !document.getElementById('filesSide').querySelector('.side-head');
-    // Панель начинается сразу под рабочей областью. Раньше сверху была
-    // шапка «Оглавление» на 33px — её и проверяем отсутствием зазора.
+    // The pane starts right below the workspace. There used to be a 33px
+    // "Contents" header above it — and we check for its absence by the gap.
     res.tocTop = Math.round(tocSide.getBoundingClientRect().top
       - document.getElementById('workspace').getBoundingClientRect().top);
     res.filesTop = Math.round(document.getElementById('filesSide').getBoundingClientRect().top
       - document.getElementById('workspace').getBoundingClientRect().top);
 
-    // Ссылки без подчёркивания, текст одного цвета на всех уровнях
+    // Links without an underline, text of one colour at every level
     const dec = links.map(a => getComputedStyle(a).textDecorationLine);
     res.noUnderline = dec.every((d) => !/underline/.test(d));
     const colors = [...new Set(links.map(a => getComputedStyle(a).color))];
     res.oneColor = colors.length === 1;
     res.color = colors[0];
 
-    // Уровни вложены отступом
+    // Levels are nested by indent
     res.indented = (() => {
       const l3 = document.querySelector('#paneToc .toc-row[data-l="2"] .toc-link');
       const l1 = document.querySelector('#paneToc .toc-row[data-l="1"] .toc-link');
@@ -401,11 +402,11 @@ const SILENCE_CONFIRM = `(() => {
       return parseFloat(getComputedStyle(l3).paddingLeft) > parseFloat(getComputedStyle(l1).paddingLeft);
     })();
 
-    // Стрелка только у разделов с потомками
+    // The arrow only on sections that have children
     res.twistCount = twists.length;
     res.visibleTwists = twists.filter((b) => !b.hidden && b.offsetParent !== null).length;
-    // Контейнер потомков — сосед строки (не потомок внутри: .toc-row это
-    // flex-линия), поэтому ищем через nextElementSibling.
+    // The children container is a sibling of the row (not a descendant inside:
+    // .toc-row is a flex line), so we look for it via nextElementSibling.
     const kidsOf = (row) => {
       const nx = row.nextElementSibling;
       return nx && nx.classList.contains('toc-kids') ? nx : null;
@@ -416,7 +417,7 @@ const SILENCE_CONFIRM = `(() => {
       return kids && kids.children.length ? !b.hidden : b.hidden;
     });
 
-    // Клик по стрелке сворачивает ветку
+    // A click on the arrow collapses the branch
     const withKids = rows.find((x) => {
       const k = kidsOf(x);
       return k && k.children.length;
@@ -472,8 +473,8 @@ const SILENCE_CONFIRM = `(() => {
   t('aria-expanded=false на свёрнутом', r.ariaAfter === 'false', r.ariaAfter);
   t('после раскрытия снова true', r.ariaBack === 'true', r.ariaBack);
 
-  // Shift+F10 / ContextMenu: в тесте контекстное меню открывалось только по
-  // contextmenu с координатами, а с клавиатуры (Shift+F10) — нет.
+  // Shift+F10 / ContextMenu: the context menu used to open only on a
+  // contextmenu event with coordinates, and not from the keyboard (Shift+F10).
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     for (const id of [...M.tabs.keys()]) if (id !== M.active().id) await M.closeTab(id, { silent: true });
@@ -483,7 +484,7 @@ const SILENCE_CONFIRM = `(() => {
     tabEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 150));
     res.menuFromKeyboard = !!document.querySelector('.ctxmenu');
-    // и вариант ContextMenu
+    // and the ContextMenu variant
     document.querySelector('.ctxmenu')?.remove();
     tabEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 150));
@@ -496,9 +497,10 @@ const SILENCE_CONFIRM = `(() => {
   t('Shift+F10 открывает меню вкладки', r.menuFromKeyboard === true);
   t('клавиша ContextMenu открывает меню вкладки', r.menuFromContextKey === true);
 
-  // ----------------------------------------------- подсветка в дереве
-  // Пути в дереве приходят через path.join (обратные слэши), а во вкладках —
-  // с прямыми. Сверяться надо через samePath, иначе подсветка не работает.
+  // ----------------------------------------------- highlight in the tree
+  // The tree paths come through path.join (backslashes), while the tabs use
+  // forward ones. They have to be compared with samePath, otherwise the
+  // highlight does not work.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     await M.addFolder(${JSON.stringify(notesDir)});
@@ -508,7 +510,7 @@ const SILENCE_CONFIRM = `(() => {
     const rows = [...document.querySelectorAll('#paneFiles .tree-item')];
     const find = (n) => rows.find(r => r.querySelector('.fn').textContent === n);
     const res = { total: rows.length };
-    // Диагностика расхождения слэшей: именно из-за него подсветка молчала
+    // Diagnostics for the slash mismatch: it is exactly why the highlight was silent
     const aRow = find('a.md');
     const aTab = [...M.tabs.values()].find(x => x.name === 'a.md');
     res.treeSample = aRow ? aRow.dataset.path : null;
@@ -520,7 +522,7 @@ const SILENCE_CONFIRM = `(() => {
     res.aActive = find('a.md') && find('a.md').classList.contains('active');
     res.bOpen = find('b.md') && find('b.md').classList.contains('is-open');
     res.bActive = find('b.md') && find('b.md').classList.contains('active');
-    // теперь переключаемся на b: a остаётся «открытой», но не активной
+    // now we switch to b: a stays "open", but not active
     await M.openPath(${JSON.stringify(path.join(notesDir, 'b.md'))}, { newTab: true });
     await new Promise(r2 => setTimeout(r2, 250));
     const rows2 = [...document.querySelectorAll('#paneFiles .tree-item')];
@@ -532,10 +534,10 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('дерево построено', r.total >= 4, 'строк: ' + r.total);
-  // Регресс: подсветка открытого файла молчала, потому что дерево отдаёт
-  // пути через path.join («C:\dir\file.md»), а вкладки — с прямыми слэшами
-  // («C:/dir/file.md»), и сравнение строк не сходилось. Проверяем, что
-  // samePath считает их одним файлом при любом написании.
+  // Regression: the highlight of the open file was silent, because the tree
+  // returns paths through path.join ("C:\dir\file.md") while the tabs use forward
+  // slashes ("C:/dir/file.md"), and the string comparison did not match. We
+  // check that samePath considers them one file whichever way they are written.
   t('samePath сводит прямые и обратные слэши',
     r.mixed1 === true && r.mixed2 === true && r.differ === false,
     'C:/a/b vs C:\\a\\b -> ' + r.mixed1 + '; регистр -> ' + r.mixed2 + '; разные файлы -> ' + r.differ);
@@ -546,10 +548,10 @@ const SILENCE_CONFIRM = `(() => {
   t('но перестаёт быть активным', r.aActiveAfter === false);
   t('новый текущий становится активным', r.bActiveAfter === true);
 
-  // -------------------------------------------------- пустая вкладка
+  // -------------------------------------------------- a blank tab
   console.log('\n== пустая вкладка ==');
-  // К этому моменту папка notes открыта, поэтому проверяем оба состояния:
-  // новую пустую вкладку (заглушка) и обычную вкладку без файла (дерево).
+  // By this moment the notes folder is open, so we check both states: a new
+  // blank tab (a placeholder) and an ordinary tab with no file (the tree).
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
@@ -561,7 +563,7 @@ const SILENCE_CONFIRM = `(() => {
       hasWelcomeTitle: !!document.querySelector('#welcome h1'),
       title: document.title,
     };
-    // Теперь снимаем флаг blank (как делает addFolder) — должно быть видно дерево
+    // Now we clear the blank flag (as addFolder does) — the tree must be visible
     M.active().blank = false;
     M.renderActive();
     await new Promise(r2 => setTimeout(r2, 200));
@@ -578,10 +580,10 @@ const SILENCE_CONFIRM = `(() => {
   t('вкладка без файла при открытой папке показывает дерево', r.folderWelcome === true);
   t('дерево видно в этом состоянии', r.treeVisible === true);
 
-  // ------------------------------------- ПКМ по файлу, дублирование, плюсик
+  // ------------------------------------- right click on a file, duplicate, plus
   console.log('\n== меню файла, дублирование, перетаскивание ==');
 
-  // Контекстное меню файла в дереве
+  // The context menu of a file in the tree
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(SAMPLE_DIR)};
@@ -609,7 +611,7 @@ const SILENCE_CONFIRM = `(() => {
   t('«Удалить» помечен как опасный',
     r.danger && r.danger[r.danger.length - 1] === true, JSON.stringify(r.danger));
 
-  // Отложенный просмотр: вкладка появляется, фокус остаётся
+  // Deferred open: the tab appears, the focus stays
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(SAMPLE_DIR)};
@@ -624,7 +626,7 @@ const SILENCE_CONFIRM = `(() => {
     return JSON.stringify({
       before, activeAfter: M.active().name, names,
       tabCount: names.length,
-      // фоновая вкладка должна быть уже отрендерена, а не ждать первого показа
+      // the background tab must already be rendered, not waiting for its first show
       preRendered: !!(ddd && ddd.html && ddd.html.length > 50),
     });
   })()`));
@@ -634,7 +636,7 @@ const SILENCE_CONFIRM = `(() => {
   t('фоновая вкладка появилась', r.names.includes('DDD.md'), JSON.stringify(r.names));
   t('фоновая вкладка отрендерена заранее', r.preRendered === true);
 
-  // Дублирование
+  // Duplication
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     await M.duplicateTab([...M.tabs.keys()][0]);
@@ -653,7 +655,7 @@ const SILENCE_CONFIRM = `(() => {
   })(), JSON.stringify(r.names));
   t('дубликат активен', r.activeIsCopy != null);
 
-  // Перестановка вкладок
+  // Reordering tabs
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const before = [...M.tabs.keys()];
@@ -675,7 +677,7 @@ const SILENCE_CONFIRM = `(() => {
   t('порядок DOM совпадает с порядком вкладок', r.matchesDom === true,
     'tabs=' + JSON.stringify(r.after) + ' dom=' + JSON.stringify(r.domOrder || []));
 
-  // ------------------------------------------- таббар и меню приложения
+  // ------------------------------------------- the tab bar and the app menu
   console.log('\n== иконка приложения, плюс, меню ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -683,7 +685,7 @@ const SILENCE_CONFIRM = `(() => {
     const brand = document.getElementById('appBrand');
     const plus = document.getElementById('btnNewTab');
     const kids = [...bar.children].map(k => k.id || k.className);
-    // Лента вкладок теперь внутри .tabs-wrap — там же шевроны прокрутки.
+    // The tab strip is now inside .tabs-wrap — the scroll chevrons are there too.
     const wrap = document.getElementById('tabsWrap');
     const iWrap = [...bar.children].indexOf(wrap);
     const iPlus = [...bar.children].indexOf(plus);
@@ -693,7 +695,7 @@ const SILENCE_CONFIRM = `(() => {
       kids, iWrap, iPlus, iSpacer,
       brandLeft: bar.children[0] === brand,
       brandIsButton: brand.tagName === 'BUTTON',
-      // Теперь это Lucide-гамбургер, тот же svg, что и все прочие значки
+      // Now it is a Lucide hamburger, the same svg as every other icon
       brandIsSvg: !!svg && !brand.querySelector('img'),
       brandHasIconSlot: !!brand.querySelector('[data-i="menu"]'),
       iconName: (brand.querySelector('[data-i]') || {}).dataset
@@ -707,7 +709,7 @@ const SILENCE_CONFIRM = `(() => {
       plusIsIcon: !!plus.querySelector('svg'),
       noMiniMenu: !document.getElementById('newTabWrap')
         && !document.getElementById('newTabMenu'),
-      // стиль кнопки-иконки: без нативной рамки/фона
+      // the style of an icon button: no native border/background
       brandBorder: getComputedStyle(brand).borderTopWidth,
       brandBg: getComputedStyle(brand).backgroundColor,
       hasChevrons: !!document.getElementById('tabsLeft') && !!document.getElementById('tabsRight'),
@@ -730,7 +732,7 @@ const SILENCE_CONFIRM = `(() => {
   t('мини-меню у плюсика удалено', r.noMiniMenu === true);
   t('шевроны прокрутки ленты есть', r.hasChevrons === true);
 
-  // Плюс сразу открывает вкладку, без меню
+  // The plus opens a tab straight away, with no menu
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
@@ -750,7 +752,7 @@ const SILENCE_CONFIRM = `(() => {
   t('плюс не открывает меню', r.menuOpen === false);
   t('вкладка появилась в таббаре', r.tabsInDom === r.after, JSON.stringify(r));
 
-  // Меню приложения по клику на иконку
+  // The application menu on a click on the icon
   r = JSON.parse(await js(`(async () => {
     document.querySelector('.ctxmenu')?.remove();
     document.getElementById('appBrand').click();
@@ -763,15 +765,15 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('клик по иконке открывает меню', r.shown === true);
-  // Меню иконки раскрытое: Файл и Вид — подменю, их содержимое проверяется
-  // отдельно ниже, по наведению.
+  // The icon menu expanded: File and View are submenus, their contents are
+  // checked separately below, on hover.
   t('в меню есть «Файл»', (r.labels || []).some((l) => /Файл/.test(l)),
     JSON.stringify(r.labels));
   t('в меню есть «Вид»', (r.labels || []).some((l) => /Вид/.test(l)),
     JSON.stringify(r.labels));
   t('в меню есть «Настройки»', (r.labels || []).some((l) => /Настройки/.test(l)));
 
-  // «Недавние» открывают МОДАЛЬНОЕ окно со списком, а не выпадающее
+  // "Recent" opens a MODAL window with a list, not a drop-down
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     await M.clearRecents();
@@ -797,13 +799,13 @@ const SILENCE_CONFIRM = `(() => {
   t('в окне есть заголовок', /Недавние/.test(r.title || ''), r.title);
   t('в недавних есть AAA.md', (r.items || []).includes('AAA.md'), JSON.stringify(r.items));
   t('в недавних есть BBB.md', (r.items || []).includes('BBB.md'), JSON.stringify(r.items));
-  // Иконка ставится динамически, а ICONS.hydrate на старте уже отработал —
-  // без повторного hydrate остался бы пустой <span> без глифа.
+  // The icon is set dynamically, and ICONS.hydrate has already run at startup —
+  // without a second hydrate an empty <span> with no glyph would be left.
   t('иконка файла в недавних отрисована',
     r.itemIcons > 0 && r.itemIcons === (r.items || []).length,
     'svg=' + r.itemIcons + ' пунктов=' + (r.items || []).length);
 
-  // выбор из недавних открывает файл
+  // choosing from the recent files opens the file
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const item = [...document.querySelectorAll('.recent-item')]
@@ -819,7 +821,7 @@ const SILENCE_CONFIRM = `(() => {
   t('выбор из недавних закрывает окно', r.closed === true);
   t('выбор из недавних открывает файл', r.active === 'AAA.md', String(r.active));
 
-  // «Настройки»: три реальных поля, применяются сразу, Esc откатывает
+  // "Settings": three real fields, applied at once, Esc rolls back
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     document.querySelector('.ctxmenu')?.remove();
@@ -848,9 +850,9 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('«Настройки» открывают модальное окно', r.shown === true);
-  // Карточек четыре: размер текста, ширина колонки, автосохранение и язык.
-  // Переключателя режима кольца нет — кольцо само разбирается, что человек
-  // сделал с правой кнопкой.
+  // There are four cards: text size, column width, autosave and language.
+  // There is no ring mode switch — the ring works out for itself what the
+  // person did with the right button.
   t('в настройках 4 поля', r.rows === 4, JSON.stringify(r.labels));
   t('переключателя режима кольца в настройках нет',
     !(r.labels || []).some((x) => /Кольцо/.test(x)), JSON.stringify(r.labels));
@@ -864,9 +866,9 @@ const SILENCE_CONFIRM = `(() => {
     r.cssDuring + ' (было ' + (r.before && r.before.zoom) + ')');
   t('ползунок текста двигает и тулбарный зум', /^\d+%$/.test(r.zoomLabel || ''), r.zoomLabel);
   t('ширина колонки применена сразу', r.widthDuring === '1200px', r.widthDuring);
-  // Проверяем ТЕКСТ кнопки, а не сам объект: /Сbросить/.test(btn) превращал
-  // объект в «[object Object]» и всегда давал false — проверка проходила,
-  // ничего не проверяя.
+  // We check the TEXT of the button, not the object itself: /Reset/.test(btn)
+  // turned the object into "[object Object]" and always gave false — the check
+  // passed while verifying nothing.
   t('в настройках есть кнопка «По умолчанию»',
     (r.buttons || []).some((b) => b === 'По умолчанию'), JSON.stringify(r.buttons));
   t('в настройках есть кнопка «Готово»',
@@ -874,10 +876,11 @@ const SILENCE_CONFIRM = `(() => {
   t('кнопки «Сбросить» больше нет',
     !(r.buttons || []).some((b) => b === 'Сбросить'), JSON.stringify(r.buttons));
 
-  // Esc закрывает окно настроек и НЕ откатывает сделанное. Раньше закрытие
-  // отменяло правку ползунка, и правка терялась молча: человек двигал
-  // ползунок, видел результат, закрывал окно — а настройка была прежней.
-  // Теперь настройки применяются и сохраняются по ходу работы с окном.
+  // Esc closes the settings window and does NOT roll back what was done. Closing
+  // used to cancel the slider edit, and the edit was lost silently: a person
+  // moved the slider, saw the result, closed the window — and the setting was
+  // the old one.
+  // Now the settings are applied and saved as you work with the window.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const zoomBefore = M.settings().zoom;
@@ -896,7 +899,7 @@ const SILENCE_CONFIRM = `(() => {
     'стало ' + r.zoomAfter + ', было ' + r.zoomBefore);
   t('настройка применена к тексту', r.css !== '15px', r.css);
 
-  // Клик мимо окна сохраняет, а не отменяет
+  // A click outside the window saves rather than cancels
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.settingsDialog();
@@ -925,14 +928,14 @@ const SILENCE_CONFIRM = `(() => {
   t('клик мимо закрывает окно', r.closed === true);
   t('клик мимо не отменяет настройку', r.css === '19px', r.css);
 
-  // возвращаем как было
+  // put it back as it was
   await js(`(async () => {
     const M = window.__mdvTest;
     await M.previewSettings({ zoom: 1, columnWidth: 900, autosave: false });
     return 1;
   })()`);
 
-  // Готово сохраняет настройки и закрывает
+  // Done saves the settings and closes
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.settingsDialog();
@@ -959,9 +962,10 @@ const SILENCE_CONFIRM = `(() => {
   t('сохранённая ширина колонки применена', r.width === '1000px', r.width);
   t('сохранённый размер применён', Math.abs(parseFloat(r.css) - 18) < 0.3, r.css);
 
-  // Возвращаем настройки, которые тест записал в настоящий settings.json.
-  // Иначе следующий запуск стартовой проверки видел бы ширину колонки 1000px
-  // и падал, а падал бы всё реже — только на «чистой» машине.
+  // We restore the settings that the test wrote into the real settings.json.
+  // Otherwise the next run of the startup check would see a column width of
+  // 1000px and fail — and would fail more and more rarely, only on a "clean"
+  // machine.
   await js(`(async () => {
     const M = window.__mdvTest;
     await M.previewSettings({ zoom: 1, columnWidth: 900, autosave: false });
@@ -969,7 +973,7 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // Автосохранение: выход из правки пишет файл сам
+  // Autosave: leaving edit mode writes the file by itself
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(notesDir.replace(/\\/g, '/'))};
@@ -984,14 +988,14 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
   t('вкладка в режиме правки с несохранёнными правками', r.dirty === true);
 
-  // выключенное автосохранение — спрашивает
+  // autosave off — asks
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.setSettings({ autosave: false });
     const t = M.active();
     let asked = 0;
     M.setConfirm(() => { asked++; return null; });
-    // exitEdit не экспортирован — дёргаем кнопку «Отменить»
+    // exitEdit is not exported — we pull the "Discard" button
     M.exitEdit(false);
     await new Promise(r2 => setTimeout(r2, 350));
     return JSON.stringify({ asked, mode: M.active().mode, dirty: M.active().dirty });
@@ -999,7 +1003,7 @@ const SILENCE_CONFIRM = `(() => {
   t('без автосохранения спрашивает про отмену', r.asked === 1, JSON.stringify(r));
   t('отказ оставляет вкладку в правке', r.mode === 'edit' && r.dirty === true, JSON.stringify(r));
 
-  // включённое автосохранение — пишет молча
+  // autosave on — writes silently
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.setSettings({ autosave: true });
@@ -1017,12 +1021,13 @@ const SILENCE_CONFIRM = `(() => {
   t('автосохранение сняло флаг правок', r.dirty === false);
   t('в статусе написано «Автосохранено»', /Автосохранено/.test(r.status || ''), r.status);
 
-  // Автосохранение реально пишет в файл — откатываем, иначе следующие прогоны
-  // видели бы растущий файл. Раньше тест правил keysample/AAA.md (общий образец),
-  // а восстанавливал notesDir/AAA.md, которого не трогал: мусор копился годами.
+  // Autosave really writes to the file — we roll it back, otherwise later runs
+  // would see a growing file. The test used to edit keysample/AAA.md (the shared
+  // fixture) while restoring notesDir/AAA.md, which it never touched: junk piled
+  // up for years.
   fs.writeFileSync(path.join(notesDir, 'a.md'), '# a.md\n\nтекст\n', 'utf8');
 
-  // возвращаем дефолты и убираем мусор из ключевых файлов
+  // restore the defaults and clean the junk out of the key files
   await closeModals();
   await js(`(async () => {
     const M = window.__mdvTest;
@@ -1035,7 +1040,7 @@ const SILENCE_CONFIRM = `(() => {
     return 1;
   })()`);
 
-  // ------------------------------------------- лента вкладок при переполнении
+  // ------------------------------------------- the tab strip on overflow
   console.log('\n== лента вкладок: переполнение, имена, крестик ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -1047,7 +1052,7 @@ const SILENCE_CONFIRM = `(() => {
   t('пустая вкладка называется «Новая вкладка»', r.name === 'Новая вкладка', r.name);
   t('у пустой вкладки нет пути', r.path === null);
 
-  // Много вкладок -> лента переполняется, появляются шевроны
+  // Many tabs -> the strip overflows, the chevrons appear
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
@@ -1067,7 +1072,7 @@ const SILENCE_CONFIRM = `(() => {
       rightShown: !right.hidden,
       leftShown: !left.hidden,
       atRightEnd: tabs.scrollLeft >= tabs.scrollWidth - tabs.clientWidth - 2,
-      // лента обязана сжиматься, иначе вкладки просто уедут за окно
+      // the strip must shrink, otherwise the tabs simply run past the window
       shrinkable: getComputedStyle(tabs).minWidth === '0px',
     });
   })()`));
@@ -1077,13 +1082,13 @@ const SILENCE_CONFIRM = `(() => {
   t('лента сжимается (min-width:0)', r.shrinkable === true);
   t('лента переполняется', r.overflowPx > 100, r.overflowPx + 'px');
   t('обёрка знает о переполнении', r.hasOverflow === true);
-  // Активная вкладка последняя, поэтому лента прокручена вправо до конца:
-  // правый шеврон тут и должен быть скрыт, а листать должна левая стрелка.
+  // The active tab is the last one, so the strip is scrolled all the way right:
+  // the right chevron must be hidden and the left arrow is what scrolls.
   t('лента прокручена к активной вкладке', r.atRightEnd === true);
   t('правый шеврон убран в конце ленты', r.rightShown === false);
   t('есть чем листать назад', r.leftShown === true);
 
-  // а из начала ленты — наоборот, виден правый
+  // and from the start of the strip — the opposite, the right one is visible
   r = JSON.parse(await js(`(async () => {
     const tabs = document.getElementById('tabs');
     tabs.scrollLeft = 0;
@@ -1097,7 +1102,7 @@ const SILENCE_CONFIRM = `(() => {
   t('из начала ленты виден правый шеврон', r.rightShown === true);
   t('в начале ленты левый шеврон убран', r.leftShown === false);
 
-  // прокрутка шевроном
+  // scrolling with a chevron
   r = JSON.parse(await js(`(async () => {
     const tabs = document.getElementById('tabs');
     tabs.scrollLeft = 0;
@@ -1113,7 +1118,7 @@ const SILENCE_CONFIRM = `(() => {
   t('шеврон вправо листает ленту', r.after > 20, 'scrollLeft=' + r.after);
   t('после прокрутки виден шеврон влево', r.leftShown === true);
 
-  // колесо мыши над лентой
+  // the mouse wheel over the strip
   r = JSON.parse(await js(`(async () => {
     const tabs = document.getElementById('tabs');
     tabs.scrollLeft = 0;
@@ -1127,9 +1132,10 @@ const SILENCE_CONFIRM = `(() => {
   t('колесо листает ленту вбок', r.after > 20, 'scrollLeft=' + r.after);
   t('колесо не прокручивает страницу', r.prevented === true, String(r.prevented));
 
-  // Регресс: updateTabsNav звался только из ResizeObserver, то есть только
-  // при смене ширины. Уехав колесом в конец, пользователь оказывался в
-  // обрезке без шеврона, которым можно вернуться: назад листать было нечем.
+  // Regression: updateTabsNav was called only from ResizeObserver, that is, only
+  // on a width change. Having scrolled to the end with the wheel, the person
+  // ended up in the cut-off part with no chevron to come back with: there was
+  // nothing to scroll back.
   r = JSON.parse(await js(`(async () => {
     const tabs = document.getElementById('tabs');
     const left = document.getElementById('tabsLeft');
@@ -1138,11 +1144,11 @@ const SILENCE_CONFIRM = `(() => {
     tabs.scrollLeft = 0;
     await new Promise(r2 => setTimeout(r2, 200));
     const atStart = { leftHidden: left.hidden, rightShown: !right.hidden };
-    // Прокручиваем вручную — так же, как это делает wheel-обработчик
+    // We scroll manually — exactly what the wheel handler does
     tabs.scrollLeft = max;
     await new Promise(r2 => setTimeout(r2, 300));
     const atEnd = { leftShown: !left.hidden, rightHidden: right.hidden };
-    // И обратно: шеврон должен появиться снова, а не остаться «навсегда»
+    // And back: the chevron must appear again, not stay "forever"
     left.click();
     await new Promise(r2 => setTimeout(r2, 900));
     const back = { moved: tabs.scrollLeft < max - 5, rightShown: !right.hidden };
@@ -1155,7 +1161,7 @@ const SILENCE_CONFIRM = `(() => {
   t('шеврон назад действительно листает', r.back.moved === true);
   t('после возврата виден шеврон вперёд', r.back.rightShown === true);
 
-  // крестик строго справа, ничего не обрезано
+  // the close box strictly on the right, nothing cut off
   r = JSON.parse(await js(`(async () => {
     const out = [];
     for (const d of [...document.querySelectorAll('.tab')]) {
@@ -1176,16 +1182,17 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
 
-  // Порог 8, а не «на глаз»: отступ крестика от правого края вкладки равен
-  // паддингу .tab (8px) минус паддинг самой кнопки (3px), то есть 5-6px.
-  // Если имя вкладки перестало тянуться (flex-grow 0), добавляется ровно
-  // свободная ширина — на ужатых вкладках это +5px, и порог 12 такое
-  // пропускал, а 8 — ловит.
+  // The threshold is 8, not an eyeball guess: the inset of the close box from
+  // the right edge of the tab is the .tab padding (8px) minus the padding of the
+  // button itself (3px), that is, 5-6px.
+  // If the tab name stopped stretching (flex-grow 0), exactly the free width is
+  // added — on squeezed tabs that is +5px, and a threshold of 12 misses it
+  // while 8 catches it.
   t('крестик не обрезан ни в одной вкладке', r.anyClipped === false, JSON.stringify(r));
   t('крестик прижат к правому краю', r.tails.every((x) => x >= 0 && x <= 8), JSON.stringify(r.tails));
   t('между именем и крестиком ровный зазор', r.gaps.every((x) => x >= 0 && x <= 12), JSON.stringify(r.gaps));
 
-  // при перетаскивании имя не выделяется
+  // while dragging the name is not selected
   r = JSON.parse(await js(`(() => {
     const d = document.querySelector('.tab');
     const cs = getComputedStyle(d);
@@ -1194,14 +1201,14 @@ const SILENCE_CONFIRM = `(() => {
   t('имя вкладки не выделяется мышью',
     r.userSelect === 'none' && r.webkit === 'none', JSON.stringify(r));
 
-  // Обрезка длинного имени в середине: хвост с номером должен остаться виден.
-  // Нужно много вкладок: пока их мало, basis 180px каждой и имя помещается
-  // целиком — обрезаться просто нечему.
+  // Cutting a long name off in the middle: the tail with the number must stay
+  // visible. Many tabs are needed: while there are few, each has a basis of
+  // 180px and the name fits whole — there is simply nothing to cut.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
-    // Номера из фикстуры (01..18), иначе openPath вернёт null и вкладок будет меньше.
+    // The numbers come from the fixture (01..18), otherwise openPath returns null and there are fewer tabs.
     for (const n of ['07', '12', '05', '18', '09', '14', '03', '16', '08', '11', '02', '17']) {
       await M.openPath(T + '/Заметка-с-длинным-именем-' + n + '.md', { newTab: true });
     }
@@ -1214,11 +1221,12 @@ const SILENCE_CONFIRM = `(() => {
       widths,
       uniform: widths.length > 0 && Math.max(...widths) - Math.min(...widths) <= 1,
       over: tabs.scrollWidth - tabs.clientWidth,
-      // «чем листать» — это хоть один шеврон: у ленты, прокрученной вправо,
-      // правый скрыт по правилу, и это не «нечем листать».
+      // "what there is to scroll with" means at least one chevron: in a strip
+      // scrolled to the right the right one is hidden by the rule, and that is not
+      // "nothing to scroll with".
       chevron: !document.getElementById('tabsRight').hidden
         || !document.getElementById('tabsLeft').hidden,
-      // имя не должно вылезать за свою вкладку
+      // the name must not stick out of its tab
       fits: [...document.querySelectorAll('.tab')].map(d => {
         const n = d.querySelector('.tname');
         return n.getBoundingClientRect().right <= d.getBoundingClientRect().right + 0.5;
@@ -1226,9 +1234,9 @@ const SILENCE_CONFIRM = `(() => {
     });
   })()`));
 
-  // При 12 вкладках по 110px переполнение — это норма, оно и включает
-  // скролл. Требовать «поместилось» тут нельзя: min-width вкладки не даёт
-  // им стать уже, и полоса обязана уйти в прокрутку.
+  // With 12 tabs at 110px the overflow is the norm, and it is what enables the
+  // scroll. Requiring "it fitted" is not possible here: the min-width of a tab
+  // does not let it become narrower, so the strip has to go into scrolling.
   t('полоса либо помещается, либо прокручивается',
     r.over <= 1 || r.chevron === true,
     'перебор=' + r.over + 'px шеврон=' + r.chevron);
@@ -1239,19 +1247,19 @@ const SILENCE_CONFIRM = `(() => {
     (r.full || []).every((x) => x && x.length > 20), JSON.stringify(r.full));
   t('длинные имена обрезаны', (r.names || []).every((x) => x.includes('…')),
     JSON.stringify(r.names));
-  // Обрезка идёт с конца, поэтому расширение и номер в хвосте теряются, а
-  // начало имени сохраняется. Обрезка по середине была моей идеей и выглядела
-  // хуже: «Заметка-с-дли…енем-24.md».
+  // The cut goes from the end, so the extension and the number in the tail are
+  // lost while the beginning of the name survives. Cutting in the middle was my
+  // idea and it looked worse: "Note-with-a-long-name-24.md".
   t('обрезка с конца: начало имени сохранено',
     (r.names || []).every((x) => !x.includes('…') || x.startsWith('Заметка-')),
     JSON.stringify(r.names));
   t('имя не вылезает за свою вкладку',
     (r.fits || []).every((x) => x === true), JSON.stringify(r.fits));
-  // Обрезанное имя всегда заканчивается многоточием, а не «куском слова»
+  // A cut name always ends in an ellipsis, not in "a piece of a word"
   t('обрезанное имя помечено многоточием',
     (r.names || []).every((x) => !x.includes('…') || x.endsWith('…')),
     JSON.stringify(r.names));
-  // Полное имя остаётся доступно: в подсказке на вкладке и в data-full
+  // The full name stays available: in the tab tooltip and in data-full
   r2 = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
@@ -1272,7 +1280,7 @@ const SILENCE_CONFIRM = `(() => {
   t('при одной вкладке имя показывается целиком',
     r2.shown === 'Заметка-с-длинным-именем-07.md', r2.shown);
 
-  // ------------------------------------------------- индикатор загрузки
+  // ------------------------------------------------- the loading indicator
   console.log('\n== индикатор загрузки ==');
 
   r = JSON.parse(await js(`(() => {
@@ -1284,8 +1292,9 @@ const SILENCE_CONFIRM = `(() => {
     el.hidden = true;
     return JSON.stringify({ hiddenDisplay, shownDisplay });
   })()`));
-  // Без .loading[hidden]{display:none} индикатор висел бы всегда: правило с
-  // классом перебивает [hidden] из UA-таблицы по специфичности.
+  // Without .loading[hidden]{display:none} the indicator would hang around always:
+  // a rule with a class overrides [hidden] from the UA stylesheet on
+  // specificity.
   t('скрытый индикатор не отрисован', r.hiddenDisplay === 'none', r.hiddenDisplay);
   t('видимый индикатор отрисован', r.shownDisplay === 'flex', r.shownDisplay);
 
@@ -1315,7 +1324,7 @@ const SILENCE_CONFIRM = `(() => {
   t('файл после индикатора открыт', r.opened === true && r.name === 'Открываемый.md', r.name);
   t('после открытия индикатор убран', r.hiddenAfter === true);
 
-  // Переключение вкладки гасит индикатор
+  // Switching tabs clears the indicator
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const el = document.getElementById('loading');
@@ -1330,11 +1339,11 @@ const SILENCE_CONFIRM = `(() => {
   t('переключение вкладки гасит индикатор', r.before === false && r.after === true,
     JSON.stringify(r));
 
-  // ------------------------------------------- резерв под системные кнопки
-  // titleBarOverlay рисует «свернуть/развернуть/закрыть» поверх содержимого.
-  // Без резерва полоса вкладок заезжала под них: «+» пропадала, последние
-  // вкладки были не видны, а скролла не появлялось — лента формально
-  // влезала, и переполнение считать было не от чего.
+  // ------------------------------------------- reserve for the system buttons
+  // titleBarOverlay draws "minimise/maximise/close" over the content.
+  // Without the reserve the tab strip slid under them: the "+" disappeared, the
+  // last tabs were invisible, and no scrollbar appeared — the strip formally
+  // fitted, and there was nothing to count the overflow against.
   console.log('\n== резерв под системные кнопки окна ==');
 
   r = JSON.parse(await js(`(() => {
@@ -1368,7 +1377,7 @@ const SILENCE_CONFIRM = `(() => {
     t('шеврон не заезжает под системные кнопки', true);
   }
 
-  // ------------------------------------------- перетаскивание пустых вкладок
+  // ------------------------------------------- dragging blank tabs
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
@@ -1386,11 +1395,11 @@ const SILENCE_CONFIRM = `(() => {
     const started = blank.classList.contains('dragging');
     const payload = dt.getData('text/plain');
     blank.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
-    // Проверяем сразу: дальше снова будет dragstart, который навесит класс
-    // заново, и «снимается по завершении» выглядело бы провалом.
+    // We check right away: there will be another dragstart further on, which
+    // re-adds the class, and "cleared on completion" would look like a failure.
     const cleared = !blank.classList.contains('dragging');
 
-    // и сразу переносим её в начало
+    // and immediately move it to the beginning
     const blankId = +blank.dataset.id;
     const firstId = [...M.tabs.keys()][0];
     const target = document.querySelector('.tab[data-id="' + firstId + '"]');
@@ -1424,11 +1433,11 @@ const SILENCE_CONFIRM = `(() => {
   t('место вставки помечается', r.marker === true);
   t('порядок DOM совпадает с порядком вкладок', r.domMatches === true);
 
-  // ------------------------------- тулбар, нижняя панель, док режима
+  // ------------------------------- toolbar, bottom bar, the edit mode dock
   console.log('\n== тулбар, нижняя панель, режим правки ==');
 
-  // Сначала открываем файл: без него #workspace скрыт, у .main нет размера,
-  // и координаты дока режима измерять бессмысленно.
+  // We open a file first: without it #workspace is hidden, .main has no size,
+  // and measuring the coordinates of the edit mode dock is pointless.
   await js(`(async () => {
     const M = window.__mdvTest;
     await M.openPath(${JSON.stringify(TABS_DIR)} + '/Открываемый.md', { newTab: true });
@@ -1451,22 +1460,22 @@ const SILENCE_CONFIRM = `(() => {
       zoomKids,
       zoomHasBoth: zoomKids.includes('btnZoomOut') && zoomKids.includes('btnZoomIn')
         && zoomKids.includes('zoomVal'),
-      // масштаб реально по центру, а не прижат к левому краю
+      // the zoom really is in the centre, not pressed to the left edge
       zoomNearCenter: (() => {
         const b = bar.getBoundingClientRect();
         const z = zoom.getBoundingClientRect();
         const mid = z.left + z.width / 2;
         return Math.abs(mid - (b.left + b.width / 2)) < b.width * 0.12;
       })(),
-      // Дока правки больше нет: карандаш, «Сохранить» и «Отмена» живут в
-      // круговом меню по правому клику (см. секцию «круговое меню заметки»).
+      // The edit dock is gone: the pencil, "Save" and "Discard" live in
+      // the ring menu on the right click (see the "note ring" section).
       dockGone: !document.getElementById('modeDock'),
       statusKids: kids,
       pathFirst: sb.firstElementChild === document.getElementById('fileName'),
       statusLast: sb.lastElementChild === document.getElementById('statusText'),
-      // Экспорт уехал в круговое меню, кнопки в тулбаре нет
+      // Export moved into the ring menu, there is no button in the toolbar
       noExportBtn: !document.getElementById('dlBtn'),
-      // Кнопок панелей в тулбаре больше нет: они живут в меню и на хоткеях
+      // The pane buttons are no longer in the toolbar: they live in the menu and on hotkeys
       noPanelBtns: !document.getElementById('btnToc')
         && !document.getElementById('btnSidebar'),
     });
@@ -1482,8 +1491,8 @@ const SILENCE_CONFIRM = `(() => {
   t('кнопки экспорта в тулбаре нет', r.noExportBtn === true);
   t('путь к файлу — внизу слева', r.pathFirst === true, JSON.stringify(r.statusKids));
   t('сообщение — внизу справа', r.statusLast === true, JSON.stringify(r.statusKids));
-  // «Сохранить» из кольца и «Экспорт» из кольца не путаются: первые два
-  // меняют заметку, вторые — выгружают копию.
+  // "Save" from the ring and "Export" from the ring are not confused: the
+  // first changes the note, the second exports a copy.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
@@ -1514,9 +1523,9 @@ const SILENCE_CONFIRM = `(() => {
   t('экспорт в кольце есть и в правке', r.hasExport === true);
   t('в тулбаре нет второй «Сохранить»', r.topbarHasSave === false);
 
-  // Цвета статуса: сохранено — зелёный, отмена правок — жёлтый.
-  // Сначала ОТКАЗ от отмены: вкладка должна остаться в правке, и статус
-  // «Правки отменены» показываться не должен — отмены не было.
+  // Status colours: saved — green, changes discarded — yellow.
+  // First a REFUSAL to discard: the tab must stay in edit mode, and the status
+  // "Changes discarded" must not appear — nothing was discarded.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const t = M.active();
@@ -1538,8 +1547,8 @@ const SILENCE_CONFIRM = `(() => {
   t('отказ от отмены сохраняет правки', r.dirty === true);
   t('отказ от отмены не пишет «Правки отменены»', !/Правки отменены/.test(r.text || ''), r.text);
 
-  // Теперь выбираем «Отменить» (выбросить правки) — вот тут жёлтый статус.
-  // null = закрыть без ответа, false = «Отменить» (выбросить), true = «Сохранить».
+  // Now we choose "Discard" (throw the changes away) — here is the yellow status.
+  // null = close without an answer, false = "Discard", true = "Save".
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const sb = document.getElementById('statusbar');
@@ -1564,8 +1573,8 @@ const SILENCE_CONFIRM = `(() => {
   t('после отмены вышли из правки', r.mode === 'read', r.mode);
   t('после отмены правок нет', r.dirty === false);
 
-  // Цвет сохранения. Открываем другой файл и входим в правку заново:
-  // предыдущий шаг вышел из режима правки.
+  // The colour of a save. We open another file and enter edit mode again: the
+  // previous step left edit mode.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const sb = document.getElementById('statusbar');
@@ -1596,7 +1605,7 @@ const SILENCE_CONFIRM = `(() => {
   t('после сохранения правок сняты', r.dirty === false);
   t('после сохранения вышли из правки в просмотр', r.mode === 'read', r.mode);
 
-  // Нижняя панель прячет путь, когда файла нет
+  // The bottom bar hides the path when there is no file
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
@@ -1611,11 +1620,11 @@ const SILENCE_CONFIRM = `(() => {
   t('без файла в нижней панели пусто', r.name === '' && r.dash === false, JSON.stringify(r.name));
   t('без файла док режима отсутствует', r.dockGone === true);
 
-  // ---------------------------------------------- диалог «Сохранить правки?»
+  // ---------------------------------------------- the "Save changes?" dialog
   console.log('\n== диалог несохранённых правок ==');
 
-  // Готовим вкладку с правками и снимаем настоящий диалог (хук снимаем,
-  // иначе его подменит).
+  // We prepare a tab with changes and take down the real dialog (the hook is
+  // removed, otherwise it would substitute it).
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const T = ${JSON.stringify(TABS_DIR)};
@@ -1642,12 +1651,13 @@ const SILENCE_CONFIRM = `(() => {
       })) : [],
       hasX: !!(back && back.querySelector('.dlg-x')),
       xIsIcon: !!(back && back.querySelector('.dlg-x svg')),
-      // Оформление как у остальных окон: общий .modal-box, и inline остались
-      // только на размеры коробки. Оформление (фон, рамка, шрифт) — классами.
+      // Styled like the other windows: the shared .modal-box, and the inline
+      // styles are left only for the box sizes. The styling (background, border,
+      // font) is by classes.
       sharedBox: !!(box && box.classList.contains('modal-box')),
-      // Оформление (фон, цвет, рамка, шрифт) не должно быть инлайном —
-      // именно из-за него диалог выглядел не как остальные окна. Размеры
-      // коробки инлайном задавать можно.
+      // The styling (background, colour, border, font) must not be inline —
+      // it is exactly why the dialog did not look like the other windows. The
+      // box sizes may be set inline.
       inlineLook: back ? [...back.querySelectorAll('*')].filter(e =>
         /background|color|border|font-family/.test(e.style.cssText)).length : 0,
       fontFamily: box ? getComputedStyle(box).fontFamily : '',
@@ -1669,7 +1679,7 @@ const SILENCE_CONFIRM = `(() => {
     'элементов с inline-оформлением: ' + r.inlineLook);
   t('шрифт — как у приложения', /JetBrains/i.test(r.fontFamily || ''), r.fontFamily);
 
-  // Крестик закрывает вопрос БЕЗ потери правок
+  // The close box closes the question WITHOUT losing the changes
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const t = M.active();
@@ -1687,7 +1697,7 @@ const SILENCE_CONFIRM = `(() => {
   t('крестик НЕ выбрасывает правки', r.dirty === true && r.rawKept === true);
   t('крестик оставляет в правке', r.mode === 'edit', r.mode);
 
-  // Esc — то же, что крестик
+  // Esc — the same as the close box
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.exitEdit(false);
@@ -1707,7 +1717,7 @@ const SILENCE_CONFIRM = `(() => {
   t('Esc не выбрасывает правки', r.dirty === true);
   t('Esc оставляет в правке', r.mode === 'edit', r.mode);
 
-  // «Сохранить» в диалоге — пишет файл и выходит в просмотр
+  // "Save" in the dialog — writes the file and returns to reading
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     M.exitEdit(false);
@@ -1730,7 +1740,7 @@ const SILENCE_CONFIRM = `(() => {
   t('правок не осталось', r.dirty === false);
   t('статус зелёный «Сохранено»', /Сохранено/.test(r.status || ''), r.status);
 
-  // «Отменить» — выбрасывает правки
+  // "Discard" — throws the changes away
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const t = M.active();
@@ -1759,7 +1769,7 @@ const SILENCE_CONFIRM = `(() => {
   t('на диске изменений нет', r.onDisk === false);
   t('статус жёлтый «Правки отменены»', /Правки отменены/.test(r.status || ''), r.status);
 
-  // ---------------------------------------------- панели, вид, меню иконки
+  // ---------------------------------------------- panes, view, icon menu
   console.log('\n== панели, вид, меню иконки ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -1786,10 +1796,10 @@ const SILENCE_CONFIRM = `(() => {
   })()`));
 
   t('порядок в области: оглавление, заметка, проводник',
-    // .split — контейнер рабочей области: в нём живёт .main, а при
-    // разделении экрана ещё и вторая панель с рамкой между ними.
-    // toTop в списке раньше не было бы: кнопка «Наверх» переехала внутрь
-    // заметки, а не висит поверх всего окна.
+    // .split is the container of the workspace: .main lives in it, and with the
+    // screen split there is a second pane with a frame between them.
+    // toTop would not be in the list before: the "Back to top" button moved
+    // inside the note instead of floating over the whole window.
     JSON.stringify(r.order) === JSON.stringify(['tocSide', 'tocResizer', 'split', 'filesResizer', 'filesSide']),
     JSON.stringify(r.order));
   t('оглавление слева', r.tocLeft === 0, r.tocLeft + 'px');
@@ -1800,7 +1810,7 @@ const SILENCE_CONFIRM = `(() => {
   t('оглавление наполнено', r.tocFilled === true);
   t('проводник наполнен', r.filesFilled === true);
 
-  // Меню иконки: Файл ▸, Вид ▸, Настройки
+  // The icon menu: File ▸, View ▸, Settings
   r = JSON.parse(await js(`(async () => {
     document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
     document.getElementById('appBrand').click();
@@ -1823,12 +1833,12 @@ const SILENCE_CONFIRM = `(() => {
   t('в меню иконки три пункта',
     JSON.stringify(r.labels) === JSON.stringify(['Файл', 'Вид', 'Настройки']), JSON.stringify(r.labels));
   t('«Файл» и «Вид» — подменю', (r.parents || []).includes('Файл') && (r.parents || []).includes('Вид'));
-  // Проверяем подстроками: в регулярке «Ctrl+,\+» значило «Ctrl, затем плюс
-  // один или более», а не «Ctrl+,».
+  // We check with substrings: in the regex "Ctrl+,\+" meant "Ctrl, then plus
+  // one or more", not "Ctrl,+".
   t('у «Настройки» подсказка Ctrl+,',
     (r.hint || '').indexOf('Ctrl') >= 0 && (r.hint || '').indexOf(',') >= 0, r.hint);
 
-  // Подменю «Вид» с галочками
+  // The View submenu with checks
   r = JSON.parse(await js(`(async () => {
     document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
     document.getElementById('appBrand').click();
@@ -1844,9 +1854,10 @@ const SILENCE_CONFIRM = `(() => {
       labels: [...sub.querySelectorAll('.ctxmenu-label')].map(x => x.textContent.replace('✓', '')),
       seps: sub.querySelectorAll('.ctxmenu-sep').length,
       checks: [...sub.querySelectorAll('.ctxmenu-check')].map(x => x.textContent.trim()),
-      // Раньше здесь проверялся флажок _keep на родительском меню: он
-      // ставился подменю навсегда, и закрыть цепочку можно было только кликом
-      // мимо. Теперь никаких флажков нет — родитель просто остаётся в DOM.
+      // A _keep flag on the parent menu used to be checked here: it
+      // turned the submenu on forever, and the chain could only be closed by a
+      // click outside. Now there are no flags at all — the parent simply stays in
+      // the DOM.
       parentInDom: menus[0].isConnected,
       parentStillFirst: document.querySelectorAll('.ctxmenu')[0] === menus[0],
     };
@@ -1865,7 +1876,7 @@ const SILENCE_CONFIRM = `(() => {
   t('все панели включены по умолчанию', (r.checks || []).every((x) => x === '✓'), JSON.stringify(r.checks));
   t('подменю «Вид» разделено на группы', (r.seps || []) >= 2, String(r.seps));
 
-  // Щелчок по галочке выключает панель и это запоминается
+  // A click on the check switches the pane off and that is remembered
   r = JSON.parse(await js(`(async () => {
     document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
     document.getElementById('appBrand').click();
@@ -1898,7 +1909,7 @@ const SILENCE_CONFIRM = `(() => {
   t('меню закрылось после выбора', r.menusGone === 0);
   t('выбор вида сохранён', r.saved && r.saved.files === false, JSON.stringify(r.saved));
 
-  // Полоса вкладок не скрывается никогда
+  // The tab strip is never hidden
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     await M.setView({ topbar: false, statusbar: false, toc: false, files: false });
@@ -1924,13 +1935,13 @@ const SILENCE_CONFIRM = `(() => {
   t('вкладки на месте', r.tabsPresent > 0, String(r.tabsPresent));
   t('заметка всё ещё видна', r.workspace === true);
 
-  // Кнопок панелей в тулбаре больше нет — переключение только через меню и хоткеи
+  // The pane buttons are no longer in the toolbar — switching only via the menu and hotkeys
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const res = { noToolbarBtns: !document.getElementById('btnToc')
       && !document.getElementById('btnSidebar') };
-    // Состояние читаем ПОСЛЕ каждого переключения: если прочитать раньше,
-    // проверка «вернулся ли проводник» будет смотреть на уже спрятанную панель.
+    // The state is read AFTER every switch: reading it earlier would make the
+    // check "did the explorer come back" look at an already hidden pane.
     res.toggled = await M.toggleView('files');
     res.hiddenAfterToggle = document.getElementById('filesSide').hidden;
     res.back = await M.toggleView('files');
@@ -1948,7 +1959,7 @@ const SILENCE_CONFIRM = `(() => {
   t('toggleView скрывает оглавление', r.tocOff === false && r.tocHidden === true);
   t('toggleView возвращает оглавление', r.tocOn === true && r.tocBack === false);
 
-  // ПКМ по «+»
+  // Right click on the "+"
   r = JSON.parse(await js(`(async () => {
     document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
     const plus = document.getElementById('btnNewTab');
@@ -1970,7 +1981,7 @@ const SILENCE_CONFIRM = `(() => {
     JSON.stringify(r.labels) === JSON.stringify(['Открыть .md', 'Открыть папку']), JSON.stringify(r.labels));
   t('ПКМ по «+» не создаёт вкладку', r.tabsUnchanged === true);
 
-  // Ctrl+, открывает настройки
+  // Ctrl+, opens the settings
   r = JSON.parse(await js(`(async () => {
     document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
     document.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }));
@@ -1982,19 +1993,19 @@ const SILENCE_CONFIRM = `(() => {
     };
     return JSON.stringify(res);
   })()`));
-  // Закрывать окно настроек — по-человечески (см. closeModals). Снос узла
-  // оставлял слушатель Escape от wireModal жить, и каждый следующий Escape
-  // во всём приложении откатывал настройки «несуществующего» диалога.
+  // Closing the settings window the human way (see closeModals). Removing the
+  // node left the Escape listener from wireModal alive, and every next Escape
+  // across the application rolled back the settings of a "non-existent" dialog.
   await closeModals();
 
   t('Ctrl+, открывает настройки', r.opened === true && /Настройки/.test(r.title || ''), r.title);
 
-  // ------------------------------------------------- прокрутка и призрак
+  // ------------------------------------------------- scrolling and the ghost
   console.log('\n== прокрутка и призрак вкладки ==');
 
-  // Правило: руками (колесо, полоса) — мгновенно, кнопками — плавно.
-  // Глобальный scroll-behavior:smooth ломал именно колесо, поэтому проверяем
-  // вычисленное значение, а не «на ощупь».
+  // The rule: by hand (wheel, scrollbar) — instantly, with buttons — smoothly.
+  // A global scroll-behavior:smooth broke exactly the wheel, so we check the
+  // computed value rather than going by feel.
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const D = ${JSON.stringify(TABS_DIR)};
@@ -2008,7 +2019,7 @@ const SILENCE_CONFIRM = `(() => {
       tabs: cs(document.getElementById('tabs')).scrollBehavior,
     };
 
-    // Шевроны обязаны просить плавно
+    // The chevrons must ask for smoothness
     const calls = [];
     const tabsEl = document.getElementById('tabs');
     const real = tabsEl.scrollBy;
@@ -2026,7 +2037,7 @@ const SILENCE_CONFIRM = `(() => {
   t('шевроны просят плавную прокрутку', r.chevronCalls === 2 && r.chevronSmooth === true,
     r.chevronCalls + '/' + r.chevronSmooth);
 
-  // Возврат к сохранённой позиции при переключении вкладок — тоже мгновенно
+  // Returning to the saved position when switching tabs is instant too
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const c = document.getElementById('content');
@@ -2050,7 +2061,7 @@ const SILENCE_CONFIRM = `(() => {
   t('возврат к позиции мгновенный, не плавный',
     (r.behavior || []).every((b) => b === 'instant'), JSON.stringify(r.behavior));
 
-  // Призрак перетаскивания: не снимок вкладки, а плашка с именем
+  // The drag ghost: a plate with the name, not a snapshot of the tab
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     for (const id of [...M.tabs.keys()]) await M.closeTab(id, { silent: true });
@@ -2067,7 +2078,7 @@ const SILENCE_CONFIRM = `(() => {
       effectAllowed: '', setData() {}, setDragImage(img, x, y) { ghostCalls.push({ img, x, y }); },
     };
     tab.dispatchEvent(ev);
-    // Призрак живёт до конца текущей задачи, поэтому смотрим синхронно
+    // The ghost lives until the end of the current task, so we look synchronously
     const ghost = document.querySelector('.drag-ghost');
     const res = {
       name,
@@ -2081,8 +2092,8 @@ const SILENCE_CONFIRM = `(() => {
       stripMarked: document.getElementById('tabs').classList.contains('dragging-active'),
     };
     tab.dispatchEvent(new Event('dragend', { bubbles: true }));
-    // Призрак снимается на следующем тике (setTimeout 0): Firefox не
-    // успевает снять снимок раньше. Здесь ждём этот тик.
+    // The ghost is removed on the next tick (setTimeout 0): Firefox does not
+    // manage to take the snapshot earlier. Here we wait for that tick.
     await new Promise(r2 => setTimeout(r2, 50));
     res.afterEnd = {
       ghostGone: !document.querySelector('.drag-ghost'),
@@ -2104,7 +2115,7 @@ const SILENCE_CONFIRM = `(() => {
   t('после отпускания метки сняты',
     r.afterEnd.draggingClass === false && r.afterEnd.stripMarked === false);
 
-  // ---------------------------------------------------- разделение экрана
+  // ---------------------------------------------------- splitting the screen
   console.log('\n== разделение экрана ==');
 
   r = JSON.parse(await js(`(async () => {
@@ -2132,24 +2143,24 @@ const SILENCE_CONFIRM = `(() => {
 
   t('без разделения вторая панель скрыта', r.panelHidden === true && r.second === null);
   t('рамка разделения не занимает место', r.dividerHidden === true);
-  // Заметку ужимает проводник справа, поэтому «во всю область» — это ширина
-  // #split, а не окна.
+  // The note is squeezed by the explorer on the right, so "the whole area"
+  // means the width of #split, not of the window.
   t('без разделения заметка во всю область',
     r.main.left === r.split.left && r.main.right === r.split.right,
     JSON.stringify(r.main) + ' против ' + JSON.stringify(r.split));
   t('порядок: заметка, рамка, вторая панель',
-    // У левой панели теперь есть id: по классу .main её не отличить от правой,
-    // которая наследует тот же класс.
+    // The left pane has an id now: by the class .main it cannot be told from the
+    // right one, which inherits the same class.
     JSON.stringify(r.order) === JSON.stringify(['mainPane', 'splitDivider', 'panel2']),
     JSON.stringify(r.order));
 
-  // Перетаскивание вкладки в поле заметки разделяет экран
+  // Dragging a tab into the note area splits the screen
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
     const tabsEl = document.getElementById('tabs');
     const content = document.getElementById('content');
     const out = {};
-    // берём первую НЕактивную вкладку
+    // we take the first INactive tab
     const inactive = [...document.querySelectorAll('.tab')].find(d => !d.classList.contains('active'));
     const wantId = +inactive.dataset.id;
 
@@ -2158,15 +2169,15 @@ const SILENCE_CONFIRM = `(() => {
     inactive.dispatchEvent(ev);
     await new Promise(r2 => setTimeout(r2, 50));
 
-    // курсор над полем заметки: рамка места разделения должна появиться
+    // the cursor over the note area: the frame of the split place must appear
     const over = new Event('dragover', { bubbles: true, cancelable: true });
     over.dataTransfer = { dropEffect: '' };
     content.dispatchEvent(over);
     await new Promise(r2 => setTimeout(r2, 250));
     const split = document.getElementById('split');
     const hinted = document.getElementById('mainPane').classList.contains('drop-split');
-    // Предпросмотр читаем ЗДЕСЬ: после отпускания мыши класс снимается, и
-    // проверять надо то, что было видно в момент перетаскивания.
+    // The preview is read HERE: after the mouse is released the class is
+    // removed, and what has to be checked is what was visible while dragging.
     const previewWhileHovering = split.classList.contains('split-preview');
     const mainWhileHovering = Math.round(document.getElementById('mainPane')
       .getBoundingClientRect().width);
@@ -2219,8 +2230,7 @@ const SILENCE_CONFIRM = `(() => {
   t('вторая панель получила заметку', r.contentHas === true);
   t('в шапке — имя заметки', (r.headTitle || '').length > 3, r.headTitle);
   t('шапка узкая', r.headHeight > 0 && r.headHeight <= 40, String(r.headHeight));
-  // Регресс: .content объявлен в файле ПОСЛЕ блока разделения, и при равной
-  // специфичности побеждал он — общие поля 74px съедали четверть узкой панели,
+  // Regression: .content is declared in the file AFTER the split block, and at equal
   // и заголовки ломались на два слова. Поэтому селектор из двух классов.
   t('у второй панели свои, меньшие поля', r.pad2 > 0 && r.pad2 < 40, r.pad2 + 'px');
   t('полоса вкладок общая, вкладок столько же', r.strip === 3, String(r.strip));
