@@ -121,9 +121,9 @@ t('ключи словарей совпадают (' + ruKeys.length + ' шт.)'
 // проверка тогда всегда проходит. Новый домен — это решение, а не следствие.
 const DOMAINS = [
   'about', 'btn', 'clip', 'discard', 'err', 'error', 'export', 'file',
-  'find', 'lang', 'md', 'menu', 'name', 'nav', 'path', 'quit', 'recent',
-  'render', 'ring', 'settings', 'status', 'tab', 'toc', 'trash', 'tree',
-  'unit', 'view', 'zoom',
+  'find', 'ipc', 'lang', 'md', 'menu', 'name', 'nav', 'path', 'quit',
+  'recent', 'render', 'ring', 'seed', 'settings', 'status', 'tab', 'toc',
+  'trash', 'tree', 'unit', 'view', 'zoom',
 ];
 const domRe = new RegExp('^(' + DOMAINS.join('|') + ')\\.');
 const strays = ruKeys.filter((k) => !domRe.test(k));

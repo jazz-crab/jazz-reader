@@ -24,6 +24,21 @@ const i18nSrc = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'index.js'), 'utf
 const preloadSrc = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
 const tabsSrc = fs.readFileSync(path.join(ROOT, 'test', 'tabs.js'), 'utf8');
 
+// --- 0. Что переводить не надо ------------------------------------------
+//
+// В ipc.js остаются два русских литерала: это комментарии, которые
+// подставляются в CSS экспортируемого файла. Они относятся к выходному
+// файлу, а не к интерфейсу, и переводить их нельзя — комментарий в чужом
+// CSS на чужом языке. Проверка фиксирует, что именно эти два, чтобы
+// «недоделанный перевод» не искали заново.
+const ipcSrc = fs.readFileSync(path.join(ROOT, 'ipc.js'), 'utf8');
+const ipcStrays = [...ipcSrc.matchAll(/^\s*.*(?:'|`)[^'`\n]*[А-Яа-яЁё][^'`\n]*(?:'|`)[^/]*$/gm)]
+  .map((m) => m[0].trim())
+  .filter((l) => l.includes('/*') || l.includes('css'));
+t('в ipc.js русским остались только комментарии в CSS',
+  ipcStrays.length === 2 && ipcStrays.every((l) => /шрифты приложения|выбор из окна экспорта/.test(l)),
+  ipcStrays.join('\n       '));
+
 console.log('\n== перевод строк ==');
 
 // --- 1. --lang= должен читаться, а не игнорироваться ----------------------

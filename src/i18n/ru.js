@@ -274,6 +274,23 @@
     'status.viewNotSaved': 'Вид не сохранён: ',
     'status.skippedOther': 'Пропущено (не .md и не папка): ',
     'status.readyHint': 'Готово. Ctrl+O — открыть .md, Ctrl+Shift+O — открыть папку',
+    'ipc.notAFile': 'Это каталог, а не файл',
+    'ipc.mdOnly': 'Поддерживаются только .md',
+    'ipc.tooBig': 'Файл больше 5 МБ',
+    'ipc.openMdTitle': 'Открыть Markdown',
+    'ipc.openFolderTitle': 'Открыть папку с заметками',
+    'ipc.notAFileShort': 'Это не файл',
+    'ipc.newNoteTitle': 'Новая заметка',
+    'seed.description': 'Описание тут.',
+    'seed.heading': '## Раздел',
+    'seed.item': '- пункт',
+    'ipc.newProjectFolder': 'Папка нового проекта',
+    'ipc.createProject': 'Создать проект',
+    'seed.projectReadme': 'Заметки проекта. Файлы разложены по подпапкам.',
+    'ipc.tooManyTemp': 'слишком много временных заметок',
+    'ipc.noFolderOpen': 'не открыта папка',
+    'ipc.notAFolder': 'не каталог',
+    'ipc.tooManyFolders': 'слишком много папок',
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = DICT.ru;

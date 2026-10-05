@@ -267,6 +267,23 @@
     'status.viewNotSaved': 'View state not saved: ',
     'status.skippedOther': 'Skipped (neither .md nor a folder): ',
     'status.readyHint': 'Ready. Ctrl+O — open .md, Ctrl+Shift+O — open a folder',
+    'ipc.notAFile': 'This is a folder, not a file',
+    'ipc.mdOnly': 'Only .md files are supported',
+    'ipc.tooBig': 'File is larger than 5 MB',
+    'ipc.openMdTitle': 'Open Markdown',
+    'ipc.openFolderTitle': 'Open notes folder',
+    'ipc.notAFileShort': 'This is not a file',
+    'ipc.newNoteTitle': 'New note',
+    'seed.description': 'Description here.',
+    'seed.heading': '## Section',
+    'seed.item': '- item',
+    'ipc.newProjectFolder': 'New project folder',
+    'ipc.createProject': 'Create project',
+    'seed.projectReadme': 'Project notes. Files are sorted into subfolders.',
+    'ipc.tooManyTemp': 'too many temporary notes',
+    'ipc.noFolderOpen': 'no folder open',
+    'ipc.notAFolder': 'not a folder',
+    'ipc.tooManyFolders': 'too many folders',
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = DICT.en;

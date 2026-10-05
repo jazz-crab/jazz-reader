@@ -12,10 +12,18 @@ const fsp = require('fs/promises');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { execFile } = require('child_process');
+const i18n = require('./src/i18n/index.js');
 
 const MD_EXT = /\.md$/i;
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', '.obsidian', '.trash']);
 const MAX_MD_BYTES = 5 * 1024 * 1024;
+
+/*
+ * Перевод строки. Здесь нужен самому ipc.js: заголовки системных диалогов
+ * открытия и тексты ошибок видит человек, а модуль про i18n ничего не знает.
+ * Язык ставит main.js при старте — до регистрации обработчиков.
+ */
+const tr = (key, params) => i18n.t(key, params);
 
 function targetWindow() {
   return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
@@ -489,9 +497,9 @@ let captionWidth = 140;
 function register() {
   ipcMain.handle('mdv:read', async (_e, filePath) => {
     const st = await fsp.stat(filePath);
-    if (st.isDirectory()) throw new Error('Это каталог, а не файл');
-    if (!MD_EXT.test(filePath)) throw new Error('Поддерживаются только .md');
-    if (st.size > MAX_MD_BYTES) throw new Error('Файл больше 5 МБ');
+    if (st.isDirectory()) throw new Error(tr('ipc.notAFile'));
+    if (!MD_EXT.test(filePath)) throw new Error(tr('ipc.mdOnly'));
+    if (st.size > MAX_MD_BYTES) throw new Error(tr('ipc.tooBig'));
     const { text, encoding } = decodeBuffer(await fsp.readFile(filePath));
     return {
       path: filePath,
@@ -506,7 +514,7 @@ function register() {
   });
 
   ipcMain.handle('mdv:save', async (_e, { filePath, content }) => {
-    if (!MD_EXT.test(filePath)) throw new Error('Поддерживаются только .md');
+    if (!MD_EXT.test(filePath)) throw new Error(tr('ipc.mdOnly'));
     // Пишем атомарно: сначала во временный рядом, потом rename.
     const tmp = filePath + '.mdvtmp';
     await fsp.writeFile(tmp, content, 'utf8');
@@ -527,7 +535,7 @@ function register() {
 
   ipcMain.handle('mdv:dialogFile', async () => {
     const r = await dialog.showOpenDialog(targetWindow(), {
-      title: 'Открыть Markdown',
+      title: tr('ipc.openMdTitle'),
       properties: ['openFile'],
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     });
@@ -536,7 +544,7 @@ function register() {
 
   ipcMain.handle('mdv:dialogFolder', async () => {
     const r = await dialog.showOpenDialog(targetWindow(), {
-      title: 'Открыть папку с заметками',
+      title: tr('ipc.openFolderTitle'),
       properties: ['openDirectory'],
     });
     return r.canceled ? [] : r.filePaths;
@@ -553,7 +561,7 @@ function register() {
   ipcMain.handle('mdv:trash', async (_e, p) => {
     try {
       const st = await fsp.stat(p);
-      if (!st.isFile()) return { ok: false, error: 'Это не файл' };
+      if (!st.isFile()) return { ok: false, error: tr('ipc.notAFileShort') };
       await shell.trashItem(path.resolve(p));
       return { ok: true };
     } catch (e) {
@@ -567,8 +575,8 @@ function register() {
    */
   ipcMain.handle('mdv:newFile', async (_e, seedName) => {
     const r = await dialog.showSaveDialog(targetWindow(), {
-      title: 'Новая заметка',
-      defaultPath: String(seedName || 'Новая заметка') + '.md',
+      title: tr('ipc.newNoteTitle'),
+      defaultPath: String(seedName || tr('name.newNote')) + '.md',
       filters: [{ name: 'Markdown', extensions: ['md'] }],
       properties: ['createDirectory', 'showOverwriteConfirmation'],
     });
@@ -579,11 +587,11 @@ function register() {
       const text = [
         '# ' + title,
         '',
-        'Описание тут.',
+        tr('seed.description'),
         '',
-        '## Раздел',
+        tr('seed.heading'),
         '',
-        '- пункт',
+        tr('seed.item'),
         '',
       ].join('\n');
       // Не затираем существующий файл: showOverwriteConfirmation уже спросил,
@@ -601,9 +609,9 @@ function register() {
    */
   ipcMain.handle('mdv:newProject', async (_e, seedName) => {
     const r = await dialog.showOpenDialog(targetWindow(), {
-      title: 'Папка нового проекта',
-      defaultPath: String(seedName || 'Новый проект'),
-      buttonLabel: 'Создать проект',
+      title: tr('ipc.newProjectFolder'),
+      defaultPath: String(seedName || tr('name.newProject')),
+      buttonLabel: tr('ipc.createProject'),
       properties: ['openDirectory', 'createDirectory'],
     });
     if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
@@ -616,7 +624,7 @@ function register() {
         await fsp.writeFile(readme, [
           '# ' + title,
           '',
-          'Заметки проекта. Файлы разложены по подпапкам.',
+          tr('seed.projectReadme'),
           '',
         ].join('\n'), 'utf8');
       }
@@ -683,13 +691,13 @@ function register() {
     try {
       const dir = path.join(os.tmpdir(), 'jazz-reader');
       await fsp.mkdir(dir, { recursive: true });
-      const base = String(seedName || 'Безымянный');
+      const base = String(seedName || tr('name.untitled'));
       let file = '';
       for (let n = 1; n < 1000; n++) {
         file = path.join(dir, base + (n === 1 ? '' : ' ' + n) + '.md');
         if (!fs.existsSync(file)) break;
       }
-      if (fs.existsSync(file)) return { ok: false, error: 'слишком много временных заметок' };
+      if (fs.existsSync(file)) return { ok: false, error: tr('ipc.tooManyTemp') };
       await fsp.writeFile(file, '# ' + path.basename(file, '.md') + '\n\n', 'utf8');
       return { ok: true, path: file };
     } catch (e) {
@@ -703,16 +711,16 @@ function register() {
    */
   ipcMain.handle('mdv:newFolder', async (_e, parent, seedName) => {
     try {
-      if (!parent) return { ok: false, error: 'не открыта папка' };
+      if (!parent) return { ok: false, error: tr('ipc.noFolderOpen') };
       const st = await fsp.stat(parent).catch(() => null);
-      if (!st || !st.isDirectory()) return { ok: false, error: 'не каталог' };
-      const base = String(seedName || 'Новая папка');
+      if (!st || !st.isDirectory()) return { ok: false, error: tr('ipc.notAFolder') };
+      const base = String(seedName || tr('name.newFolder'));
       let dir = '';
       for (let n = 1; n < 1000; n++) {
         dir = path.join(parent, base + (n === 1 ? '' : ' ' + n));
         if (!fs.existsSync(dir)) break;
       }
-      if (fs.existsSync(dir)) return { ok: false, error: 'слишком много папок' };
+      if (fs.existsSync(dir)) return { ok: false, error: tr('ipc.tooManyFolders') };
       await fsp.mkdir(dir, { recursive: true });
       return { ok: true, path: dir, name: path.basename(dir) };
     } catch (e) {
