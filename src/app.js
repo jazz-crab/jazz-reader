@@ -3614,6 +3614,9 @@ function applySettings(s) {
   // Подписи из разметки (title, aria-label, placeholder) переводим здесь же:
   // applySettings вызывается и на старте, и при каждой смене языка.
   MDV_I18N.applyDom();
+  // Текст, который CSS вставляет через content:, — переменная, иначе подпись
+  // осталась бы на одном языке при любом выбранном.
+  root.style.setProperty('--i18n-second-pane', tr('split.secondPane'));
   // Размер текста идёт через setZoom, чтобы ползунок в настройках и кнопки
   // масштаба в тулбаре всегда показывали одно и то же.
   setZoom(s.zoom);

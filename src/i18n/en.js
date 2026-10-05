@@ -244,6 +244,7 @@
     'view.split': 'Split screen',
     'view.splitHint': 'drag a tab',
     'view.closeRight': 'Close the right pane',
+    'split.secondPane': 'second pane',
     'menu.file.new': 'New file',
     'menu.file.newFolder': 'New folder',
     'menu.file.recent': 'Recent',

@@ -251,6 +251,7 @@
     'view.split': 'Разделить экран',
     'view.splitHint': 'перетащи вкладку',
     'view.closeRight': 'Закрыть правую панель',
+    'split.secondPane': 'вторая панель',
     'menu.file.new': 'Новый файл',
     'menu.file.newFolder': 'Новая папка',
     'menu.file.recent': 'Недавние',

@@ -122,8 +122,8 @@ t('ключи словарей совпадают (' + ruKeys.length + ' шт.)'
 const DOMAINS = [
   'about', 'btn', 'clip', 'discard', 'err', 'error', 'export', 'file',
   'find', 'ipc', 'lang', 'md', 'menu', 'name', 'nav', 'path', 'quit',
-  'recent', 'render', 'ring', 'seed', 'settings', 'status', 'tab', 'toc',
-  'trash', 'tree', 'unit', 'view', 'zoom',
+  'recent', 'render', 'ring', 'seed', 'settings', 'split', 'status', 'tab',
+  'toc', 'trash', 'tree', 'unit', 'view', 'zoom',
 ];
 const domRe = new RegExp('^(' + DOMAINS.join('|') + ')\\.');
 const strays = ruKeys.filter((k) => !domRe.test(k));
