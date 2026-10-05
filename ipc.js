@@ -1,8 +1,8 @@
 'use strict';
 /*
- * IPC-слой: всё, что renderer просит у главного процесса.
- * Вынесено отдельно от main.js, чтобы smoke-тест проверял настоящие
- * обработчики, а не их копию.
+ * The IPC layer: everything the renderer asks of the main process.
+ * Kept apart from main.js so that the smoke test exercises the real handlers
+ * rather than a copy of them.
  */
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
@@ -19,9 +19,10 @@ const IGNORED_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', '.obsidian'
 const MAX_MD_BYTES = 5 * 1024 * 1024;
 
 /*
- * Перевод строки. Здесь нужен самому ipc.js: заголовки системных диалогов
- * открытия и тексты ошибок видит человек, а модуль про i18n ничего не знает.
- * Язык ставит main.js при старте — до регистрации обработчиков.
+ * Translation of a string. ipc.js needs it for itself: the titles of the system
+ * open dialogs and the error texts are seen by a person, and the module knew
+ * nothing about i18n. main.js sets the language at startup, before the
+ * handlers are registered.
  */
 const tr = (key, params) => i18n.t(key, params);
 
@@ -29,7 +30,7 @@ function targetWindow() {
   return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
 }
 
-/** Кодировки: BOM -> строгий UTF-8 -> Windows-1251 (старые .md с русским). */
+/** Encodings: BOM -> strict UTF-8 -> Windows-1251 (old .md files in Russian). */
 function decodeBuffer(buf) {
   if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
     return { text: buf.toString('utf8', 3), encoding: 'utf-8-bom' };
@@ -48,7 +49,7 @@ function decodeBuffer(buf) {
   }
 }
 
-/** Рекурсивный список ТОЛЬКО .md, сгруппированный по каталогам. */
+/** Recursive list of .md ONLY, grouped by directory. */
 async function listMdTree(root) {
   const tree = [];
   let total = 0;
@@ -91,17 +92,18 @@ async function listMdTree(root) {
 }
 
 /**
- * Заменить в CSS ссылки на файлы рядом с ним на base64-данные.
+ * Replace references to files next to the CSS with base64 data.
  *
- * Нужно для автономного файла: оставшийся url(fonts/...) в @font-face — это
- * битая ссылка, и без интернета (а в поезде его нет) вместо своего шрифта
- * браузер покажет системный. Все восемь начертаний JetBrains Mono весили
- * меньше мегабайта вместе, а @font-face с data-URI работает везде.
+ * Needed for a self-contained file: the leftover url(fonts/...) in @font-face is
+ * a broken reference, and without a network (and in a train there is none) the
+ * browser shows a system font instead of ours. All eight JetBrains Mono weights
+ * together weighed less than a megabyte, and @font-face with a data-URI works
+ * everywhere.
  *
- * base64 кладём только на woff2/woff/ttf/otf: на data:, SVG и прочее не
- * трогаем — вдруг в CSS встретится картинка, которую и так надо хранить
- * файлом (тогда пусть лучше битая ссылка, чем молчаливое превращение в
- * base64 в десять раз больший файл).
+ * base64 is applied only to woff2/woff/ttf/otf: SVG and the rest on data: are
+ * left alone — the CSS may contain an image that ought to stay a file, and
+ * then a broken reference is the better outcome, rather than a silent turn
+ * into base64 ten times larger.
  */
 async function inlineLocalFonts(css, baseDir) {
   const urls = [...css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => m[1]);
@@ -117,8 +119,8 @@ async function inlineLocalFonts(css, baseDir) {
     const mime = ext === '.woff2' ? 'font/woff2' : ext === '.woff' ? 'font/woff'
       : ext === '.ttf' ? 'font/ttf' : 'font/otf';
     const data2 = 'data:' + mime + ';base64,' + data.toString('base64');
-    // Заменяем посимвольно-по-строке: регулярка с обратной ссылкой $1
-    // съедала бы слэши, а тут важна точность до символа.
+    // Replaced by string rather than by a regex with a backreference $1: that
+    // would eat the slashes, and here accuracy to the character matters.
     for (const q of [u, '"' + u + '"', "'" + u + "'"]) {
       out = out.split('url(' + q + ')').join('url(' + data2 + ')');
     }
@@ -128,14 +130,14 @@ async function inlineLocalFonts(css, baseDir) {
 }
 
 /*
- * Недавние файлы и настройки — маленькие json рядом с настройками
- * пользователя. Пишем атомарно (через tmp + rename), иначе падение
- * посреди записи оставляет битый файл и приложение падает на старте.
+ * Recent files and settings are small json files next to the user settings.
+ * They are written atomically (via tmp + rename), otherwise a crash in the
+ * middle of a write leaves a broken file and the application fails at startup.
  *
- * Живут на уровне модуля, а не внутри register(): окно подтверждения выхода
- * показывает главный процесс, и ему тоже нужно прочитать и записать
- * настройку «не спрашивать больше» — не через renderer, потому что вопрос
- * возникает как раз когда renderer уже закрывается.
+ * They live at module level rather than inside register(): the quit confirmation
+ * window is shown by the main process, and it needs to read and write the
+ * "do not ask again" setting too — not through the renderer, because the
+ * question comes up exactly when the renderer is already closing.
  */
 const storeFile = (name) => path.join(app.getPath('userData'), name);
 
@@ -145,7 +147,7 @@ async function readStore(name, fallback) {
     const v = JSON.parse(raw);
     return v && typeof v === 'object' ? v : fallback;
   } catch {
-    return fallback;   // нет файла или битый — начинаем с пустого
+    return fallback;   // no file or broken, start from empty
   }
 }
 
@@ -158,7 +160,7 @@ async function writeStore(name, value) {
   return true;
 }
 
-/** Одно поле настроек: прочитать и (по желанию) записать. */
+/** One settings field: read it and (optionally) write it. */
 async function setting(key, value) {
   const cur = await readStore('settings.json', {});
   if (value === undefined) return cur[key];
@@ -168,35 +170,36 @@ async function setting(key, value) {
 }
 
 /**
- * Автономный HTML одним файлом.
+ * A self-contained HTML file.
  *
- * Формулы к этому моменту уже отрендерены KaTeX в HTML, но KaTeX-CSS тянет
- * шрифты через url(fonts/...). Чтобы файл был по-настоящему автономным,
- * подставляем в @font-face base64-шрифты — но только те, что реально
- * встречаются на этой странице, иначе файл распухнет на пару мегабайт.
+ * By this point KaTeX has already rendered the formulas into HTML, but the
+ * KaTeX CSS pulls its fonts through url(fonts/...). For the file to be truly
+ * self-contained we put base64 fonts into @font-face — but only the ones that
+ * actually occur on this page, or the file would swell by a couple of megabytes.
  */
 async function buildStandaloneHtml(title, body, opts) {
   const o = opts || {};
   const katexDir = path.join(__dirname, 'src', 'vendor', 'katex');
   /*
-   * BOM снимаем обязательно.
+   * The BOM must go.
    *
-   * style.css начинается с U+FEFF — в файле это нормально, парсер читает файл
-   * и знак не видит. А в автономном HTML этот же CSS оказывается в середине
-   * одного <style>, и знак посередине уже не «начало файла», а недопустимый
-   * символ: Chromium съедает на нём следующий блок целиком.
+   * style.css starts with U+FEFF — in a file that is normal, the parser reads
+   * the file and does not see the mark. In the standalone HTML that same CSS
+   * lands in the middle of one <style>, and a mark in the middle is no longer
+   * "start of file" but an invalid character: Chromium swallows the next block
+   * whole.
    *
-   * Так терялся :root — то есть ВСЕ переменные темы: --bg, --fg, --border и
-   * остальные. Страница собиралась без цвета вообще: цвет текста и фона
-   * брался из неопределённой переменной, то есть становился чёрным на
-   * прозрачном. Отсюда и «экспорт сохраняет не весь CSS».
+   * That is how :root was lost — that is, ALL the theme variables: --bg, --fg,
+   * --border and the rest. The page came out with no colour at all: text and
+   * background colours came from an undefined variable, that is, turned black
+   * on transparent. Hence "the export does not keep all of the CSS".
    */
   const readCss = async (p) => (await fsp.readFile(p, 'utf8')).replace(/^\uFEFF/, '');
   const katexCss = await readCss(path.join(katexDir, 'katex.min.css'));
   let ourCss = await readCss(path.join(__dirname, 'src', 'style.css'));
-  // Свой шрифт лежит отдельным файлом src/fonts.css и в style.css его нет —
-  // про него забыли, и в экспорте вместо JetBrains Mono была системная
-  // моноширинная. Подключаем и вшиваем наравне с KaTeX.
+  // Our own font lives in a separate file src/fonts.css and is not in style.css —
+  // it was forgotten, and the export showed a system monospace instead of
+  // JetBrains Mono. We attach and inline it alongside KaTeX.
   const fontCss = await readCss(path.join(__dirname, 'src', 'fonts.css'));
   const own = await inlineLocalFonts(fontCss, path.join(__dirname, 'src'));
   ourCss += '\n/* шрифты приложения */\n' + own.css;
@@ -225,8 +228,8 @@ async function buildStandaloneHtml(title, body, opts) {
     if (classes.some((c) => classBag.includes(c.slice(1)))) needed.add(fam + '|' + w + '|' + st);
   }
 
-  // База добавляется всегда: если эвристика по классам что-то пропустила,
-  // формула не развалится, а просто возьмёт запасной системный шрифт.
+  // The base is always added: if the class heuristic missed something, the
+  // formula will not fall apart, it will simply take a fallback system font.
   for (const k of [
     'KaTeX_Main|400|normal', 'KaTeX_Main|700|normal',
     'KaTeX_Main|400|italic', 'KaTeX_Main|700|italic',
@@ -248,8 +251,8 @@ async function buildStandaloneHtml(title, body, opts) {
     done.add(f.block);
     inlined++;
   }
-  // Неиспользуемые @font-face убираем совсем, иначе в файле остаются
-  // битые ссылки url(fonts/...) и он перестаёт быть автономным.
+  // Unused @font-face blocks are removed entirely, otherwise broken
+  // url(fonts/...) references stay in the file and it stops being self-contained.
   for (const f of faces) {
     if (done.has(f.block)) continue;
     out = out.split(f.block).join('');
@@ -273,20 +276,20 @@ async function buildStandaloneHtml(title, body, opts) {
 }
 
 /*
- * Список системных шрифтов.
+ * The list of system fonts.
  *
- * Браузер шрифты не перечислит: queryLocalFonts() в Electron не работает, а
- * font-family всегда молча падает на следующий в списке. Единственный честный
- * источник — реестр Windows, где имя значения устроено как «Семейство Стиль
- * (TrueType)».
+ * The browser will not enumerate fonts for us: queryLocalFonts() does not work
+ * in Electron, and font-family always falls through silently to the next entry
+ * in the list. The only honest source is the Windows registry, where the value
+ * name is built as "Family Style (TrueType)".
  *
  *   Consolas Bold Italic (TrueType)   -> Consolas
  *   Segoe UI Semibold (TrueType)      -> Segoe UI Semibold
  *
- * Второй случай разбирается не до конца (у Segoe UI Semibold семейство —
- * «Segoe UI», а начертание жирное), но для списка выбора это честнее, чем
- * ничего: человек увидит знакомое имя и, если оно не применилось, увидит
- * предпросмотр и поставит другое.
+ * The second case is not parsed all the way (for Segoe UI Semibold the family is
+ * "Segoe UI" and the weight is bold), but for a drop-down list that is more
+ * honest than nothing: the person sees a familiar name and, if it did not
+ * apply, sees the preview and picks another.
  */
 const FONT_STYLE_WORDS = new Set([
   'regular', 'roman', 'book', 'bold', 'black', 'heavy', 'demibold', 'semibold',
@@ -299,8 +302,8 @@ const FONT_STYLE_WORDS = new Set([
 
 function fontFamilyFromRegistryName(value) {
   let name = String(value).replace(/\s*\([^()]*\)\s*$/, '').trim();
-  // Стиль может идти двумя словами («Bold Italic»), снимаем по одному, пока
-  // хвост похож на стиль.
+  // The style may be two words ("Bold Italic"); we strip one word at a time while
+  // the tail still looks like a style.
   for (let n = 0; n < 3; n += 1) {
     const m = /^(.*\S)\s+([A-Za-z]+)$/.exec(name);
     if (!m) break;
@@ -309,8 +312,8 @@ function fontFamilyFromRegistryName(value) {
     name = m[1];
   }
   name = name.trim();
-  // @-шрифты в реестре — это файлы, а не семейства, в списке выбора они
-  // бесполезны.
+  // @-fonts in the registry are files, not families, and in a drop-down list they
+  // are useless.
   if (!name || name.startsWith('@')) return null;
   return name;
 }
@@ -334,20 +337,20 @@ async function listSystemFonts() {
         }, (e, so) => (e ? rej(e) : res(so)));
       });
     } catch {
-      // Ключа может не быть (например, у portable-сборки в чужом профиле) —
-      // это не ошибка, а просто один из источников пуст.
+      // The key may not exist (for instance for a portable build in someone
+      // else's profile) — that is not an error, just one empty source.
       continue;
     }
     for (const line of String(outp).split(/\r?\n/)) {
-      // Строка вывода reg query: «    Имя    REG_SZ    файл.ttf».
+      // A line of reg query output: "    Name    REG_SZ    file.ttf".
       const m = /^\s{4}(.+?)\s{4}REG_\w+\s/.exec(line);
       if (!m) continue;
       put(fontFamilyFromRegistryName(m[1]));
     }
   }
   const coll = new Intl.Collator('ru', { sensitivity: 'base' });
-  // Свой шрифт первым, остальные по алфавиту: список в выпадающем поле
-  // начинается с того, что нужно чаще всего.
+  // Our own font first, the rest alphabetically: the drop-down starts with what
+  // is needed most often.
   const all = [...out.values()];
   const own = all.filter((n) => n === 'JetBrainsMono');
   const rest = all.filter((n) => n !== 'JetBrainsMono').sort(coll.compare);
@@ -355,16 +358,16 @@ async function listSystemFonts() {
 }
 
 /*
- * CSS по выбору в окне экспорта: палитра, шрифт, размер.
+ * CSS from the choices in the export window: palette, font, size.
  *
- * Размер задаётся на .content — всё внутри в em, поэтому масштабируется
- * ровно то же, что масштабируется ползунком зума в приложении, и в
- * предпросмотре, и в файле.
+ * The size is set on .content — everything inside is in em, so it scales exactly
+ * what the zoom slider in the application scales, in the preview and in the
+ * file alike.
  *
- * Шрифт идёт через --mono и --ui: ими размечены и код, и интерфейс, и
- * подставлять имя в сотни правил незачем. Имя в кавычках и с отброшенными
- * кавычками и обратными слэшами — иначе значение из select уехало бы в CSS
- * как есть.
+ * The font goes through --mono and --ui: both the code and the interface are
+ * marked with them, and substituting the name into hundreds of rules is
+ * pointless. The name is quoted and stripped of quotes and backslashes —
+ * otherwise the value from the select would travel into the CSS as is.
  */
 function exportCss(opts) {
   const o = opts || {};
@@ -381,11 +384,11 @@ function exportCss(opts) {
 }
 
 /*
- * Чёрно-белая палитра.
+ * The black and white palette.
  *
- * На экране и на бумаге. Правила те же, что в @media print, только без
- * !important по цвету текста там, где хватает обычного каскада: этот блок
- * стоит последним и перебивает и @media print, и тему.
+ * On screen and on paper. The rules are the same as in @media print, only
+ * without !important on text colour where the ordinary cascade is enough: this
+ * block goes last and overrides both @media print and the theme.
  */
 const BANDW_CSS = `
 html, body, .content { background: #fff !important; color: #14161c !important; }
@@ -402,11 +405,11 @@ html, body, .content { background: #fff !important; color: #14161c !important; }
 `;
 
 /*
- * Цветная палитра на печати.
+ * The colour palette on paper.
  *
- * @media print в style.css насильно перекрашивает страницу в белый — на
- * бумаге это правильно, но человек выбрал «цветное», и его выбор должен
- * выиграть. Поэтому возвращаем цвета темы, дублируя те же селекторы.
+ * @media print in style.css forcibly repaints the page white — on paper that
+ * is correct, but the person chose "colour", and their choice has to win. So we
+ * put the theme colours back, repeating the same selectors.
  */
 const COLOUR_PRINT_CSS = `
 html, body, .content { background: var(--bg) !important; color: var(--fg) !important; }
@@ -423,17 +426,18 @@ html, body, .content { background: var(--bg) !important; color: var(--fg) !impor
 `;
 
 /*
- * Дополнение к автономному HTML для печати.
+ * An addition to the standalone HTML for printing.
  *
- * Стоит ПОСЛЕ style.css, где лежит @media print, и поэтому перебивает его
- * !important-правила — иначе выбор человека (палитра, шрифт, размер)
- * оказывался бы перебит печатными значениями.
+ * It goes AFTER style.css, where @media print lives, and therefore overrides its
+ * !important rules — otherwise the person's choices (palette, font, size) would
+ * be overridden by the print values.
  *
- *   @page margin: 0 — печать без полей. Отступ до текста задаёт padding
- *   .content: иначе текст ложился бы в самый край листа.
- *   pre и blockquote без рамок: @media print рисует вокруг них
- *   1px solid #ccc — на бумаге это рамка вокруг каждого блока кода, а на
- *   цветном фоне она вообще выглядит как ошибка вёрстки.
+ *   @page margin: 0 — printing without margins. The indent before the text is
+ *   set by the .content padding: otherwise the text would lie at the very edge
+ *   of the sheet.
+ *   pre and blockquote without borders: @media print draws 1px solid #ccc
+ *   around them — on paper that is a border around every code block, and on a
+ *   colour background it looks like a layout bug.
  */
 const PRINT_CSS = `
 /* печать */
@@ -443,15 +447,16 @@ const PRINT_CSS = `
 `;
 
 /**
- * PDF без системного диалога печати.
+ * PDF without the system print dialog.
  *
- * Диалог на Windows — это и есть «нижний тулбар с надписями»: у него внизу
- * панель с кнопками и колонтитул с именем файла и номерами страниц, и она
- * попадала в результат. printToPDF идёт мимо диалога и возвращает готовый
- * файл; колонтитулов там нет в принципе.
+ * The dialog on Windows is itself the "bottom toolbar with captions": it has a
+ * panel of buttons at the bottom and a footer with the file name and page
+ * numbers, and that ended up in the result. printToPDF goes around the dialog
+ * and returns a finished file; it has no footers at all.
  *
- * Страница печатается в скрытом окне из того же автономного HTML, что и
- * экспорт: одна сборка на оба формата, значит PDF и HTML не могут разойтись.
+ * The page is printed in a hidden window from the same standalone HTML as the
+ * export: one build for both formats, so the PDF and the HTML cannot drift
+ * apart.
  */
 async function buildPdf(title, body, opts) {
   const built = await buildStandaloneHtml(title, body, Object.assign({}, opts, { print: true }));
@@ -466,17 +471,17 @@ async function buildPdf(title, body, opts) {
   });
   try {
     await w.loadFile(file);
-    // Шрифты вшиты в CSS как base64, но Chromium успевает разложить их
-    // позже, чем сработает did-finish-load: печать без этого даст лист, где
-    // половина текста напечатана запасным шрифтом. fonts.ready — честное
-    // ожидание, а если страница его не отдаёт (старый Chromium) — просто
-    // ждём немного.
+    // The fonts are inlined into the CSS as base64, but Chromium gets around to
+    // laying them out later than did-finish-load fires: printing without this
+    // wait gives a sheet where half the text is set in the fallback font.
+    // fonts.ready is the honest wait, and if the page does not provide it (old
+    // Chromium) we simply wait a little.
     try { await w.webContents.executeJavaScript('document.fonts.ready.then(function(){return 1})'); }
     catch { await new Promise((r) => setTimeout(r, 600)); }
     const buf = await w.webContents.printToPDF({
       printBackground: true,
-      // Колонтитулы: имя файла, дата, номер страницы. Их и рисует тот самый
-      // нижний тулбар, поэтому выключаем явно.
+      // Footers: file name, date, page number. That is what the very bottom
+      // toolbar draws, so we turn them off explicitly.
       headerFooter: false,
       preferCSSPageSize: true,
       margins: { marginType: 'none' },
@@ -487,11 +492,11 @@ async function buildPdf(title, body, opts) {
     return { path: out, bytes: buf.length };
   } finally {
     if (!w.isDestroyed()) w.destroy();
-    try { await fsp.unlink(file); } catch { /* временный файл мог не создаться */ }
+    try { await fsp.unlink(file); } catch { /* the temporary file may not have been created */ }
   }
 }
 
-/** Ширину проставляет main после применения titleBarOverlay. */
+/** The width is set by main after titleBarOverlay has been applied. */
 let captionWidth = 140;
 
 function register() {
@@ -507,7 +512,7 @@ function register() {
       text,
       encoding,
       size: st.size,
-      // file://URL каталога: нужен, чтобы относительные картинки нашлись
+      // file:// URL of the directory: needed so that relative images are found
       baseUrl: pathToFileURL(path.dirname(filePath) + path.sep).href,
       mtime: st.mtimeMs,
     };
@@ -515,7 +520,7 @@ function register() {
 
   ipcMain.handle('mdv:save', async (_e, { filePath, content }) => {
     if (!MD_EXT.test(filePath)) throw new Error(tr('ipc.mdOnly'));
-    // Пишем атомарно: сначала во временный рядом, потом rename.
+    // Write atomically: first to a temporary file next to it, then rename.
     const tmp = filePath + '.mdvtmp';
     await fsp.writeFile(tmp, content, 'utf8');
     await fsp.rename(tmp, filePath);
@@ -553,10 +558,10 @@ function register() {
   ipcMain.handle('mdv:reveal', (_e, p) => { shell.showItemInFolder(p); });
 
   /**
-   * Удаление заметки. Кладём в КОРЗИНУ, а не unlink: удаление из ПКМ по
-   * дереву — необратимая операция одним кликом, и shell.trashItem даёт
-   * «не отправилось в корзину» как страховку. Возвращает {ok} или {ok:false,
-   * error} — renderer покажет текст.
+   * Deleting a note. It goes to the RECYCLE BIN, not unlink: deleting from the
+   * tree context menu is an irreversible operation with one click, and
+   * shell.trashItem gives "did not reach the recycle bin" as a safety net.
+   * Returns {ok} or {ok:false, error} — the renderer shows the text.
    */
   ipcMain.handle('mdv:trash', async (_e, p) => {
     try {
@@ -570,8 +575,8 @@ function register() {
   });
 
   /**
-   * «Новый файл» — спросить имя и создать заметку с заготовкой.
-   * showSaveDialog, а не openDialog: пользователь сам задаёт имя и папку.
+   * "New file" — ask for a name and create a note with a stub.
+   * showSaveDialog, not openDialog: the person sets the name and the folder.
    */
   ipcMain.handle('mdv:newFile', async (_e, seedName) => {
     const r = await dialog.showSaveDialog(targetWindow(), {
@@ -594,8 +599,8 @@ function register() {
         tr('seed.item'),
         '',
       ].join('\n');
-      // Не затираем существующий файл: showOverwriteConfirmation уже спросил,
-      // но подстраховка от гонки не повредит.
+      // Do not overwrite an existing file: showOverwriteConfirmation has already
+      // asked, but protection against a race does no harm.
       if (!fs.existsSync(p)) await fsp.writeFile(p, text, 'utf8');
       return { ok: true, path: p };
     } catch (e) {
@@ -604,8 +609,8 @@ function register() {
   });
 
   /**
-   * «Новый проект» — папка с заметками: создаём её и кладём README.md,
-   * чтобы проект сразу был виден в проводнике, а не пустой.
+   * "New project" — a folder of notes: we create it and put a README.md in it,
+   * so that the project is visible in the explorer straight away, not empty.
    */
   ipcMain.handle('mdv:newProject', async (_e, seedName) => {
     const r = await dialog.showOpenDialog(targetWindow(), {
@@ -640,7 +645,7 @@ function register() {
   ipcMain.handle('mdv:recentAdd', async (_e, p) => {
     if (!p) return { files: [] };
     const st = await readStore('recent.json', { files: [] });
-    // Только существующие .md: файл могли удалить или переименовать.
+    // Existing .md only: the file may have been deleted or renamed.
     const files = Array.isArray(st.files) ? st.files.filter((x) => x && x.path) : [];
     const rest = files.filter((x) => path.resolve(x.path) !== path.resolve(p));
     const item = { path: p, name: path.basename(p), at: Date.now() };
@@ -653,18 +658,18 @@ function register() {
     return { files: [] };
   });
 
-  // Значения по умолчанию дублируются в renderer (applySettings): он знает,
-  // что означает каждое поле, и применяет их сам.
+  // The defaults are duplicated in the renderer (applySettings): it knows what
+  // each field means and applies them itself.
   ipcMain.handle('mdv:settingsGet', () => readStore('settings.json', {}));
 
   /*
-   * Записи настроек выстраиваются в очередь.
+   * Settings writes are put in a queue.
    *
-   * Настройки пишутся на каждое движение ползунка, то есть десятки раз в
-   * секунду. Каждая запись — чтение, объединение, запись, и без очереди эти
-   * циклы накладывались: файл успевал переписаться наполовину, и следующее
-   * чтение видело битый JSON, а readStore молча отдавал пустой объект. Со
-   * стороны это выглядело как «настройки не сохранились».
+   * Settings are written on every movement of a slider, that is, dozens of
+   * times per second. Each write is a read, a merge and a write, and without a
+   * queue those cycles overlapped: the file would be half rewritten, and the
+   * next read would see broken JSON while readStore silently returned an empty
+   * object. From the outside it looked like "the settings were not saved".
    */
   let settingsChain = Promise.resolve();
   ipcMain.handle('mdv:settingsSet', (_e, patch) => {
@@ -674,8 +679,8 @@ function register() {
       await writeStore('settings.json', next);
       return next;
     }).catch((e) => {
-      // Ошибку одной записи не даём уронить очередь: иначе все следующие
-      // настройки молча перестали бы сохраняться.
+      // A failure in one write must not bring down the queue: otherwise every
+      // later setting would silently stop being saved.
       console.error('settingsSet:', e && e.message);
       return null;
     });
@@ -683,9 +688,9 @@ function register() {
   });
 
   /*
-   * Ctrl+N: временная заметка в os.tmpdir()/jazz-reader. Имена «Безымянный-N.md»
-   * перебираются, пока не найдётся свободное: заметка не должна молча
-   * перезаписать прошлую, если пользователь её не сохранил.
+   * Ctrl+N: a temporary note in os.tmpdir()/jazz-reader. The "Untitled-N.md"
+   * names are tried until a free one is found: a note must not silently
+   * overwrite an earlier one the person did not save.
    */
   ipcMain.handle('mdv:newTemp', async (_e, seedName) => {
     try {
@@ -706,8 +711,9 @@ function register() {
   });
 
   /*
-   * Ctrl+Shift+N: папка внутри уже открытой. Имя по умолчанию «Новая папка»,
-   * при совпадении добавляем номер — молча переиспользовать чужое имя нельзя.
+   * Ctrl+Shift+N: a folder inside the already open one. The default name is
+   * "New folder"; on a collision we add a number — silently reusing someone
+   * else's name is not allowed.
    */
   ipcMain.handle('mdv:newFolder', async (_e, parent, seedName) => {
     try {
@@ -729,10 +735,10 @@ function register() {
   });
 
   /*
-   * Ширина блока системных кнопок окна. Renderer спрашивает её один раз при
-   * старте, чтобы зарезервировать место в полосе вкладок.
-   * Push-канал не годился: сообщение могло уйти раньше, чем renderer
-   * подпишется, и тогда резерв остался бы дефолтным.
+   * The width of the system caption buttons. The renderer asks for it once at
+   * startup, to reserve room in the tab strip.
+   * A push channel did not work: the message could leave before the renderer
+   * subscribed, and the reserve would stay at the default.
    */
   ipcMain.handle('mdv:caption', () => captionWidth);
 
@@ -742,7 +748,7 @@ function register() {
   });
   ipcMain.handle('mdv:exportHtml', (_e, { title, body, opts }) => buildStandaloneHtml(title, body, opts));
   ipcMain.handle('mdv:exportPdf', (_e, { title, body, opts }) => buildPdf(title, body, opts));
-  /** Системные шрифты для выпадающего списка в окне экспорта. */
+  /** System fonts for the drop-down in the export window. */
   ipcMain.handle('mdv:fonts', () => listSystemFonts());
 }
 
