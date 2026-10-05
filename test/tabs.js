@@ -21,6 +21,11 @@ const ROOT = path.join(__dirname, '..');
 // MDV_SAMPLE_DIR. Without it these blocks are skipped rather than silently
 // run against nothing.
 const SAMPLE = process.env.MDV_SAMPLE_DIR || '';
+// Путь склеивается с именем файла («D + 'AAA.md'»), поэтому завершающий
+// разделитель обязателен. Без него получается «keysampleAAA.md»: файлы не
+// открываются, диалог «Недавние» пустеет, и тесты падают на несвязанном с
+// правкой месте. Образец ниже держит слеш, переменная окружения — нет.
+const SAMPLE_DIR = SAMPLE && !/[\\/]$/.test(SAMPLE) ? SAMPLE + '/' : SAMPLE;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0, fail = 0;
@@ -565,8 +570,8 @@ const SILENCE_CONFIRM = `(() => {
   // Контекстное меню файла в дереве
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    const D = ${JSON.stringify(SAMPLE)};
-    await M.addFolder(${JSON.stringify(SAMPLE)});
+    const D = ${JSON.stringify(SAMPLE_DIR)};
+    await M.addFolder(${JSON.stringify(SAMPLE_DIR)});
     await new Promise(r2 => setTimeout(r2, 300));
     document.querySelector('.ctxmenu')?.remove();
     const row = [...document.querySelectorAll('#paneFiles .tree-item')]
@@ -593,7 +598,7 @@ const SILENCE_CONFIRM = `(() => {
   // Отложенный просмотр: вкладка появляется, фокус остаётся
   r = JSON.parse(await js(`(async () => {
     const M = window.__mdvTest;
-    const D = ${JSON.stringify(SAMPLE)};
+    const D = ${JSON.stringify(SAMPLE_DIR)};
     document.querySelector('.ctxmenu')?.remove();
     await M.openPath(D + 'AAA.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 250));
@@ -757,7 +762,7 @@ const SILENCE_CONFIRM = `(() => {
     const M = window.__mdvTest;
     await M.clearRecents();
     document.querySelector('.ctxmenu')?.remove();
-    const D = ${JSON.stringify(SAMPLE)};
+    const D = ${JSON.stringify(SAMPLE_DIR)};
     await M.openPath(D + 'AAA.md', { newTab: true });
     await M.openPath(D + 'BBB.md', { newTab: true });
     await new Promise(r2 => setTimeout(r2, 400));
