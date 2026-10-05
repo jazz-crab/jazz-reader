@@ -1,10 +1,11 @@
 'use strict';
 /*
- * Переводы для атрибутов разметки: ключи из data-i18n-* в index.html.
+ * Translations for markup attributes: the keys behind data-i18n-* in index.html.
  *
- * Отдельный словарь, а не общий ru.js/en.js: эти строки не вызываются из кода
- * по имени, а находятся по разметке. Смешивать их с обычными ключами значило бы
- * получать список, в котором половина строк нигде не упоминается.
+ * A dictionary of its own rather than part of ru.js/en.js: these strings are
+ * never called by name from code, they are found by walking the markup. Mixing
+ * them into the ordinary keys would leave a list where half the entries are
+ * referred to from nowhere.
  */
 
 const DICT = {

@@ -1,21 +1,21 @@
 /*
- * Русский словарь.
+ * Russian dictionary.
  *
- * Ключи не переводятся — это идентификаторы в коде, они остаются
- * английскими. Значения — то, что видит человек.
+ * The keys are not translated: they are identifiers in code and stay English.
+ * The values are what a person sees.
  *
- * Множественные формы записываются объектом с подписями one/few/many/other:
+ * Plural forms are written as an object with one/few/many/other:
  *   { one: '...', few: '...', many: '...', other: '...' }
- * Форму выбирает Intl.PluralRules (см. i18n/index.js), поэтому «21 заметке» и
- * «11 заметках» получаются сами.
+ * The form is picked by Intl.PluralRules (see i18n/index.js), so "21 заметке"
+ * and "11 заметках" come out on their own.
  *
- * Плейсхолдеры — в фигурных скобках: {name}.
+ * Placeholders are in braces: {name}.
  */
 (function (root) {
   const DICT = root.MDV_I18N_DICT || (root.MDV_I18N_DICT = Object.create(null));
 
   DICT.ru = {
-    // ---- главный процесс: меню ----
+    // ---- main process: menus ----
     'menu.file': 'Файл',
     'menu.file.open': 'Открыть файл…',
     'menu.file.openFolder': 'Открыть папку…',
@@ -57,7 +57,7 @@
     'menu.help': 'Справка',
     'menu.help.about': 'О программе',
 
-    // ---- главный процесс: диалоги ----
+    // ---- main process: dialogs ----
     'about.detail': 'Офлайн-читалка Markdown с поддержкой LaTeX (KaTeX).\n'
       + 'Работает без сети, файлы остаются на диске.\n\n'
       + 'Ctrl+O — открыть .md\nCtrl+Shift+O — открыть папку\n'
@@ -85,7 +85,7 @@
     'error.startup': 'JazzReader — ошибка при запуске',
     'error.windowFailed': 'Не удалось создать окно',
 
-    // ---- окно настроек ----
+    // ---- settings dialog ----
     'settings.title': 'Настройки',
     'settings.font.label': 'Размер текста',
     'settings.font.hint': 'Тот же масштаб, что и в тулбаре.',

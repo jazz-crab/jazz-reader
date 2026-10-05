@@ -106,7 +106,7 @@
     if (entry == null) {
       if (!warned.has(key)) {
         warned.add(key);
-        console.warn('[i18n] нет перевода для ключа', key, 'в языке', api.lang);
+        console.warn('[i18n] no translation for key', key, 'in language', api.lang);
       }
       return key;
     }
@@ -120,15 +120,16 @@
   };
 
   /**
-   * Перевести атрибуты разметки, помеченные в index.html.
+   * Translate the markup attributes marked in index.html.
    *
-   * title, aria-label и placeholder в HTML статичны: файл не выполняется, и
-   * t() там не вызвать. Поэтому в разметке стоят ключи вида data-i18n-title,
-   * а эта функция проставляет текст при первом кадре и при каждой смене языка.
+   * title, aria-label and placeholder are static in HTML: the file is not
+   * executed, so t() cannot be called there. The markup therefore carries keys
+   * like data-i18n-title, and this function fills them in on the first frame
+   * and on every language change.
    *
-   * Ключи берутся из dom.js, а не из ru.js/en.js: в разметке свой набор
-   * строк, и в общем словаре он был бы списком ключей, на которые никто не
-   * ссылается из кода.
+   * The keys come from dom.js rather than ru.js/en.js: the markup has its own
+   * set of strings, and in the shared dictionary it would be a list of keys
+   * that no line of code refers to.
    */
   api.applyDom = function (root_) {
     const scope = root_ || (typeof document !== 'undefined' ? document : null);
