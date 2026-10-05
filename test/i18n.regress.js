@@ -1,9 +1,10 @@
 'use strict';
 /*
- * Регресс-проверки i18n, которые ловят то, что не видно в словарях.
+ * Regression checks for i18n: the things that cannot be seen in the dictionaries.
  *
- * Каждая проверка here соответствует реально случившейся ошибке, поэтому
- * формат один: сначала что сломалось, потом почему проверка такая.
+ * Every check here corresponds to an error that actually happened, so the
+ * format is the same throughout: first what broke, then why the check is like
+ * that.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,13 +25,12 @@ const i18nSrc = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'index.js'), 'utf
 const preloadSrc = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
 const tabsSrc = fs.readFileSync(path.join(ROOT, 'test', 'tabs.js'), 'utf8');
 
-// --- 0. Что переводить не надо ------------------------------------------
-//
-// В ipc.js остаются два русских литерала: это комментарии, которые
-// подставляются в CSS экспортируемого файла. Они относятся к выходному
-// файлу, а не к интерфейсу, и переводить их нельзя — комментарий в чужом
-// CSS на чужом языке. Проверка фиксирует, что именно эти два, чтобы
-// «недоделанный перевод» не искали заново.
+// --- 0. What must not be translated ------------------------------------------
+// Two Russian literals remain in ipc.js: they are comments that get substituted
+// into the CSS of the exported file. They belong to the output file, not to the
+// interface, and must not be translated — a comment in someone else's CSS in a
+// foreign language. The check pins that it is exactly these two, so that an
+// "unfinished translation" is not hunted down again.
 const ipcSrc = fs.readFileSync(path.join(ROOT, 'ipc.js'), 'utf8');
 const ipcStrays = [...ipcSrc.matchAll(/^\s*.*(?:'|`)[^'`\n]*[А-Яа-яЁё][^'`\n]*(?:'|`)[^/]*$/gm)]
   .map((m) => m[0].trim())
@@ -41,18 +41,17 @@ t('в ipc.js русским остались только комментарии
 
 console.log('\n== перевод строк ==');
 
-// --- 1. --lang= должен читаться, а не игнорироваться ----------------------
-//
-// Тесты передавали --lang=ru, и приложение его не читало: язык брался из
-// settings.json. test:tabs работал на личных настройках того, кто его
-// запустил, а блок переключения языка в конце оставлял после себя en.
-// Проверки падали или проходили в зависимости от того, что лежало в файле.
+// --- 1. --lang= must be read, not ignored ----------------------
+// The tests passed --lang=ru and the application did not read it: the language
+// came from settings.json. test:tabs ran on the personal settings of whoever
+// started it, and the language switch block at the end left en behind.
+// The checks either failed or passed depending on what was in that file.
 t('--lang= читается главным процессом',
   /function langFromArgv\(\)/.test(mainSrc)
   && /process\.argv\.find\(\(a\) => a\.startsWith\('--lang='\)\)/.test(mainSrc));
-// Ветка с перекрытием обязана заканчиваться до try: запись в settings.json
-// внутри неё означала бы, что запуск со вторым языком молча меняет язык и у
-// следующего обычного запуска.
+// The override branch must end before the try: a write to settings.json
+// inside it would mean that a launch with a second language silently changes the
+// language of the next ordinary launch.
 const applyLang = mainSrc.match(/async function applyLangSetting\(\) \{[\s\S]*?\n\}/);
 t('--lang= перекрытие не пишется в settings.json',
   !!applyLang
@@ -66,25 +65,23 @@ t('renderer уважает перекрытие языка',
   /(?:const|let) MDV_FORCED_LANG = \(api\.forcedLang/.test(appSrc)
   && /if \(MDV_FORCED_LANG\) MDV_I18N\.setLocale\(MDV_FORCED_LANG\)/.test(appSrc));
 
-// --- 2. Перекрытие должно сниматься явным выбором ------------------------
-//
-// Иначе выбор языка в настройках не действовал бы, пока запущено с --lang:
-// настройка стала бы недоступна вовсе, и переключатель в окне настроек был бы
-// украшением.
+// --- 2. The override must be dropped by an explicit choice ------------------------
+// Otherwise the language choice in the settings would not take effect while
+// running with --lang: the setting would be unavailable altogether, and the
+// switch in the settings window would be decoration.
 t('явный выбор языка снимает перекрытие в renderer',
   /langSel\.onchange = async \(\) => \{[\s\S]{0,300}MDV_FORCED_LANG = ''/.test(appSrc));
 t('явный выбор языка снимает перекрытие в главном процессе',
   /handle\('mdv:setLang', async \(\) => \{[\s\S]{0,120}langOverrideArmed = false/.test(mainSrc));
 
-// --- 3. Тесты не работают на личных настройках ---------------------------
+// --- 3. The tests do not run on personal settings ---------------------------
 t('test:tabs запускается со своим каталогом настроек',
   /'--user-data-dir=' \+ userData/.test(tabsSrc));
 
-// --- 4. Подписи не запекаются на стартовом языке ------------------------
-//
-// RADIAL_LAYOUT был константой с переведёнными текстами: она собиралась один
-// раз при загрузке скрипта, когда язык ещё не применён, и подписи кольца
-// оставались на стартовом языке навсегда.
+// --- 4. Captions are not baked in at the starting language ------------------------
+// RADIAL_LAYOUT was a constant with translated texts: it was built once when the
+// script loaded, before the language had been applied, and the captions of the
+// ring stayed in the starting language forever.
 const radialBlock = appSrc.match(/const RADIAL_LAYOUT = \[[\s\S]*?\n\];/);
 const radialItems = radialBlock
   ? [...radialBlock[0].matchAll(/\{\s*act:/g)].length : 0;
@@ -99,21 +96,21 @@ t('таблица кольца хранит ключи, а не тексты',
 t('подпись сектора переводится в момент сборки',
   /b\.title = tr\(item\.tipKey\)/.test(appSrc));
 
-// --- 5. Имя функции перевода не перекрывает переменные -------------------
-//
-// Функция называлась t(). В app.js переменная t — это вкладка, и в диалогах
-// отмены правки `t.name` отдавало имя функции: в текст попадала буква «t».
+// --- 5. The name of the translation function does not shadow variables -------------------
+// The function was called t(). In app.js the variable t is a tab, and in the
+// discard dialogs `t.name` returned the name of the function: the letter "t" ended
+// up in the text.
 t('функция перевода называется tr, а не t',
   /const tr = \(key, params\) =>/.test(appSrc) && /const tr = \(key, params\) =>/.test(mainSrc));
 t('не осталось вызовов перевода через t(',
   !/(?<![A-Za-z0-9_$.])t\('[a-z]/.test(appSrc)
   && !/(?<![A-Za-z0-9_$.])t\('[a-z]/.test(mainSrc));
 
-// --- 6. Русский текст в словарях, а не в разметке ------------------------
-//
-// Проверка по атрибутам разметки, а не «есть ли где-нибудь кириллица»: её
-// задача — убедиться, что index.html не отдаёт русский текст напрямую.
-// Комментарии в HTML кириллицей не считаются: их не видно человеку.
+// --- 6. Russian text belongs in the dictionaries, not in the markup ------------------------
+// The check goes by markup attributes rather than by "is there any Cyrillic
+// anywhere": its task is to make sure index.html does not hand out Russian text
+// directly.
+// Comments in HTML in Cyrillic do not count: a person does not see them.
 const htmlSrc = fs.readFileSync(path.join(ROOT, 'src', 'index.html'), 'utf8');
 const htmlBody = htmlSrc.replace(/<!--[\s\S]*?-->/g, '');
 const cyrAttrs = [...htmlBody.matchAll(
@@ -121,8 +118,8 @@ const cyrAttrs = [...htmlBody.matchAll(
 t('в разметке нет русских title/aria-label/placeholder', cyrAttrs.length === 0,
   cyrAttrs.join('\n       '));
 
-// Ключи разметки должны быть и в словаре, и в разметке: иначе перевод
-// молча не подставится, и подпись останется пустой.
+// The markup keys must be both in the dictionary and in the markup: otherwise the
+// translation is silently not applied and the caption stays empty.
 const domDict = require(path.join(ROOT, 'src', 'i18n', 'dom.js'));
 const markupKeys = new Set([...htmlBody.matchAll(/data-i18n-(?:title|aria|placeholder)="([^"]+)"/g)]
   .map((m) => m[1]));

@@ -1,15 +1,16 @@
 ﻿'use strict';
 /*
- * Печать и экспорт HTML.
+ * Printing and HTML export.
  *
- * Экспорт проверяем на настоящем файле: buildStandaloneHtml() пишет автономный
- * HTML на диск, и самое ценное здесь — что он реально автономный. Раньше в
- * CSS оставались битые url(fonts/...) и экспорт без интернета показывал
- * системный шрифт вместо JetBrains Mono.
+ * The export is checked on a real file: buildStandaloneHtml() writes a
+ * self-contained HTML to the disk, and the most valuable thing about it is that
+ * it really is self-contained. There used to be broken url(fonts/...) left in the
+ * CSS, and the export without a network showed a system font instead of
+ * JetBrains Mono.
  *
- * Системный диалог печати в автотесте открывать нельзя — он заблокирует
- * renderer, поэтому печать проверяем только по тому, что путь вызова на месте
- * и страница для печати непустая (иначе Chromium печатает пустоту).
+ * The system print dialog cannot be opened in an automated test — it would block
+ * the renderer — so printing is checked only by the call path being in place and
+ * the print page being non-empty (otherwise Chromium prints a blank sheet).
  */
 const fs = require('fs');
 const path = require('path');
@@ -17,10 +18,10 @@ const os = require('os');
 
 const ROOT = path.join(__dirname, '..');
 
-// buildStandaloneHtml() берёт путь вывода из electron.app.getPath('downloads'),
-// а вне Electron модуль 'electron' отдаёт строку с путём к бинарнику. Поэтому
-// подменяем его в кэше: папка назначения — временная, чтобы тест не оставлял
-// HTML в Загрузках пользователя.
+// buildStandaloneHtml() takes the output path from electron.app.getPath('downloads'),
+// and outside Electron the module 'electron' returns a string with the path to
+// the binary. So we substitute it in the cache: the destination folder is
+// temporary, so that the test does not leave HTML in the user's Downloads.
 const fakeDownloads = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-dl-'));
 const electronEntry = require.resolve('electron');
 require.cache[electronEntry] = {
@@ -69,7 +70,7 @@ const src = [
 ].join('\n');
 
 const body = MDV.renderMd(src, 'file:///C:/notes/');
-// Функция асинхронная: она встраивает шрифты и пишет файл.
+// The function is asynchronous: it inlines the fonts and writes the file.
 const res = await buildStandaloneHtml('Заметка.md', body);
 
 t('экспорт вернул путь', !!(res && res.path), JSON.stringify(res));
@@ -90,18 +91,18 @@ t('нет битых url(fonts/...)', count(html, /url\(fonts\//g) === 0,
 t('нет внешних таблиц стилей', !/<link[^>]+stylesheet/i.test(html));
 t('нет <script>', !/<script/i.test(html));
 t('KaTeX на месте', /katex/i.test(html));
-// style.css начинается с BOM, и в собранном файле он оказывается посередине
-// одного <style>. Chromium на таком знаке теряет следующий блок целиком —
-// а следующим шёл :root, то есть все переменные темы. Страница собиралась
-// без цвета.
+// style.css starts with a BOM, and in the assembled file it ends up in the middle
+// of a single <style>. Chromium loses the whole next block at such a mark —
+// and the next one was :root, that is, all the theme variables. The page came
+// out with no colour.
 t('в собранном CSS не осталось BOM', html.indexOf('\uFEFF') < 0,
   'позиция ' + html.indexOf('\uFEFF'));
 t(':root с переменными темы на месте',
   /:root\s*\{[^}]*--bg:\s*#1a1b26/.test(html));
 t('переменная --fg на месте', /--fg:\s*#c0caf5/.test(html));
-// Шрифт приложения лежит отдельным файлом src/fonts.css и в style.css его
-// нет. Про него забыли, и в экспорте вместо JetBrains Mono была системная
-// моноширинная: весь смысл «своей темы» терялся.
+// The application font lives in a separate file src/fonts.css and is not in
+// style.css. It was forgotten, and in the export a system monospace appeared
+// instead of JetBrains Mono: the whole point of "our own theme" was lost.
 t('свой шрифт объявлен', /@font-face\s*\{[^}]*JetBrainsMono/.test(html));
 t('все 8 начертаний JetBrains на месте',
   count(html, /@font-face\s*\{[^}]*JetBrainsMono/g) === 8,
@@ -114,7 +115,7 @@ t('счётчик шрифтов включает свой шрифт', res.font
 t('<title> — имя файла как есть', /<title>\s*Заметка\.md\s*<\/title>/.test(html),
   (/<title>([^<]*)<\/title>/.exec(html) || [])[1]);
 t('заголовок попал в тело', /Заголовок/.test(html));
-// CSS внутри файла тоже содержит «mdv-task», поэтому считаем только по телу.
+// The CSS inside the file also contains "mdv-task", so we count only by the body.
 const bodyHtml = /<body[^>]*>([\s\S]*)<\/body>/.exec(html);
 const inner = bodyHtml ? bodyHtml[1] : '';
 t('иконки задач вместо чекбоксов',
@@ -125,8 +126,8 @@ t('inline-код не сломан', /<code[^>]*>const x = 1 &lt; 2/.test(html))
 
 console.log('\n== печать ==');
 
-// Для печати buildStandaloneHtml отдаёт сам HTML, а не файл: его грузит
-// скрытое окно, из которого Chromium печатает. Проверяем именно эту сборку.
+// For printing buildStandaloneHtml returns the HTML itself rather than a file: it is
+// loaded by a hidden window which Chromium prints from. We check exactly this build.
 const printed = await buildStandaloneHtml('Заметка.md', body, { print: true });
 t('для печати приходит HTML, а не путь', typeof printed.html === 'string'
   && !printed.path, JSON.stringify(Object.keys(printed)));
@@ -163,9 +164,9 @@ t('экспорт доступен из renderer', /exportHtml:/.test(preload));
 t('экспорт PDF доступен из renderer', /exportPdf:/.test(preload));
 
 const appJs = fs.readFileSync(path.join(ROOT, 'src', 'app.js'), 'utf8');
-// Списка экспорта в кольце больше нет: у форматов есть параметры и
-// предпросмотр, они не помещаются в меню. Экспорт — отдельное окно, а из
-// кольца в него ведёт сектор «Экспорт».
+// There is no export list in the ring any more: the formats have parameters and
+// a preview, they do not fit in a menu. Export is a separate window, and the
+// "Export" sector of the ring leads to it.
 t('в кольцо вернулся сектор «Экспорт»',
   /act: 'export', slot: 'right',[\s\S]{0,60}icon: 'folder-output'/.test(appJs));
 t('сектор открывает окно экспорта', /act === 'export'\) \{ closeRadial\(\); exportDialog\(\)/.test(appJs));
@@ -173,9 +174,9 @@ t('окно экспорта зовёт api.exportPdf', /api\.exportPdf\(\{/.tes
 t('окно экспорта зовёт api.exportHtml', /api\.exportHtml\(\{/.test(appJs));
 t('у кольца есть сектор «Путь»',
   /act: 'path', slot: 'right',[\s\S]{0,60}icon: 'signpost'/.test(appJs));
-// Экспорт и путь — справа, открытие — слева и одно: раньше «Путь» стоял
-// слева вместе с «Открыть», и на открытие файла оставалось столько же места,
-// сколько на один из трёх секторов буфера обмена.
+// Export and path are on the right, opening on the left and alone: "Path" used to
+// stand on the left together with "Open", and opening a file was left with as
+// much room as one of the three clipboard sectors.
 t('слева в кольце только открытие',
   /act: 'open', slot: 'left', icon: 'plus'/.test(appJs)
   && !/slot: 'leftLow'/.test(appJs));
@@ -187,17 +188,18 @@ t('Ctrl+P остался системным диалогом', /api\.print\(\)/.
 
 console.log('\n== окно экспорта ==');
 
-// Список системных шрифтов: renderer их не перечислит, читаем реестр.
+// The list of system fonts: the renderer cannot enumerate them, we read the registry.
 const fonts = await listSystemFonts();
 t('свой шрифт первый в списке', fonts[0] === 'JetBrainsMono', String(fonts[0]));
 t('шрифтов заметно больше одного', fonts.length > 20, String(fonts.length));
 t('в списке есть системные шрифты Windows',
   ['Consolas', 'Arial', 'Segoe UI'].every((n) => fonts.includes(n)),
   String(fonts.slice(0, 8)));
-// Хвост « (TrueType)» и начертание в конце имени — это не часть семейства:
-// «Consolas Bold (TrueType)» в списке выбора превратилось бы в два разных
-// шрифта, и какой из них есть, не проверить. Проверяем, что маркер типа убран
-// везде, а начертание срезано хотя бы там, где это однозначно.
+// The " (TrueType)" tail and the weight at the end of the name are not part of the
+// family: "Consolas Bold (TrueType)" would turn into two different fonts in the
+// drop-down, and which of them exists cannot be checked. We check that the type
+// marker is removed everywhere, and that the weight is cut at least where it is
+// unambiguous.
 t('маркер типа шрифта убран', !fonts.some((n) => /\((TrueType|OpenType|TTF)\)/.test(n)),
   String(fonts.filter((n) => /\((TrueType|OpenType|TTF)\)/.test(n)).slice(0, 4)));
 t('начертание срезано у обычных шрифтов',
@@ -205,7 +207,7 @@ t('начертание срезано у обычных шрифтов',
   JSON.stringify(fonts.filter((n) => n.indexOf('Consolas') === 0)));
 t('список без повторов', new Set(fonts.map((n) => n.toLowerCase())).size === fonts.length);
 
-// CSS от выбора в окне экспорта
+// The CSS from the choices in the export window
 const cssColour = exportCss({ font: 'Consolas', size: 19 });
 t('шрифт подставляется в --mono и --ui',
   cssColour.includes('--mono: "Consolas", monospace')
@@ -223,15 +225,15 @@ t('цветная палитра на печати возвращает цвет
 t('имя шрифта с кавычками не ломает CSS',
   !/url\(|expression\(/.test(exportCss({ font: 'Arial"; } body{display:none' })));
 
-// Кавычки и скобки из выпадающего списка не должны попасть в CSS.
+// Quotes and brackets from the drop-down must not get into the CSS.
 const evil = exportCss({ font: 'x"; } body { display: none } .a{', size: '15); }' });
 t('враждебное имя не закрывает правило',
   /--mono: "x"; \} body \{ display: none \} \.a\{", monospace/.test(evil)
   || /--mono: "x[^"]*", monospace/.test(evil), evil.split('\n')[1]);
 
 console.log('\n== на печать отдаётся непустая страница ==');
-// Chromium печатает текущий DOM. Если бы мы печатали скрытый контейнер или
-// пустую вкладку, «Печать / PDF» отдала бы пустоту — это ловится здесь.
+// Chromium prints the current DOM. If we printed a hidden container or an
+// empty tab, "Print / PDF" would hand back a blank sheet — that is caught here.
 t('контент доступен для печати', /id="content"/.test(
   fs.readFileSync(path.join(ROOT, 'src', 'index.html'), 'utf8')));
 const css = fs.readFileSync(path.join(ROOT, 'src', 'style.css'), 'utf8');

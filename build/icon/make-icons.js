@@ -1,16 +1,18 @@
 'use strict';
 /*
- * Иконка приложения: icon.svg -> icon-<n>.png (16..512) + icon.png + icon.ico.
+ * The application icon: icon.svg -> icon-<n>.png (16..512) + icon.png + icon.ico.
  *
- * Заменяет make-icons.sh: тот требовал rsvg-convert и python3, то есть
- * умел только на POSIX. Здесь то же самое делает сам Electron (Chromium) —
- * растеризует SVG в окне, а Pillow ужимает со сглаживанием. Работает на Windows.
+ * Replaces make-icons.sh: that one required rsvg-convert and python3, that is,
+ * it only worked on POSIX. Here Electron itself (Chromium) does the same thing —
+ * it rasterises the SVG in a window, and Pillow shrinks it with anti-aliasing. It
+ * works on Windows.
  *
  *   npm run icons        (node build/icon/make-icons.js)
  *
- * Почему со сглаживанием, а не «окно размером ровно в пиксель»: у Windows есть
- * минимальный размер окна, окно в 16 px может не создаться. Рисуем в 4 раза
- * больше и ужимаем — качество на мелких размерах выше, чем у rsvg без хинтинга.
+ * Why with anti-aliasing rather than "a window exactly the size in pixels": Windows
+ * has a minimum window size, and a 16 px window may not even be created. We draw
+ * 4 times larger and shrink — the quality at small sizes is higher than with rsvg
+ * without hinting.
  */
 const fs = require('fs');
 const path = require('path');
@@ -26,18 +28,19 @@ const TMP = path.join(require('os').tmpdir(), 'jazz-reader-icons-' + process.pid
 const svg = fs.readFileSync(path.join(DIR, 'icon.svg'), 'utf8');
 
 /*
- * Шрифт букв — JetBrains Mono, как во всём приложении. В системе его на
- * Windows обычно нет, поэтому font-family из icon.svg не сработает: Chromium
- * подставит запасной моноширинный шрифт и буквы получатся другими. Поэтому
- * генератор сам подкладывает @font-face с woff2 из проекта.
+ * The font of the letters is JetBrains Mono, as everywhere in the application. On
+ * Windows it is usually not installed system-wide, so the font-family from
+ * icon.svg would not work: Chromium would substitute a fallback monospace font and
+ * the letters would come out different. So the generator supplies an @font-face
+ * with a woff2 from the project itself.
  *
- * data: URI, а не путь к файлу: со страницы, открытой по file://, Chromium
- * не грузит шрифты с диска (у file:// непрозрачный origin), и тихо отдаст
- * запасной шрифт вместо нашего.
+ * A data: URI rather than a path to a file: from a page opened over file://,
+ * Chromium does not load fonts from disk (file:// has an opaque origin), and it
+ * will quietly hand back a fallback font instead of ours.
  *
- * ExtraBold (800) — самое тяжёлое начертание JetBrains Mono. В вендорённый
- * src/fonts его не кладут (там 400/500/700 — только для интерфейса), поэтому
- * берём из @fontsource в devDependencies, а если его нет — 700.
+ * ExtraBold (800) is the heaviest weight of JetBrains Mono. It is not put into the
+ * vendored src/fonts (there are 400/500/700 — for the interface only), so we take
+ * it from @fontsource in devDependencies, and if it is missing — 700.
  */
 const FONT_WEIGHT = 800;
 const ROOT = path.join(DIR, '..', '..');
@@ -63,7 +66,7 @@ const FONT_FACE = `@font-face{font-family:'JetBrains Mono';` +
   `font-weight:${FONT_WEIGHT_USED};font-style:normal;font-display:block;` +
   `src:url(data:font/woff2;base64,${fontData}) format('woff2')}`;
 
-// Мелкие размеры: буквы крупнее на 20%, иначе на 16 px «JR» превращается в кашу.
+// Small sizes: the letters are 20% larger, otherwise at 16 px "JR" turns to mush.
 function scaled(s) {
   if (!SMALL_SIZES.includes(s)) return svg;
   const t = `transform="translate(128 128) scale(${SMALL_SCALE}) translate(-128 -128)"`;
@@ -84,8 +87,8 @@ app.whenReady().then(async () => {
   const all = [...SIZES, 512];
   console.log(`шрифт: JetBrains Mono ${FONT_WEIGHT_USED} (${path.basename(fontPath)})`);
 
-  // Одно окно на все размеры и пересоздание: после destroy второе offscreen-окно
-// Chromium стабильно падает с ERR_FAILED. Окно просто переставляем размером.
+  // One window for all sizes and no recreating: after destroy, a second offscreen
+  // window makes Chromium fail stably with ERR_FAILED. We simply resize the window.
 const win = new BrowserWindow({
   width: SIZES[SIZES.length - 1] * SS, height: SIZES[SIZES.length - 1] * SS,
   useContentSize: true, show: false, frame: false,
@@ -100,14 +103,15 @@ for (const s of all) {
       html,body{margin:0;padding:0;background:transparent;overflow:hidden}
       svg{display:block;width:${px}px;height:${px}px}</style>${scaled(s)}`;
 
-    // Файл, а не data: URL — длинный data: URL Chromium периодически роняет
-    // с ERR_FAILED, и падать из-за этого не хочется.
+    // A file rather than a data: URL — Chromium periodically drops a long data: URL
+    // with ERR_FAILED, and we do not want to fall over because of that.
     const page = path.join(TMP, `render-${s}.html`);
     fs.writeFileSync(page, html, 'utf8');
 
     win.setContentSize(px, px);
     await win.loadFile(page);
-    // Без этого кадр может уйти до подгрузки шрифта — и буквы будут в запасном.
+    // Without this the frame may leave before the font has loaded — and the letters
+    // will be in the fallback.
     await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
     const img = await win.webContents.capturePage();
     fs.writeFileSync(path.join(TMP, s + '.png'), img.toPNG());
@@ -115,7 +119,7 @@ for (const s of all) {
   }
 win.destroy();
 
-  // Ужимаем со сглаживанием (Pillow) и собираем ICO из уже готовых PNG.
+  // We shrink with anti-aliasing (Pillow) and assemble the ICO from the finished PNGs.
   py(`
 import os, struct, sys
 from PIL import Image
