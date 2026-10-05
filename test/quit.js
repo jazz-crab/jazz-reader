@@ -122,7 +122,11 @@ async function main() {
   const cleanup = () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} };
   process.on('exit', cleanup);
 
-  // --- 1. По умолчанию выход спрашивает, и приложение остаётся жить -----
+  // --- 1. По умолчанию выход спрашивает; «Отмена» оставляет приложение жить --
+  //
+  // Ответ передаётся индексом кнопки, а не нажатием в окне: системный диалог
+  // закрывается только настоящей мышью, и окно, всплывающее во время
+  // автопроверок, забирает фокус у того, что у человека открыто на экране.
   {
     const app = await launch(userData, sample);
     t('приложение поднялось', !!app.page, app.out().slice(-400));
@@ -130,15 +134,21 @@ async function main() {
       const dirty = await evaluate(app.page, 'window.mdvDirtyTabs ? window.mdvDirtyTabs() : -1');
       t('renderer отдаёт число несохранённых вкладок', Number(dirty) === 0, String(dirty));
 
-      await evaluate(app.page, 'window.mdv.testQuit()');
+      await evaluate(app.page, 'window.mdv.testQuit(1)');
       await sleep(1500);
       const out = app.out();
       t('выход спрашивает подтверждение',
-        /выход: спрашиваем подтверждение/.test(out), out.slice(-300));
-      t('после вопроса приложение ещё живо', app.child.exitCode === null);
+        /выход: подтверждение получено без диалога/.test(out), out.slice(-300));
+      t('после отмены приложение ещё живо', app.child.exitCode === null);
       t('вопрос не приводит к ошибке',
         !/Assignment to constant variable/.test(out), out.slice(-300));
-      app.child.kill();
+
+      // Тот же экземпляр, теперь согласие: должно выйти без зависания.
+      await evaluate(app.page, 'window.mdv.testQuit(0)');
+      const code = await waitExit(app.child, 12000);
+      t('по согласию приложение выходит', code !== null, 'код ' + code);
+      t('выход по согласию без ошибки', code === 0, 'код ' + code + '\n' + app.out().slice(-400));
+      if (code === null) app.child.kill();
       await sleep(1200);
     }
   }
@@ -177,6 +187,13 @@ async function main() {
     /buttons: \[tr\('quit\.close'\), tr\('quit\.cancel'\)\]/.test(mainSrc));
   t('крестик в рамке равносилен «Отмена»', /cancelId: 1/.test(mainSrc));
   t('заголовок диалога — «Закрыть?»', /title: tr\('quit\.title'\)/.test(mainSrc));
+  // Диалог обязан остаться в requestQuit, а ответ из теста — идти мимо
+  // showMessageBox. Иначе проверки снова начнут выводить окно на экран.
+  t('ответ из теста идёт мимо диалога',
+    /async function requestQuit\(answer = null\)/.test(mainSrc)
+    && /if \(answer === null\) \{/.test(mainSrc));
+  t('тестовый канал передаёт индекс ответа',
+    /ipcMain\.handle\('mdv:testQuit', \(_e, answer = null\)/.test(mainSrc));
   // Ключи диалога выхода обязаны существовать в обоих словарях: проверка
   // исходника на t('quit.title') иначе проходит, даже если перевода нет.
   const dictRu = require(path.join(ROOT, 'src', 'i18n', 'ru.js'));

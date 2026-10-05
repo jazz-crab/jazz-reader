@@ -2689,8 +2689,8 @@ el.btnNewTab.oncontextmenu = (e) => {
   e.preventDefault();
   const r = el.btnNewTab.getBoundingClientRect();
   showContextMenu(r.left - 60, r.bottom + 4, [
-    { label: 'Открыть .md', hint: 'Ctrl+O', act: openFileDialog },
-    { label: 'Открыть папку', hint: 'Ctrl+Shift+O', act: openFolderDialog },
+    { label: tr('ring.openFile'), hint: 'Ctrl+O', act: openFileDialog },
+    { label: tr('ring.openFolder'), hint: 'Ctrl+Shift+O', act: openFolderDialog },
   ], { width: 232, height: 80, anchorRect: r });
 };
 
@@ -2730,9 +2730,9 @@ const RADIAL_LAYOUT = [
   // Правка сверху, буфер обмена снизу. Секции кольца делятся дугами, а не
   // кнопками на окружности: в круглый кружок попадать неудобно, в сектор —
   // легко. Отдельно стоящие действия занимают свои дуги целиком.
-  { act: 'mode', slot: 'top', icon: 'pencil', tip: 'Правка (Ctrl+E)' },
-  { act: 'save', slot: 'top', icon: 'save', tip: 'Сохранить (Ctrl+S)', cls: 'r-save' },
-  { act: 'cancel', slot: 'top', icon: 'x', tip: 'Отменить правки (Esc)', cls: 'r-cancel' },
+  { act: 'mode', slot: 'top', icon: 'pencil', tip: tr('ring.editTip') },
+  { act: 'save', slot: 'top', icon: 'save', tip: tr('ring.saveTip'), cls: 'r-save' },
+  { act: 'cancel', slot: 'top', icon: 'x', tip: tr('ring.cancelTip'), cls: 'r-cancel' },
   // Справа — всё, что делают с файлом целиком: экспорт и путь. Слева — только
   // открытие. Раньше «Путь» стоял слева рядом с «Открыть», и две кнопки,
   // которые делают одно и то же — показывают файл, — делили одну дугу между
@@ -2744,13 +2744,13 @@ const RADIAL_LAYOUT = [
   // Выбор по направлению и наведение целятся именно туда, и в этой точке
   // кольцо решало бы, экспорт это или путь.
   { act: 'export', slot: 'right', from: -39, to: 9, icon: 'folder-output',
-    tip: 'Экспорт', cls: 'r-export' },
+    tip: tr('ring.exportTip'), cls: 'r-export' },
   { act: 'path', slot: 'right', from: 9, to: 39, icon: 'signpost',
-    tip: 'Путь к файлу', cls: 'r-path' },
-  { act: 'copy', slot: 'bottom', icon: 'copy', tip: 'Копировать' },
-  { act: 'cut', slot: 'bottom', icon: 'scissors', tip: 'Вырезать' },
-  { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: 'Вставить' },
-  { act: 'open', slot: 'left', icon: 'plus', tip: 'Открыть', cls: 'r-open' },
+    tip: tr('ring.pathTip'), cls: 'r-path' },
+  { act: 'copy', slot: 'bottom', icon: 'copy', tip: tr('ring.copyTip') },
+  { act: 'cut', slot: 'bottom', icon: 'scissors', tip: tr('ring.cutTip') },
+  { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: tr('ring.pasteTip') },
+  { act: 'open', slot: 'left', icon: 'plus', tip: tr('ring.openTip'), cls: 'r-open' },
 ];
 
 let radialOpen = false;
@@ -2946,8 +2946,8 @@ function buildRadial() {
   kill.className = 'radial-kill';
   kill.type = 'button';
   kill.dataset.act = 'kill';
-  kill.title = 'Отмена (Esc)';
-  kill.setAttribute('aria-label', 'Закрыть без действия');
+  kill.title = tr('ring.dismissTitle');
+  kill.setAttribute('aria-label', tr('ring.dismissAria'));
   kill.innerHTML = ICONS.icon('x');
   kill.onclick = () => closeRadial();
   el.radial.append(kill);
@@ -3050,7 +3050,7 @@ function radialHighlight(hit) {
   if (!hit) {
     radialSetLabel(null);
   } else if (hit.classList.contains('radial-kill')) {
-    radialSetLabel('Закрыть', '0px', '52px');
+    radialSetLabel(tr('btn.close'), '0px', '52px');
   } else {
     radialSetLabel(hit.title, hit.style.getPropertyValue('--mx'),
       hit.style.getPropertyValue('--my'));
@@ -3160,21 +3160,21 @@ function radialClipboard(act) {
   if (editing && document.activeElement !== ed && act !== 'paste') ed.focus();
   let ok = false;
   try { ok = document.execCommand(act); } catch { ok = false; }
-  if (ok) { status(act === 'copy' ? 'Скопировано' : act === 'cut' ? 'Вырезано' : 'Вставлено', 'ok'); return; }
+  if (ok) { status(act === 'copy' ? tr('clip.copied') : act === 'cut' ? tr('clip.cut') : tr('clip.pasted'), 'ok'); return; }
   if (act === 'paste' && editing && navigator.clipboard && navigator.clipboard.readText) {
     navigator.clipboard.readText().then((txt) => {
-      if (!txt) { status('Буфер обмена пуст', 'err'); return; }
+      if (!txt) { status(tr('clip.empty'), 'err'); return; }
       const s = ed.selectionStart, e2 = ed.selectionEnd;
       ed.value = ed.value.slice(0, s) + txt + ed.value.slice(e2);
       ed.selectionStart = ed.selectionEnd = s + txt.length;
       const t = active();
       t.dirty = ed.value !== t._diskRaw;
       t.raw = ed.value;
-      status('Вставлено', 'ok');
-    }).catch(() => status('Вставка запрещена системой', 'err'));
+      status(tr('clip.pasted'), 'ok');
+    }).catch(() => status(tr('clip.blocked'), 'err'));
     return;
   }
-  status(act === 'copy' ? 'Нечего копировать' : 'Вставка недоступна', 'err');
+  status(act === 'copy' ? tr('clip.nothingToCopy') : tr('clip.unavailable'), 'err');
 }
 
 /**

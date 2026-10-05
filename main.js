@@ -265,7 +265,16 @@ function targetWindowSafe() {
   return win || BrowserWindow.getAllWindows()[0] || null;
 }
 
-async function requestQuit() {
+/**
+ * Выход из приложения с подтверждением.
+ *
+ * answer — индекс нажатой кнопки, если ответ известен заранее. Обычно это
+ * null и диалог показывается пользователю. Тест передаёт индекс напрямую:
+ * системный диалог закрывается только настоящей мышью, поднять его из
+ * скрипта нельзя, а показ окна во время автопроверок забирает фокус у
+ * всего, что открыто у человека на экране.
+ */
+async function requestQuit(answer = null) {
   if (quitArmed) { app.quit(); return; }
   let ask = true;
   try { ask = (await ipc.setting('quitAsk')) !== false; }
@@ -273,21 +282,30 @@ async function requestQuit() {
   if (!ask) { log('выход: подтверждение выключено, закрываемся сразу'); app.quit(); return; }
 
   const dirty = await dirtyTabs();
-  log('выход: спрашиваем подтверждение, несохранённых ' + dirty);
   const detail = dirty
     ? tr('quit.detailDirty', { count: dirty })
     : tr('quit.detailClean');
-  const res = await dialog.showMessageBox(targetWindowSafe(), {
-    type: 'question',
-    title: tr('quit.title'),
-    message: tr('quit.message'),
-    detail,
-    buttons: [tr('quit.close'), tr('quit.cancel')],
-    defaultId: 0,
-    cancelId: 1,          // крестик в рамке равносилен отмене
-    checkboxLabel: tr('quit.neverAgain'),
-    noLink: true,
-  });
+  let res;
+  if (answer === null) {
+    log('выход: спрашиваем подтверждение, несохранённых ' + dirty);
+    res = await dialog.showMessageBox(targetWindowSafe(), {
+      type: 'question',
+      title: tr('quit.title'),
+      message: tr('quit.message'),
+      detail,
+      buttons: [tr('quit.close'), tr('quit.cancel')],
+      defaultId: 0,
+      cancelId: 1,          // крестик в рамке равносилен отмене
+      checkboxLabel: tr('quit.neverAgain'),
+      noLink: true,
+    });
+  } else {
+    // Тот же путь без окна: логи и проверки теста видят то же самое, что и
+    // при живом диалоге, но фокус ни у кого не забирается.
+    log('выход: подтверждение получено без диалога (тест), несохранённых ' + dirty
+      + ', ответ ' + answer);
+    res = { response: answer, checkboxChecked: false };
+  }
   if (res.checkboxChecked) {
     try { await ipc.setting('quitAsk', false); } catch { /* не записалось — спросим в следующий раз */ }
   }
@@ -458,13 +476,17 @@ app.on('will-quit', releaseTabShortcuts);
 /*
  * Скрытый режим + тестовый IPC для выхода.
  *
- * Проверить окно подтверждения из теста иначе нечем: системный диалог
- * закрывается только настоящей мышью, и поднять его из скрипта нельзя.
- * Канал живёт только там, где окно и так не показывается, и в обычном
- * запуске его не существует.
+ * Канал отдаёт индекс ответа, а не показывает окно: системный диалог закрывается
+ * только настоящей мышью, поднять его из скрипта нельзя, а появление окна во
+ * время автопроверок забирает фокус у того, что у человека открыто на экране.
+ * Канал живёт только там, где окно и так не показывается, и в обычном запуске
+ * его не существует.
  */
 if (HIDDEN) {
-  ipcMain.handle('mdv:testQuit', () => { requestQuit(); return true; });
+  ipcMain.handle('mdv:testQuit', (_e, answer = null) => {
+    requestQuit(answer === null || answer === undefined ? null : Number(answer));
+    return true;
+  });
 }
 
 app.whenReady()

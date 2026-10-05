@@ -48,10 +48,14 @@ contextBridge.exposeInMainWorld('mdv', {
   /**
    * Выход по тому же пути, что и Ctrl+Q, — для автотеста.
    *
+   * answer — индекс кнопки подтверждения (0 — выйти, 1 — отмена). Без него
+   * приложение показывает системный диалог, а его нельзя закрыть из скрипта:
+   * окно всплывает на экране и забирает фокус у того, что у человека открыто.
+   *
    * Обработчик живёт только в скрытом режиме (--jazzreader-hidden), так что в
    * обычном запуске вызова нет и метод ничего не делает.
    */
-  testQuit: () => ipcRenderer.invoke('mdv:testQuit'),
+  testQuit: (answer = null) => ipcRenderer.invoke('mdv:testQuit', answer),
 
   /** Путь файла из DataTransfer (drop) или из <input type=file>. */
   pathForFile: (file) => {
