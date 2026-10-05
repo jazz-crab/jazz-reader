@@ -3661,12 +3661,12 @@ function applySettings(s) {
 
 function settingsDialog() {
   /*
-   * Закрывать это окно можно только через closeModal (= close из
-   * wireModal). back.remove() сам по себе сносит узел, но НЕ снимает
-   * слушатель Escape, который wireModal вешает на document в фазе
-   * захвата: тот остаётся жить, и следующий Escape во всём приложении
-   * «закрывает» уже несуществующее окно — для настроек это откат только
-   * что подтверждённых значений.
+   * This window can only be closed through closeModal (= close from wireModal).
+   * back.remove() on its own tears down the node but does NOT remove the Escape
+   * listener that wireModal puts on document in the capture phase: it stays
+   * alive, and the next Escape across the whole application "closes" a
+   * non-existent window — for the settings that is a rollback of values just
+   * confirmed.
    */
   let closeModal = () => back.remove();
   const back = modalShell();
@@ -4000,7 +4000,7 @@ async function exitEdit(saveIt) {
  * Here the value of the field is overwritten when switching tabs and when
  * leaving edit mode, and that is enough for the Chromium history to be reset:
  * Ctrl+Z did nothing, and the person quite rightly considered the button broken.
- *
+ */
 const UNDO_COALESCE_MS = 700;
 const UNDO_MAX = 300;
 
@@ -4012,10 +4012,10 @@ function undoState(t) {
 }
 
 /**
- * Запомнить состояние перед правкой.
+ * Remember the state before an edit.
  *
- * @param {object} t   вкладка
- * @param {string} tag вид правки; одинаковые подряд склеиваются в один шаг
+ * @param {object} t   the tab
+ * @param {string} tag the kind of edit; identical ones in a row are joined into one step
  */
 function pushUndo(t, tag) {
   if (!t || t.mode !== 'edit') return;
@@ -4032,9 +4032,9 @@ function pushUndo(t, tag) {
   t.undoLast = el.editor.value;
 }
 
-/** Войти в правку с чистой историей: отменять нечего, правок ещё не было.
- *  Точка отсчёта — то, что сейчас в поле: первый же шаг должен знать, к
- *  чему возвращаться. */
+/** Enter edit mode with a clean history: there is nothing to undo, no edits yet.
+ *  The starting point is what is in the field now: the very first step must know
+ *  what to go back to. */
 function resetUndo(t) {
   if (!t) return;
   t.undo = [];
@@ -4049,8 +4049,8 @@ function applyEditorText(text) {
   const t = active();
   if (!t) return;
   const ed = el.editor;
-  // Курсор на прежнее место, обрезанный по длине нового текста: иначе отмена
-  // прыгала бы в начало заметки и теряла позицию, от которой человек отменял.
+  // The cursor returns to the old place, cut to the length of the new text: otherwise
+  // undo would jump to the start of the note and lose the position it undid from.
   const at = Math.min(ed.selectionStart || 0, text.length);
   ed.value = text;
   try { ed.setSelectionRange(at, at); } catch { /* поле могло быть скрыто */ }
@@ -4082,10 +4082,10 @@ function redoEdit() {
 }
 
 /*
- * Вид правки для склейки шагов. «Вставить» — один шаг целиком, поэтому
- * запоминаем вставленный кусок: пока он совпадает с хвостом текста,
- * следующий input — продолжение той же вставки. Набор строки обратно
- * склеивать не надо: это просто ввод текста.
+ * The kind of edit, for joining steps. "Paste" is one step as a whole, so we
+ * remember the pasted piece: while it matches the tail of the text, the next input
+ * is a continuation of the same paste. Typing a line back does not need joining:
+ * that is simply text input.
  */
 el.editor.addEventListener('paste', (e) => {
   const t = undoState(active());
@@ -4109,8 +4109,8 @@ el.editor.addEventListener('input', (e) => {
     tag = 'delete';
   }
   pushUndo(t, tag);
-  // t.raw обязан идти в ногу с полем: renderActive перерисовывает заметку и
-  // присваивает полю t.raw, а несвежий t.raw затирал бы напечатанное.
+  // t.raw must stay in step with the field: renderActive redraws the note and
+  // assigns t.raw to the field, and a stale t.raw would wipe what was typed.
   t.raw = el.editor.value;
   t.dirty = t.raw !== t._diskRaw;
   renderTabs();
@@ -4121,10 +4121,10 @@ el.btnZoomOut.onclick = () => setZoom(zoom - 0.1);
 
 
 
-/* Пункты экспорта нужны и кольцу заметки, и меню приложения, поэтому живут
- * здесь, а не внутри обработчика. */
+/* The export items are needed by the note ring and by the application menu alike,
+ * so they live here rather than inside a handler. */
 
-/** Скопировать путь к открытой заметке. */
+/** Copy the path to the open note. */
 function copyPath() {
   const t = active();
   if (!t || !t.path) return;
@@ -4134,7 +4134,7 @@ function copyPath() {
   );
 }
 
-/** Показать заметку в проводнике Windows. */
+/** Show the note in the Windows file explorer. */
 function revealFile() {
   const t = active();
   if (!t || !t.path) return;
@@ -4142,23 +4142,23 @@ function revealFile() {
 }
 
 /*
- * Правый клик внутри заметки открывает круговое меню.
+ * A right click inside the note opens the ring.
  *
- * Слушаем на самой заметке и на поле правки, но не на всей рабочей области:
- * правый клик по пустому месту мимо текста — это всё ещё «контекстное меню
- * вкладки» из привычки, а лишнее кольцо на пустом месте только мешает.
+ * We listen on the note itself and on the edit field, but not on the whole
+ * workspace: a right click on empty space past the text is still the "tab context
+ * menu" out of habit, and an extra ring on empty space only gets in the way.
  *
- * Своё preventDefault здесь обязателен: иначе поверх кольца появится ещё и
- * системное меню Chromium, и два меню окажутся на одном месте.
+ * Our own preventDefault here is required: otherwise the Chromium system menu
+ * appears on top of the ring, and two menus end up in the same place.
  */
 el.content.addEventListener('mousedown', radialDown);
 el.editor.addEventListener('mousedown', radialDown);
 document.addEventListener('mousemove', radialMove);
 document.addEventListener('mouseup', radialUp);
 /*
- * Системное меню на заметке подавлено: решение о кольце принимает radialUp.
- * Здесь только preventDefault — иначе поверх кольца появилось бы ещё и меню
- * Chromium.
+ * The system menu on the note is suppressed: the decision about the ring is made
+ * by radialUp. There is only preventDefault here — otherwise the Chromium menu
+ * would appear on top of the ring as well.
  */
 el.content.addEventListener('contextmenu', (e) => {
   if (e.target.closest('a, button, input, .code-copy, .mdv-math')) return;
@@ -4167,22 +4167,22 @@ el.content.addEventListener('contextmenu', (e) => {
 el.editor.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /*
- * Закрытие кольца: клик мимо, Esc, прокрутка (оно привязано к точке клика, и
- * при прокрутке осталось бы висеть в другом месте), уход на другую заметку и
- * потеря фокуса окна.
+ * Closing the ring: a click outside, Esc, a scroll (it is tied to the point of the
+ * click and would otherwise stay hanging somewhere else), a switch to another note
+ * and the window losing focus.
  */
 document.addEventListener('mousedown', (e) => {
   if (!radialOpen) return;
   /*
-   * Правый клик — особый случай: он должен ЗАКРЫТЬ кольцо, и закрытие не
-   * должно тут же открыть новое. Поэтому гасим жест флагом: решение «открыть
-   * ли кольцо» принимается на отпускании, и без флага отпускание после
-   * закрытия открывало бы второе кольцо поверх закрытого.
+   * A right click is a special case: it must CLOSE the ring, and the close must
+   * not immediately open a new one. So we suppress the gesture with a flag: the
+   * decision "should the ring open" is made on release, and without the flag the
+   * release after the close would open a second ring over the closed one.
    */
   if (e.button === 2) {
-    // Правый клик мимо кольца разбирает radialDown — он и ставит флаг, и
-    // закрывает кольцо. Здесь только случай клика ПО САМУМУ кольцу: до
-    // radialDown дело не доходит, а закрыть надо.
+    // A right click outside the ring is handled by radialDown — it both sets the
+    // flag and closes the ring. Here is only the case of a click ON the ring
+    // itself: radialDown is not reached, and it has to be closed anyway.
     if (el.radial.contains(e.target)) {
       radialCancelPress = true;
       closeRadial();
@@ -4199,22 +4199,22 @@ document.addEventListener('keydown', (e) => {
     if (radialOpen || radialDrag) { e.stopPropagation(); closeRadial(); }
     return;
   }
-  // Пока кольцо открыто, оно забирает навигацию себе: иначе стрелки уходили бы
-  // в заметку под кольцом, а Enter — в поле правки.
+  // While the ring is open it takes the navigation for itself: otherwise the arrows
+  // would go to the note under the ring, and Enter to the edit field.
   if (radialOpen) radialKey(e);
 }, true);
 el.content.addEventListener('wheel', () => closeRadial(), { passive: true });
 el.editor.addEventListener('wheel', () => closeRadial(), { passive: true });
 window.addEventListener('blur', () => closeRadial());
 
-// ---------------------------------------------------------- вид и панели
+// --------------------------------------------------------- view and panes
 
 /*
- * Что показывать: оглавление слева, проводник справа, панели и полосы — по
- * галочкам в меню «Вид». Полоса вкладок не скрывается никогда: без неё
- * нельзя ни открыть файл, ни понять, что открыто.
+ * What to show: the table of contents on the left, the file explorer on the right,
+ * the panes and the bars — by the checkmarks in the View menu. The tab strip is
+ * never hidden: without it neither can a file be opened nor what is open be known.
  *
- * Состояние лежит в settings.json рядом с остальными настройками.
+ * The state lives in settings.json next to the other settings.
  */
 const VIEW_DEFAULT = { toc: true, files: true, topbar: true, statusbar: true };
 let view = Object.assign({}, VIEW_DEFAULT);
@@ -4227,12 +4227,12 @@ function applyView() {
   el.topbar.hidden = !view.topbar;
   el.statusbar.hidden = !view.statusbar || isBlankTab();
   if (view.toc && !isBlankTab()) { buildToc(); updateSpy(); }
-  // Полоса вкладок живёт в своём контейнере и от панелей не зависит, но
-  // шевроны прокрутки зависят от доступной ширины — пересчитываем.
+  // The tab strip lives in its own container and does not depend on the panes, but
+  // the scroll chevrons depend on the available width — we recompute.
   if (typeof updateTabsNav === 'function') updateTabsNav();
 }
 
-/** Переключить часть интерфейса и запомнить выбор. */
+/** Toggle a part of the interface and remember the choice. */
 async function toggleView(key, force) {
   const next = force === undefined ? !view[key] : !!force;
   if (view[key] === next) return view[key];
@@ -4252,30 +4252,30 @@ function toggleToc(force) { return toggleView('toc', force); }
 
 el.treeFilter.addEventListener('input', renderTree);
 
-// Перетаскивание вкладок
+// Dragging tabs
 initTabDrag();
 initTabsScroll();
 
-// --- правая панель разделения: крестик и ресайз
+// --- the right pane of the split: close box and resize
 $('btnHideSecond').onclick = () => closeSecond();
 
-// Клик по панели = «дальше работаю здесь»: новая вкладка откроется в ней.
-// Слушаем на контейнере в фазе захвата, потому что клик часто приходится по
-// самому тексту заметки, а не по кнопке.
+// A click on the pane means "I will work here next": a new tab opens in it.
+// We listen on the container in the capture phase, because the click often lands
+// on the note text itself and not on the button.
 el.split.addEventListener('mousedown', (e) => {
   setPaneFocus(el.panel2.contains(e.target) ? 'second' : 'main');
 }, true);
 
-// То же самое при прокрутке: человек читает правую панель колесом — значит
-// она в фокусе, и следующую вкладку ждёт именно там.
+// The same on scrolling: a person reads the right pane with the wheel — so it is
+// focused, and that is where the next tab is expected.
 el.panel2.addEventListener('wheel', () => setPaneFocus('second'), { passive: true });
 el.content.addEventListener('wheel', () => setPaneFocus('main'), { passive: true });
-// И при переходе по оглавлению/истории тоже полезно знать, куда смотреть.
+// And knowing where to look is useful on a contents/history jump too.
 el.content.addEventListener('mousedown', () => setPaneFocus('main'), true);
 
-// Позицию прокрутки второй панели запоминаем отдельно от первой: у них
-// разные контейнеры, и при перестановке панелей местами scroll и scroll2
-// меняются ролями вместе с вкладками.
+// The scroll position of the second pane is remembered separately from the first: they
+// have different containers, and when the panes swap places scroll and scroll2
+// change roles along with the tabs.
 el.content2.addEventListener('scroll', () => {
   const t = secondTab();
   if (t) t.scroll2 = el.content2.scrollTop;
@@ -4292,13 +4292,13 @@ el.content2.addEventListener('scroll', () => {
   window.addEventListener('mousemove', (e) => {
     if (!drag) return;
     const box = el.split.getBoundingClientRect();
-    // Ширина правой панели — это расстояние от её ЛЕВОГО края до правого края
-    // области, то есть box.right минус курсор. Раньше тут стояло
-    // e.clientX - box.left, и ширина росла ВМЕСТЕ с движением мыши вправо:
-    // тянешь рамку вправо — правая панель становится шире, то есть едет
-    // навстречу курсору, а не за ним. У боковых панелей такой ошибки не было
-    // именно потому, что там считается от своего края: слева — clientX,
-    // справа — innerWidth - clientX.
+    // The width of the right pane is the distance from its LEFT edge to the right edge
+    // of the area, that is, box.right minus the cursor. There used to be
+    // e.clientX - box.left here, and the width grew TOGETHER with the mouse moving
+    // right: drag the frame right — the right pane becomes wider, that is, it runs
+    // towards the cursor instead of after it. The side panes never had that bug
+    // precisely because they are counted from their own edge: clientX on the left,
+    // innerWidth - clientX on the right.
     const w = box.right - e.clientX;
     const max = Math.round(box.width * 0.78);
     el.panel2.style.width = Math.max(260, Math.min(max, w)) + 'px';
@@ -4311,7 +4311,7 @@ el.content2.addEventListener('scroll', () => {
   });
 })();
 
-// --- ресайз панелей: слева тянем за правый край, справа — за левый
+// --- pane resize: on the left we drag the right edge, on the right the left one
 (() => {
   let drag = null;
   const start = (side) => (e) => {
@@ -4337,7 +4337,7 @@ el.content2.addEventListener('scroll', () => {
   });
 })();
 
-// --- скролл: scroll-spy + кнопка «наверх»
+// --- scroll: scroll-spy + the "back to top" button
 el.content.addEventListener('scroll', () => {
   updateReadProgress();
   if (active()) active().scroll = el.content.scrollTop;
@@ -4345,7 +4345,7 @@ el.content.addEventListener('scroll', () => {
   el.toTop.hidden = el.content.scrollTop < 300;
 }, { passive: true });
 
-// --- drag & drop файлов и папок
+// --- drag & drop of files and folders
 let dragDepth = 0;
 window.addEventListener('dragenter', (e) => {
   if (![...(e.dataTransfer.types || [])].includes('Files')) return;
@@ -4381,7 +4381,7 @@ window.addEventListener('drop', async (e) => {
   if (other.length) status(tr('status.skippedOther') + other.length, 'err');
 });
 
-// --- меню приложения
+// --- the application menu
 api.onMenu((action) => {
   switch (action) {
     case 'open-file': openFileDialog(); break;
@@ -4393,15 +4393,15 @@ api.onMenu((action) => {
     case 'find': openFind(); break;
     case 'toggle-sidebar': toggleView('files'); break;
     case 'toggle-toc': toggleToc(); break;
-    // Ctrl+E только входит в правку. Выйти из неё — явными кнопками
-    // «Сохранить»/«Отменить» (или Esc), чтобы правки не терялись молча.
+    // Ctrl+E only enters edit mode. Leaving it is done with the explicit buttons
+    // "Save"/"Discard" (or Esc), so that changes are not lost silently.
     case 'toggle-mode': toggleEditMode(); break;
     case 'cancel-edit': exitEdit(false); break;
     case 'back': go(-1); break;
     case 'forward': go(1); break;
     case 'new-tab': newTab(); break;
     case 'close-tab': if (activeId !== null) closeTab(activeId); break;
-    // По порядку вкладок, а не по стеку visit.
+    // By the order of the tabs, not by the visit stack.
     case 'next-tab': stepTab(1); break;
     case 'prev-tab': stepTab(-1); break;
     case 'reload': reload(); break;
@@ -4416,16 +4416,16 @@ api.onCli(async (paths) => {
   }
 });
 
-// --- клавиатура
+// --- keyboard
 document.addEventListener('keydown', (e) => {
   if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')) {
     if (e.key === 'F5' || !e.shiftKey) { e.preventDefault(); reload(); }
     return;
   }
-  // Отмена и повтор. Ловим на document, а не на поле: сочетание должно
-  // работать и когда фосис ушёл мимо редактора (после правки кольца, после
-  // клика по заголовку). В просмотре отменять нечего — там пропускаем,
-  // чтобы браузер не съел сочетание напрасно.
+  // Undo and redo. We catch it on document, not on the field: the combination has
+  // to work when the focus has gone past the editor (after using the ring, after
+  // a click on a heading). In reading there is nothing to undo — we skip it,
+  // so that the browser does not swallow the combination in vain.
   if (e.ctrlKey || e.metaKey) {
     const k = e.key.toLowerCase();
     const t = active();
@@ -4433,9 +4433,9 @@ document.addEventListener('keydown', (e) => {
     if (k === 'z' && !e.shiftKey && editing) { e.preventDefault(); undoEdit(); return; }
     if ((k === 'y' || (k === 'z' && e.shiftKey)) && editing) { e.preventDefault(); redoEdit(); return; }
   }
-  // Ctrl+Space открывает кольцо с клавиатуры. Точка — там, где стоит курсор,
-  // а если мышь давно не двигалась — по центру заметки: вызывать с клавиатуры
-  // и тянуться к чужому месту незачем.
+  // Ctrl+Space opens the ring from the keyboard. The point is where the cursor is,
+  // and if the mouse has not moved for a long time — the centre of the note: being
+  // called from the keyboard, reaching for a foreign place is pointless.
   if ((e.ctrlKey || e.metaKey) && e.key === ' ') {
     e.preventDefault();
     if (radialOpen) { closeRadial(); return; }
@@ -4447,16 +4447,16 @@ document.addEventListener('keydown', (e) => {
       const q = (el.content && !el.content.hidden ? el.content : el.editor).getBoundingClientRect();
       openRadial(q.left + q.width / 2, q.top + Math.min(q.height / 2, 320));
     }
-    // Первое действие подсвечено сразу: вызвали с клавиатуры — значит
-    // Enter должен сработать, не нажимая стрелку.
+    // The first action is highlighted at once: it was called from the keyboard, so
+    // Enter must work without pressing an arrow.
     radialStep(1);
     return;
   }
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); go(-1); return; }
   if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); go(1); return; }
-  // Ctrl+Tab / Ctrl+Shift+Tab — по порядку вкладок, по кругу.
-  // Здесь же renderer ловит то, что Chromium отдаёт системе: настоящие
-  // Ctrl+Tab/Ctrl+Shift+Tab перехватывает ОС и в renderer они не приходят.
+  // Ctrl+Tab / Ctrl+Shift+Tab — by the order of the tabs, in a circle.
+  // The renderer also catches what Chromium hands to the system: the real
+  // Ctrl+Tab/Ctrl+Shift+Tab is captured by the OS and does not reach the renderer.
   if ((e.ctrlKey || e.metaKey) && e.key === 'Tab') {
     e.preventDefault();
     stepTab(e.shiftKey ? -1 : 1);
@@ -4464,27 +4464,27 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     const t = active();
-    // Esc в правке — отмена (с вопросом, если есть несохранённое).
+    // Esc in edit mode is discard (with a question if there are unsaved changes).
     if (t && t.mode === 'edit') { e.preventDefault(); exitEdit(false); return; }
 
   }
-  // Ctrl+N — временная заметка в tmpdir, Ctrl+Shift+N — папка в открытой.
+  // Ctrl+N — a temporary note in tmpdir, Ctrl+Shift+N — a folder in the open one.
   if (e.ctrlKey && !e.altKey) {
     const k = e.key.toLowerCase();
     if (k === 'n' && !e.shiftKey) { e.preventDefault(); newTempNote(); return; }
     if (k === 'n' && e.shiftKey) { e.preventDefault(); newFolderInOpen(); return; }
-    // Ctrl+, — настройки. shiftKey важен: Ctrl+Shift+, в Chromium это zoom out.
+    // Ctrl+, — settings. shiftKey matters: Ctrl+Shift+, is zoom out in Chromium.
     if (k === ',' && !e.shiftKey) { e.preventDefault(); settingsDialog(); return; }
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     const t = active();
-    // Ctrl+Shift+S — «Сохранить как»: то же окно экспорта, но с готовым MD.
-    // Отдельного второго пути не держим, иначе придётся поддерживать две
-    // одинаковые проверки и два разных места, где экспорт может сломаться.
+    // Ctrl+Shift+S — "Save as": the same export window, but with a ready MD.
+    // We do not keep a second separate path, or we would have to maintain two
+    // identical checks and two different places where the export could break.
     if (t && t.mode === 'edit' && t.dirty) save(); else exportDialog('md');
   }
-  // Tab в textarea должен вставлять отступ, а не менять фокус
+  // Tab in a textarea must insert an indent, not change the focus
   if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && document.activeElement === el.editor) {
     e.preventDefault();
     const s = el.editor.selectionStart, en = el.editor.selectionEnd;
@@ -4494,24 +4494,25 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// --- не закрывать молча с несохранённым
+// --- do not close silently with unsaved changes
 window.addEventListener('beforeunload', (e) => {
   const dirty = [...tabs.values()].some((t) => t.dirty);
   if (dirty) { e.preventDefault(); e.returnValue = ''; }
 });
 
-// ============================================================ старт
+// ============================================================ start
 
-// Статические <span data-i="имя"> в index.html превращаем в SVG.
-// Раньше там стояли глифы Font Awesome (&#xf07b;), которые рисовались
-// только при загруженном Nerd Font.
+// The static <span data-i="name"> in index.html are turned into SVGs.
+// There used to be Font Awesome glyphs (&#xf07b;) there, which were drawn
+// only if the Nerd Font was loaded.
 ICONS.hydrate(document);
 
 /*
- * Резерв под системные кнопки окна. titleBarOverlay рисует «свернуть/развернуть/
- * закрыть» поверх содержимого, и без резерва полоса вкладок заезжала под них:
- * кнопка «+» пропадала, последние вкладки были не видны, а скролла не
- * появлялось — лента формально влезала, и переполнение считать было не от чего.
+ * The reserve for the system caption buttons. titleBarOverlay draws
+ * "minimise/maximise/close" over the content, and without the reserve the tab
+ * strip slid under them: the "+" disappeared, the last tabs were invisible, and
+ * no scrollbar appeared — the strip formally fitted, and there was nothing to
+ * count the overflow against.
  */
 function applyCaptionReserve(px) {
   const w = Math.max(0, Math.round(px || 0));
@@ -4520,20 +4521,20 @@ function applyCaptionReserve(px) {
   scheduleElide();
 }
 if (api.caption) {
-  // Запрос, а не подписка: сообщение могло бы уйти раньше, чем мы повесили
-  // слушатель, и резерв остался бы дефолтным.
+  // A request rather than a subscription: the message could have gone out before we
+  // attached the listener, and the reserve would have stayed at the default.
   api.caption().then(applyCaptionReserve).catch(() => {});
 }
 
-/* Хук для автотестов (test/startup.js).
-   Системный диалог выбора папки из теста не открыть, а без него нельзя
-   проверить, что дерево вообще появляется: addFolder() писал его в скрытый
-   #workspace, и «Папка» визуально ничего не делала, пока не откроешь файл.
-   Основной код сюда не обращается. Через contextBridge подменить
-   диалог нельзя — объекты от contextBridge заморожены, присваивание молча
-   игнорируется (на этом сначала и споткнулся тест). */
-/* setConfirm подменяет вопрос «отменить правки?» — в тестах системный диалог
-   открывать нельзя, он бы заблокировал renderer. */
+/* The hook for the automated tests (test/startup.js).
+   The system folder dialog cannot be opened from a test, and without it there is
+   no way to check that the tree appears at all: addFolder() wrote it into the
+   hidden #workspace, and "Folder" visually did nothing until a file was opened.
+   The main code does not refer to this. It cannot be substituted through
+   contextBridge — the objects from contextBridge are frozen, an assignment is
+   silently ignored (the test stumbled on that first). */
+/* setConfirm substitutes the "discard changes?" question — in tests a system
+   dialog cannot be opened, it would block the renderer. */
 let __confirmHook = null;
 window.__mdvTest = {
   addFolder, renderTree, renderActive, refreshTreeSelection,
@@ -4541,7 +4542,7 @@ window.__mdvTest = {
   newTab, openPath, active, stepTab, selectTab, samePath,
   duplicateTab, moveTab, fileContextMenu, tabContextMenu, trashFile, basname,
   setConfirm: (fn) => { __confirmHook = fn; },
-  // Меню иконки приложения, недавние, настройки
+  // The application icon menu, recent files, settings
   newFileAction, newProjectAction, recentDialog, settingsDialog,
   loadSettings, applySettings, previewSettings, noteRecent,
   view: () => Object.assign({}, view),
@@ -4554,12 +4555,12 @@ window.__mdvTest = {
   enterEdit: toggleEditMode, exitEdit, save, saveTab, undoEdit, redoEdit, resetUndo,
   radialPick, radialDragging: () => radialDrag,
   /*
-   * Настоящий правый клик для проверок кольца.
+   * A real right click for the ring checks.
    *
-   * Кольцо открывается по решению mouseup, а не по событию contextmenu,
-   * поэтому проверка обязана слать весь жест: mousedown → mouseup →
-   * contextmenu, ровно как Chromium. Одного contextmenu мало — он теперь
-   * только подавляет системное меню.
+   * The ring opens by the decision on mouseup, not by the contextmenu event,
+   * so the check has to send the whole gesture: mousedown -> mouseup ->
+   * contextmenu, exactly as Chromium does. A contextmenu alone is not enough — it
+   * now only suppresses the system menu.
    */
   openRingIn: (elId, x, y) => {
     const target = document.getElementById(elId);
@@ -4574,9 +4575,9 @@ window.__mdvTest = {
   },
 
   settings: () => currentSettings, previewSettings, settingsDialog,
-  /* Метка последнего движения мыши: проверке нужно состарить курсор. */
+  /* The mark of the last mouse movement: the check needs to age the cursor. */
   lastMouse,
-  /* Что реально лежит в settings.json: проверка «сохранилось ли». */
+  /* What really lies in settings.json: for the check "was it saved". */
   savedSettings: () => api.settingsGet().catch(() => null),
   openSecond, closeSecond, splitScreen, renderSecond, swapPanes, secondTab,
   setView: (patch) => { Object.assign(view, patch); applyView(); },
