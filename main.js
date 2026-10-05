@@ -176,6 +176,11 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      // Язык из --lang= кладём в argv окна: renderer читает settings.json
+      // сам, и без перекрытия возвращался к сохранённому значению — тогда
+      // окно и меню показывали разные языки. Имя с префиксом mdv-, чтобы
+      // отличать внутренний аргумент от пользовательского --lang=.
+      ...(langFromArgv() ? { additionalArguments: ['--mdv-lang=' + langFromArgv()] } : {}),
       // Окно не видно, значит композитор не будет рисовать: в offscreen
       // кадры идут напрямую, и снимки страницы получаются непустыми.
       ...(HIDDEN ? { offscreen: true } : {}),
@@ -316,6 +321,33 @@ async function requestQuit(answer = null) {
   app.quit();
 }
 
+/*
+ * Перекрытие языка из командной строки: --lang=ru, --lang=en.
+ *
+ * Живёт до первого явного выбора языка в настройках. После выбора перекрытие
+ * снимается (см. mdv:setLang): иначе выбор человека не действовал бы, пока
+ * запущено с --lang, и настройка была бы недоступна вовсе.
+ */
+let langOverrideArmed = true;
+
+/**
+ * Язык из командной строки: --lang=ru, --lang=en.
+ *
+ * Перекрывает сохранённую настройку, но не переписывает её. Так можно
+ * запустить вторую копию на другом языке, не задев основную, — и, что важнее
+ * для тестов, получить язык, заданный явно, вместо того, чтобы угадывать по
+ * настройкам машины. До этого аргумент передавался в тестах, но его никто не
+ * читал: язык брался из settings.json, и проверки падали или проходили в
+ * зависимости от того, что там лежало.
+ */
+function langFromArgv() {
+  if (!langOverrideArmed) return null;
+  const arg = process.argv.find((a) => a.startsWith('--lang='));
+  if (!arg) return null;
+  const tag = i18n.normalize(arg.slice('--lang='.length));
+  return tag || 'auto';
+}
+
 /**
  * Применить сохранённый выбор языка.
  *
@@ -324,6 +356,14 @@ async function requestQuit(answer = null) {
  * зумом и шириной колонки — отдельный файл ради одного значения не нужен.
  */
 async function applyLangSetting() {
+  const forced = langFromArgv();
+  if (forced) {
+    // Не пишем в settings.json: аргумент — это разовое перекрытие, иначе
+    // запуск с --lang=en молча сменил бы язык у следующего обычного запуска.
+    i18n.setLocale(forced);
+    log('язык: задан аргументом командной строки (' + forced + ')');
+    return i18n.lang;
+  }
   try {
     await ipc.setting('lang', i18n.setLocale(await ipc.setting('lang')));
   } catch (e) {
@@ -340,6 +380,8 @@ async function applyLangSetting() {
 // Renderer сначала пишет значение в settings.json сам (общий путь настроек),
 // а сюда приходит сигнал «перечитай и пересобери меню».
 ipcMain.handle('mdv:setLang', async () => {
+  // Язык выбрали явно — перекрытие из командной строки больше не нужно.
+  langOverrideArmed = false;
   const lang = await applyLangSetting();
   buildMenu();
   return lang;

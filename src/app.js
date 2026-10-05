@@ -14,6 +14,17 @@ const { MDV_I18N } = window;
  */
 const tr = (key, params) => MDV_I18N.t(key, params);
 
+/*
+ * Язык из --lang=, заданный командной строкой. Пустая строка, если перекрытия
+ * нет. Renderer не имеет доступа к argv главного процесса, значение отдаёт
+ * preload, который читает аргумент, переданный окну при создании.
+ *
+ * let, а не const: перекрытие действует до первого явного выбора языка в
+ * настройках, иначе окно настроек не могло бы сменить язык вообще — выбор
+ * пользователя должен быть сильнее того, что было в командной строке.
+ */
+let MDV_FORCED_LANG = (api.forcedLang && api.forcedLang()) || '';
+
 /** SVG-иконки Lucide (модуль генерирует scripts/vendor.js). */
 const ICONS = window.MDV_ICONS;
 
@@ -2730,9 +2741,13 @@ const RADIAL_LAYOUT = [
   // Правка сверху, буфер обмена снизу. Секции кольца делятся дугами, а не
   // кнопками на окружности: в круглый кружок попадать неудобно, в сектор —
   // легко. Отдельно стоящие действия занимают свои дуги целиком.
-  { act: 'mode', slot: 'top', icon: 'pencil', tip: tr('ring.editTip') },
-  { act: 'save', slot: 'top', icon: 'save', tip: tr('ring.saveTip'), cls: 'r-save' },
-  { act: 'cancel', slot: 'top', icon: 'x', tip: tr('ring.cancelTip'), cls: 'r-cancel' },
+  //
+  // tip хранится ключом, а не текстом: эта таблица собирается один раз при
+  // загрузке скрипта, когда язык ещё не применён. С текстом подписи
+  // запекались на стартовом языке навсегда и не переводились при смене.
+  { act: 'mode', slot: 'top', icon: 'pencil', tipKey: 'ring.editTip' },
+  { act: 'save', slot: 'top', icon: 'save', tipKey: 'ring.saveTip', cls: 'r-save' },
+  { act: 'cancel', slot: 'top', icon: 'x', tipKey: 'ring.cancelTip', cls: 'r-cancel' },
   // Справа — всё, что делают с файлом целиком: экспорт и путь. Слева — только
   // открытие. Раньше «Путь» стоял слева рядом с «Открыть», и две кнопки,
   // которые делают одно и то же — показывают файл, — делили одну дугу между
@@ -2744,13 +2759,13 @@ const RADIAL_LAYOUT = [
   // Выбор по направлению и наведение целятся именно туда, и в этой точке
   // кольцо решало бы, экспорт это или путь.
   { act: 'export', slot: 'right', from: -39, to: 9, icon: 'folder-output',
-    tip: tr('ring.exportTip'), cls: 'r-export' },
+    tipKey: 'ring.exportTip', cls: 'r-export' },
   { act: 'path', slot: 'right', from: 9, to: 39, icon: 'signpost',
-    tip: tr('ring.pathTip'), cls: 'r-path' },
-  { act: 'copy', slot: 'bottom', icon: 'copy', tip: tr('ring.copyTip') },
-  { act: 'cut', slot: 'bottom', icon: 'scissors', tip: tr('ring.cutTip') },
-  { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tip: tr('ring.pasteTip') },
-  { act: 'open', slot: 'left', icon: 'plus', tip: tr('ring.openTip'), cls: 'r-open' },
+    tipKey: 'ring.pathTip', cls: 'r-path' },
+  { act: 'copy', slot: 'bottom', icon: 'copy', tipKey: 'ring.copyTip' },
+  { act: 'cut', slot: 'bottom', icon: 'scissors', tipKey: 'ring.cutTip' },
+  { act: 'paste', slot: 'bottom', icon: 'clipboard-paste', tipKey: 'ring.pasteTip' },
+  { act: 'open', slot: 'left', icon: 'plus', tipKey: 'ring.openTip', cls: 'r-open' },
 ];
 
 let radialOpen = false;
@@ -2923,8 +2938,8 @@ function buildRadial() {
     const rad = item.mid * Math.PI / 180;
     b.style.setProperty('--mx', Math.round(Math.cos(rad) * RADIAL_MID) + 'px');
     b.style.setProperty('--my', Math.round(Math.sin(rad) * RADIAL_MID) + 'px');
-    b.title = item.tip;
-    b.setAttribute('aria-label', item.tip);
+    b.title = tr(item.tipKey);
+    b.setAttribute('aria-label', b.title);
     /*
      * Квадрат под попадание мыши — ровно по размеру кольца.
      *
@@ -2935,7 +2950,6 @@ function buildRadial() {
      */
     b.innerHTML = '<span class="rd-hit"></span>'
       + '<span class="rd-dot">' + ICONS.icon(item.icon) + '</span>';
-    item.tipRef = item.tip;
     item.midRef = { x: b.style.getPropertyValue('--mx'), y: b.style.getPropertyValue('--my') };
     b.disabled = !radialEnabled(item.act);
     b.onclick = () => radialAct(item.act);
@@ -3204,13 +3218,13 @@ function radialToMenu(which) {
   const y = r.bottom + 6;
   if (which === 'path') {
     showContextMenu(x, y, [
-      { label: 'Скопировать путь', icon: 'copy', act: () => copyPath() },
-      { label: 'Открыть в проводнике', icon: 'folder-search', act: () => revealFile() },
+      { label: tr('path.copy'), icon: 'copy', act: () => copyPath() },
+      { label: tr('path.reveal'), icon: 'folder-search', act: () => revealFile() },
     ], { width: 258, height: 84, anchorRect: r });
   } else {
     showContextMenu(x, y, [
-      { label: 'Открыть .md', icon: 'file-text', hint: 'Ctrl+O', act: openFileDialog },
-      { label: 'Открыть папку', icon: 'folder-open', hint: 'Ctrl+Shift+O', act: openFolderDialog },
+      { label: tr('menu.file.openMd'), icon: 'file-text', hint: 'Ctrl+O', act: openFileDialog },
+      { label: tr('menu.file.openFolderItem'), icon: 'folder-open', hint: 'Ctrl+Shift+O', act: openFolderDialog },
     ], { width: 248, height: 84, anchorRect: r });
   }
 }
@@ -3315,13 +3329,13 @@ window.addEventListener('mousemove', (e) => {
  */
 async function newTempNote() {
   let res;
-  try { res = await api.newTemp('Безымянный'); }
-  catch (e) { status('Не удалось создать временную заметку: ' + (e.message || e), 'err'); return; }
+  try { res = await api.newTemp(tr('name.untitled')); }
+  catch (e) { status(tr('status.tempNoteFailed') + (e.message || e), 'err'); return; }
   if (!res) return;
-  if (!res.ok) { status('Не удалось создать временную заметку: ' + (res.error || 'ошибка'), 'err'); return; }
+  if (!res.ok) { status(tr('status.tempNoteFailed') + (res.error || tr('err.word')), 'err'); return; }
   const t = await openPath(res.path, { newTab: true });
   if (t) { t.temp = true; renderTabs(); }
-  status('Временная заметка: ' + basname(res.path), 'ok');
+  status(tr('status.tempNote') + basname(res.path), 'ok');
 }
 
 /**
@@ -3337,14 +3351,14 @@ function folderForNew() {
 
 async function newFolderInOpen() {
   const parent = folderForNew();
-  if (!parent) { status('Сначала открой папку с заметками', 'err'); return; }
+  if (!parent) { status(tr('err.openFolderFirst'), 'err'); return; }
   let res;
-  try { res = await api.newFolder(parent, 'Новая папка'); }
-  catch (e) { status('Не удалось создать папку: ' + (e.message || e), 'err'); return; }
+  try { res = await api.newFolder(parent, tr('name.newFolder')); }
+  catch (e) { status(tr('status.folderFailed') + (e.message || e), 'err'); return; }
   if (!res) return;
-  if (!res.ok) { status('Не удалось создать папку: ' + (res.error || 'ошибка'), 'err'); return; }
+  if (!res.ok) { status(tr('status.folderFailed') + (res.error || tr('err.word')), 'err'); return; }
   await refreshRoots();
-  status('Создана папка: ' + res.name, 'ok');
+  status(tr('status.folderCreated') + res.name, 'ok');
 }
 
 /** Перечитать деревья открытых папок после появления новой. */
@@ -3363,16 +3377,16 @@ async function refreshRoots() {
 function viewMenuItems() {
   return [
     { sep: true },
-    { label: 'Проводник', check: view.files, act: () => toggleView('files') },
-    { label: 'Оглавление', check: view.toc, act: () => toggleView('toc') },
-    { label: 'Верхняя панель', check: view.topbar, act: () => toggleView('topbar') },
-    { label: 'Нижняя панель', check: view.statusbar, act: () => toggleView('statusbar') },
+    { label: tr('view.files'), check: view.files, act: () => toggleView('files') },
+    { label: tr('view.toc'), check: view.toc, act: () => toggleView('toc') },
+    { label: tr('view.topbar'), check: view.topbar, act: () => toggleView('topbar') },
+    { label: tr('view.statusbar'), check: view.statusbar, act: () => toggleView('statusbar') },
     { sep: true },
     // Разделение удобнее всего получить перетаскиванием вкладки в поле
     // заметки, но пункт в меню нужен тоже: перетаскивать нечем, когда
     // открыта одна вкладка и вторую ещё не открывали.
-    { label: 'Разделить экран', hint: 'перетащи вкладку', act: splitScreen, off: tabs.size < 2 },
-    { label: 'Закрыть правую панель', act: closeSecond, off: secondId === null },
+    { label: tr('view.split'), hint: tr('view.splitHint'), act: splitScreen, off: tabs.size < 2 },
+    { label: tr('view.closeRight'), act: closeSecond, off: secondId === null },
   ];
 }
 
@@ -3380,20 +3394,20 @@ el.appBrand.onclick = (e) => {
   const r = el.appBrand.getBoundingClientRect();
   showContextMenu(r.left, r.bottom + 4, [
     {
-      label: 'Файл',
+      label: tr('menu.file'),
       items: [
-        { label: 'Новый файл', hint: 'Ctrl+N', act: newTempNote },
-        { label: 'Новая папка', hint: 'Ctrl+Shift+N', act: newFolderInOpen, off: !folderForNew() },
+        { label: tr('menu.file.new'), hint: 'Ctrl+N', act: newTempNote },
+        { label: tr('menu.file.newFolder'), hint: 'Ctrl+Shift+N', act: newFolderInOpen, off: !folderForNew() },
         { sep: true },
-        { label: 'Открыть .md', hint: 'Ctrl+O', act: openFileDialog },
-        { label: 'Открыть папку', hint: 'Ctrl+Shift+O', act: openFolderDialog },
+        { label: tr('menu.file.openMd'), hint: 'Ctrl+O', act: openFileDialog },
+        { label: tr('menu.file.openFolderItem'), hint: 'Ctrl+Shift+O', act: openFolderDialog },
         { sep: true },
-        { label: 'Недавние', act: recentDialog },
+        { label: tr('menu.file.recent'), act: recentDialog },
       ],
     },
-    { label: 'Вид', items: viewMenuItems() },
+    { label: tr('menu.view'), items: viewMenuItems() },
     { sep: true },
-    { label: 'Настройки', hint: 'Ctrl+,', act: settingsDialog },
+    { label: tr('menu.settings'), hint: 'Ctrl+,', act: settingsDialog },
   ], { width: 250, height: 190, subWidth: 240, anchorRect: r });
 };
 el.appBrand.oncontextmenu = (e) => {
@@ -3404,32 +3418,32 @@ el.appBrand.oncontextmenu = (e) => {
 async function newFileAction() {
   let res;
   try {
-    res = await api.newFile('Новая заметка');
+    res = await api.newFile(tr('name.newNote'));
   } catch (e) {
-    status('Не удалось создать файл: ' + (e.message || e), 'err');
+    status(tr('status.fileFailed') + (e.message || e), 'err');
     return;
   }
   if (!res) return;
   if (res.canceled) return;
-  if (!res.ok) { status('Не удалось создать файл: ' + (res.error || 'ошибка'), 'err'); return; }
+  if (!res.ok) { status(tr('status.fileFailed') + (res.error || tr('err.word')), 'err'); return; }
   noteRecent(res.path);
   await openPath(res.path, { newTab: true });
-  status('Создан: ' + basname(res.path), 'ok');
+  status(tr('status.fileCreated') + basname(res.path), 'ok');
 }
 
 async function newProjectAction() {
   let res;
   try {
-    res = await api.newProject('Новый проект');
+    res = await api.newProject(tr('name.newProject'));
   } catch (e) {
-    status('Не удалось создать проект: ' + (e.message || e), 'err');
+    status(tr('status.projectFailed') + (e.message || e), 'err');
     return;
   }
   if (!res || res.canceled) return;
-  if (!res.ok) { status('Не удалось создать проект: ' + (res.error || 'ошибка'), 'err'); return; }
+  if (!res.ok) { status(tr('status.projectFailed') + (res.error || tr('err.word')), 'err'); return; }
   await addFolder(res.path);
   if (res.readme) noteRecent(res.readme);
-  status('Проект готов: ' + basname(res.path), 'ok');
+  status(tr('status.projectReady') + basname(res.path), 'ok');
 }
 
 /**
@@ -3460,14 +3474,14 @@ async function recentDialog() {
   }
 
   const back = modalShell();
-  const box = modalBox('Недавние файлы', 440, 420);
+  const box = modalBox(tr('recent.title'), 440, 420);
 
   if (!exists.length) {
     const empty = document.createElement('div');
     empty.className = 'modal-empty';
     empty.textContent = files.length
-      ? 'Все файлы из списка удалены или переименованы.'
-      : 'Пока пусто. Откройте заметку — она появится здесь.';
+      ? tr('recent.allGone')
+      : tr('recent.empty');
     box.append(empty);
   } else {
     const list = document.createElement('div');
@@ -3505,12 +3519,12 @@ async function recentDialog() {
   row.className = 'modal-row';
   const clear = document.createElement('button');
   clear.className = 'dlgbtn';
-  clear.textContent = 'Очистить список';
+  clear.textContent = tr('recent.clear');
   clear.disabled = !files.length;
   clear.onclick = async () => {
     await api.recentClear();
     closeModal(false);
-    status('Список недавних очищен', 'ok');
+    status(tr('recent.cleared'), 'ok');
   };
   row.append(clear);
   box.append(row);
@@ -3590,7 +3604,16 @@ function applySettings(s) {
   // Атрибут lang нужен не только экранным читалкам: от него зависят
   // переносы, форма курсира и правила :lang() в разметке.
   MDV_I18N.setLocale(s.lang || 'auto');
+  // Язык, заданный командной строкой (--lang=ru), перекрывает настройку.
+  // Главный процесс так уже сделал, но renderer читает settings.json сам и
+  // без этой строки возвращался к сохранённому значению: окно и меню
+  // показывали разные языки. Значение отдаёт preload, который читает argv
+  // главного процесса — иначе renderer до него не доберётся.
+  if (MDV_FORCED_LANG) MDV_I18N.setLocale(MDV_FORCED_LANG);
   root.lang = MDV_I18N.tag();
+  // Подписи из разметки (title, aria-label, placeholder) переводим здесь же:
+  // applySettings вызывается и на старте, и при каждой смене языка.
+  MDV_I18N.applyDom();
   // Размер текста идёт через setZoom, чтобы ползунок в настройках и кнопки
   // масштаба в тулбаре всегда показывали одно и то же.
   setZoom(s.zoom);
@@ -3731,6 +3754,9 @@ function settingsDialog() {
   }
   langSel.value = MDV_I18N.locale;
   langSel.onchange = async () => {
+    // Явный выбор снимает перекрытие из командной строки: человек выбрал
+    // язык сам, и он должен пережить и следующие applySettings.
+    MDV_FORCED_LANG = '';
     // Значение сохраняется раньше, чем приходит сигнал: главный процесс
     // перечитывает файл, и к моменту чтения запись должна быть уже на диске.
     await previewSettings({ lang: langSel.value });
@@ -3810,7 +3836,7 @@ async function previewSettings(patch) {
   try {
     await api.settingsSet(currentSettings);
   } catch (e) {
-    status('Настройки не сохранены: ' + (e.message || e), 'err');
+    status(tr('status.settingsNotSaved') + (e.message || e), 'err');
   }
 }
 
@@ -3874,7 +3900,7 @@ async function exitEdit(saveIt) {
     // save() намеренно оставляет правку включённой (Ctrl+S не должен
     // выбрасывать в чтение), а тут мы именно выходим — доводим до конца.
     endEdit(t);
-    status('Автосохранено: ' + t.name, 'ok');
+    status(tr('status.autosaved') + t.name, 'ok');
     return;
   }
 
@@ -4007,21 +4033,21 @@ function applyEditorText(text) {
 function undoEdit() {
   const t = undoState(active());
   if (!t || t.mode !== 'edit') return;
-  if (!t.undo.length) { status('Отменять нечего', 'warn'); return; }
+  if (!t.undo.length) { status(tr('err.nothingToUndo'), 'warn'); return; }
   t.redo.push(el.editor.value);
   applyEditorText(t.undo.pop());
   t.undoTag = '';                 // следующий набор начнёт новый шаг
-  status('Отменено', 'ok');
+  status(tr('status.undone'), 'ok');
 }
 
 function redoEdit() {
   const t = undoState(active());
   if (!t || t.mode !== 'edit') return;
-  if (!t.redo.length) { status('Повторять нечего', 'warn'); return; }
+  if (!t.redo.length) { status(tr('err.nothingToRedo'), 'warn'); return; }
   t.undo.push(el.editor.value);
   applyEditorText(t.redo.pop());
   t.undoTag = '';
-  status('Повторено', 'ok');
+  status(tr('status.redone'), 'ok');
 }
 
 /*
@@ -4072,8 +4098,8 @@ function copyPath() {
   const t = active();
   if (!t || !t.path) return;
   navigator.clipboard.writeText(t.path).then(
-    () => toast('Путь скопирован: ' + t.path),
-    () => status('Буфер обмена недоступен', 'err')
+    () => toast(tr('status.pathCopied') + t.path),
+    () => status(tr('clip.unavailableShort'), 'err')
   );
 }
 
@@ -4186,7 +4212,7 @@ async function toggleView(key, force) {
     currentSettings = Object.assign({}, currentSettings, { view: Object.assign({}, view) });
     await api.settingsSet({ view: Object.assign({}, view) });
   } catch (e) {
-    status('Вид не сохранён: ' + (e.message || e), 'err');
+    status(tr('status.viewNotSaved') + (e.message || e), 'err');
   }
   return view[key];
 }
@@ -4321,7 +4347,7 @@ window.addEventListener('drop', async (e) => {
   }
   for (const d of dirs) await addFolder(d);
   for (const m of mds) await openPath(m, { newTab: true });  // каждый файл — в своей вкладке
-  if (other.length) status('Пропущено (не .md и не папка): ' + other.length, 'err');
+  if (other.length) status(tr('status.skippedOther') + other.length, 'err');
 });
 
 // --- меню приложения
@@ -4533,4 +4559,4 @@ newTab();
 renderTree();
 loadSettings();
 updateZoom();
-status('Готово. Ctrl+O — открыть .md, Ctrl+Shift+O — открыть папку');
+status(tr('status.readyHint'));

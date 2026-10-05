@@ -27,16 +27,17 @@
            приходилось думать, что она открывается по клику. Три полоски
            однозначно означают меню, и площадь кнопки ближе к квадратной,
            поэтому по ней проще попасть мышью. -->
-      <button class="tabbar-brand" id="appBrand" title="Меню: Файл, Вид, Настройки" aria-haspopup="menu" aria-label="Меню">
+      <button class="tabbar-brand" id="appBrand" data-i18n-title="brand.title"
+              data-i18n-aria="brand.ariaShort" aria-haspopup="menu">
         <span class="ico" data-i="menu"></span>
       </button>
 
       <div class="tabs-wrap" id="tabsWrap">
-        <button class="tabs-nav left" id="tabsLeft" title="Вкладки левее" aria-label="Вкладки левее" hidden>
+        <button class="tabs-nav left" id="tabsLeft" data-i18n-title="tabs.left" data-i18n-aria="tabs.left" hidden>
           <span class="ico" data-i="chevron-left"></span>
         </button>
         <div class="tabs" id="tabs"></div>
-        <button class="tabs-nav right" id="tabsRight" title="Вкладки правее" aria-label="Вкладки правее" hidden>
+        <button class="tabs-nav right" id="tabsRight" data-i18n-title="tabs.right" data-i18n-aria="tabs.right" hidden>
           <span class="ico" data-i="chevron-right"></span>
         </button>
       </div>
@@ -44,7 +45,7 @@
       <!-- Плюсик просто открывает новую вкладку. Мини-меню убрано: ради
            пустой вкладки не надо в неё нырять, а файлы/папки открываются
            кнопками тулбара. -->
-      <button class="tab-new" id="btnNewTab" title="Новая вкладка (Ctrl+T)"><span class="ico" data-i="plus"></span></button>
+      <button class="tab-new" id="btnNewTab" data-i18n-title="tab.newTitle"><span class="ico" data-i="plus"></span></button>
 
       <div class="tabbar-spacer"></div>
     </div>
@@ -60,8 +61,8 @@
          уезжал от середины. -->
     <div class="topbar">
       <div class="topbar-left">
-        <button class="btn ico-only" id="btnBack" title="Назад (Alt+&#8592;)" disabled><span class="ico" data-i="arrow-left"></span></button>
-        <button class="btn ico-only" id="btnForward" title="Вперёд (Alt+&#8594;)" disabled><span class="ico" data-i="arrow-right"></span></button>
+        <button class="btn ico-only" id="btnBack" data-i18n-title="nav.back" disabled><span class="ico" data-i="arrow-left"></span></button>
+        <button class="btn ico-only" id="btnForward" data-i18n-title="nav.forward" disabled><span class="ico" data-i="arrow-right"></span></button>
         <span class="sep"></span>
       </div>
 
@@ -81,11 +82,11 @@
            тот не мешает выделять текст и не требует заново вставлять узел
            при каждой перерисовке. -->
       <div class="topbar-center">
-        <button class="btn ico-only" id="btnZoomOut" title="Уменьшить (Ctrl+−)"><span class="ico" data-i="zoom-out"></span></button>
+        <button class="btn ico-only" id="btnZoomOut" data-i18n-title="zoom.out"><span class="ico" data-i="zoom-out"></span></button>
         <input class="zoomval" id="zoomVal" type="text" value="100%"
                spellcheck="false" autocomplete="off" inputmode="decimal"
-               title="Масштаб: впиши число, например 85 или 175 (Enter)">
-        <button class="btn ico-only" id="btnZoomIn" title="Увеличить (Ctrl++)"><span class="ico" data-i="zoom-in"></span></button>
+               data-i18n-title="zoom.input">
+        <button class="btn ico-only" id="btnZoomIn" data-i18n-title="zoom.in"><span class="ico" data-i="zoom-in"></span></button>
       </div>
 
       <div class="topbar-right">
@@ -149,7 +150,7 @@
       <aside class="sidebar side-left" id="tocSide">
         <div class="side-pane" id="paneToc"></div>
       </aside>
-      <div class="sidebar-resizer" id="tocResizer" title="Потяни, чтобы изменить ширину"></div>
+      <div class="sidebar-resizer" id="tocResizer" data-i18n-title="resizer.toc"></div>
 
       <!-- Разделение экрана: слева рабочая заметка (она же активная вкладка),
            справа вторая, с узкой шапкой. Полоса вкладок сверху одна на обе
@@ -166,29 +167,29 @@
              прямым потомком .workspace и прижималась к правому краю ОКНА,
              то есть висела поверх панели проводника — в другом краю, чем
              то, что она листает. -->
-        <button class="to-top" id="toTop" title="Наверх" hidden><span class="ico" data-i="arrow-up"></span></button>
+        <button class="to-top" id="toTop" data-i18n-title="toTop" hidden><span class="ico" data-i="arrow-up"></span></button>
         <article class="content" id="content"></article>
         <textarea class="editor" id="editor" spellcheck="false" hidden></textarea>
 
       </main>
 
-        <div class="split-divider" id="splitDivider" title="Потяни, чтобы изменить ширину" hidden></div>
+        <div class="split-divider" id="splitDivider" data-i18n-title="resizer.split" hidden></div>
 
         <section class="main main-second" id="panel2" hidden>
           <header class="second-head">
             <span class="side-title" id="secondTitle"></span>
-            <button class="side-collapse" id="btnHideSecond" title="Закрыть правую панель"><span class="ico" data-i="x"></span></button>
+            <button class="side-collapse" id="btnHideSecond" data-i18n-title="view.closeRightAria"><span class="ico" data-i="x"></span></button>
           </header>
           <div class="content content-second" id="content2"></div>
         </section>
       </div>
 
-      <div class="sidebar-resizer" id="filesResizer" title="Потяни, чтобы изменить ширину"></div>
+      <div class="sidebar-resizer" id="filesResizer" data-i18n-title="resizer.files"></div>
 
       <aside class="sidebar side-right" id="filesSide">
         <div class="side-search">
           <span class="s-ico" data-i="search"></span>
-          <input type="text" id="treeFilter" placeholder="Фильтр по имени&#8230;" spellcheck="false">
+          <input type="text" id="treeFilter" data-i18n-placeholder="tree.filter" spellcheck="false">
         </div>
         <div class="side-pane" id="paneFiles"></div>
       </aside>
@@ -228,6 +229,7 @@
   <script src="vendor/katex/katex.min.js"></script>
   <script src="i18n/ru.js"></script>
   <script src="i18n/en.js"></script>
+  <script src="i18n/dom.js"></script>
   <script src="i18n/index.js"></script>
   <script src="icons.js"></script>
   <script src="md.js"></script>

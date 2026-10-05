@@ -119,6 +119,37 @@
     return api.lang === 'ru' ? 'ru' : 'en';
   };
 
+  /**
+   * Перевести атрибуты разметки, помеченные в index.html.
+   *
+   * title, aria-label и placeholder в HTML статичны: файл не выполняется, и
+   * t() там не вызвать. Поэтому в разметке стоят ключи вида data-i18n-title,
+   * а эта функция проставляет текст при первом кадре и при каждой смене языка.
+   *
+   * Ключи берутся из dom.js, а не из ru.js/en.js: в разметке свой набор
+   * строк, и в общем словаре он был бы списком ключей, на которые никто не
+   * ссылается из кода.
+   */
+  api.applyDom = function (root_) {
+    const scope = root_ || (typeof document !== 'undefined' ? document : null);
+    if (!scope) return 0;
+    const domDict = root.MDV_I18N_DOM || {};
+    let n = 0;
+    for (const el of scope.querySelectorAll('[data-i18n-title],[data-i18n-aria],[data-i18n-placeholder]')) {
+      for (const [attr, dataAttr] of [['title', 'i18nTitle'], ['aria-label', 'i18nAria'], ['placeholder', 'i18nPlaceholder']]) {
+        const key = el.dataset[dataAttr];
+        if (!key) continue;
+        const entry = domDict[key];
+        if (!entry) continue;
+        const text = entry[api.lang] || entry[FALLBACK];
+        if (text == null) continue;
+        el.setAttribute(attr, text);
+        n++;
+      }
+    }
+    return n;
+  };
+
   root.MDV_I18N = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

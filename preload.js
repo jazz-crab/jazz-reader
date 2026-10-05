@@ -8,6 +8,19 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
  * в Electron 32+ (свойство File.path удалено).
  */
 contextBridge.exposeInMainWorld('mdv', {
+  /**
+   * Язык из командной строки главного процесса: --lang=ru / --lang=en.
+   *
+   * Строка '' означает «перекрытия нет». Значение нужно до настроек по IPC —
+   * при первом кадре, поэтому оно синхронное и приходит аргументом окна:
+   * renderer к argv главного процесса не имеет доступа, а contextBridge
+   * отдаёт только функции, не значения.
+   */
+  forcedLang: () => {
+    const arg = process.argv.find((a) => a.startsWith('--mdv-lang='));
+    return arg ? arg.slice('--mdv-lang='.length) : '';
+  },
+
   read: (p) => ipcRenderer.invoke('mdv:read', p),
   save: (filePath, content) => ipcRenderer.invoke('mdv:save', { filePath, content }),
   stat: (p) => ipcRenderer.invoke('mdv:stat', p),

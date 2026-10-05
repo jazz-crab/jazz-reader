@@ -106,6 +106,10 @@ const SILENCE_CONFIRM = `(() => {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jazz-reader-tabs-'));
   const notesDir = path.join(tmpDir, 'notes');
+  // Настройки и лента недавних — тоже во временном каталоге, иначе тест
+  // читает и переписывает настоящие файлы пользователя.
+  const userData = path.join(tmpDir, 'userdata');
+  fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(path.join(notesDir, 'sub'), { recursive: true });
   for (const n of ['a.md', 'b.md', 'c.md']) {
     fs.writeFileSync(path.join(notesDir, n), '# ' + n + '\n\nтекст\n', 'utf8');
@@ -136,6 +140,12 @@ const SILENCE_CONFIRM = `(() => {
     // Язык зафиксирован: иначе подписи зависят от локали машины,
     // и проверки ниже падают на любом нерусском Windows.
     '--lang=ru',
+
+    // Свой каталог настроек. Без этого тест работал на личном
+    // settings.json: проверки зависели от того, что там сохранилось, а блок
+    // переключения языка в конце оставлял после себя en — то есть прогон
+    // менял настройки того, кто его запустил.
+    '--user-data-dir=' + userData,
 
     // Окно не показываем: тесты не должны выскакивать поверх работы.
     '--jazzreader-hidden',
