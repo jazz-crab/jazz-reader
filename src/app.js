@@ -466,7 +466,7 @@ function refreshTreeSelection() {
     row.classList.toggle('is-open', openInSome);
     row.classList.toggle('active', isCur);
     // Подсказку держим только пока файл открыт в НЕактивной вкладке
-    row.title = openInSome && !isCur ? full + ' — открыт в другой вкладке' : full;
+    row.title = openInSome && !isCur ? full + tr('status.openInOtherTab') : full;
   }
 }
 
@@ -481,10 +481,10 @@ async function closeMany(list, keepId) {
     if (await closeTab(k, { silent: true })) closed++;
   }
   if (skipped) {
-    status('Закрыто ' + closed + ', с несохранёнными пропущено: ' + skipped
-      + ' — сохрани или отмени в них', 'err');
+    status(tr('status.closedAndSkipped') + closed + tr('status.skippedDirty') + skipped
+      + tr('status.saveOrDiscardFirst'), 'err');
   } else if (closed) {
-    status('Закрыто вкладок: ' + closed, 'ok');
+    status(tr('status.tabsClosed') + closed, 'ok');
   }
   if (keepId !== undefined && tabs.has(keepId)) selectTab(keepId);
   return closed;
@@ -835,14 +835,14 @@ function tabContextMenu(id, x, y) {
   const other = count - 1;
 
   return showContextMenu(x, y, [
-    { label: 'Дублировать', act: () => duplicateTab(id) },
+    { label: tr('tab.duplicate'), act: () => duplicateTab(id) },
     { sep: true },
-    { label: 'Закрыть вкладку', hint: 'Ctrl+W', act: () => closeTab(id) },
-    { label: 'Закрыть все кроме этой', hint: other ? other + ' шт.' : '', act: () => closeOthers(id), off: other < 1 },
-    { label: 'Закрыть все справа', hint: count - i - 1 ? count - i - 1 + ' шт.' : '', act: () => closeToRight(id), off: i >= count - 1 },
-    { label: 'Закрыть все слева', hint: i ? i + ' шт.' : '', act: () => closeToLeft(id), off: i < 1 },
+    { label: tr('tab.close'), hint: 'Ctrl+W', act: () => closeTab(id) },
+    { label: tr('tab.closeOthers'), hint: other ? other + tr('unit.countShort') : '', act: () => closeOthers(id), off: other < 1 },
+    { label: tr('tab.closeToRight'), hint: count - i - 1 ? count - i - 1 + tr('unit.countShort') : '', act: () => closeToRight(id), off: i >= count - 1 },
+    { label: tr('tab.closeToLeft'), hint: i ? i + tr('unit.countShort') : '', act: () => closeToLeft(id), off: i < 1 },
     { sep: true },
-    { label: 'Закрыть все вкладки', hint: count ? count + ' шт.' : '', act: () => closeAll(), off: count < 1 },
+    { label: tr('tab.closeAll'), hint: count ? count + tr('unit.countShort') : '', act: () => closeAll(), off: count < 1 },
   ]);
 }
 
@@ -860,19 +860,19 @@ function fileContextMenu(full, x, y) {
 
   return showContextMenu(x, y, [
     {
-      label: 'Просмотр',
-      hint: open ? 'уже открыта' : 'Ctrl+O',
+      label: tr('file.open'),
+      hint: open ? tr('file.alreadyOpenHint') : 'Ctrl+O',
       act: () => openPath(full, { newTab: false }),
     },
     {
-      label: 'Отложенный просмотр',
-      hint: open ? 'уже открыта' : 'в фоне',
+      label: tr('file.openBackground'),
+      hint: open ? tr('file.alreadyOpenHint') : tr('status.inBackground'),
       act: () => openPath(full, { newTab: true, background: true }),
     },
     {
-      label: 'Редактировать',
+      label: tr('file.edit'),
       off: !!dirtyTab,
-      hint: dirtyTab ? 'есть правки' : 'Ctrl+E',
+      hint: dirtyTab ? tr('file.hasChangesHint') : 'Ctrl+E',
       act: async () => {
         const t = await openPath(full, { newTab: true });
         if (!t) return;
@@ -881,14 +881,14 @@ function fileContextMenu(full, x, y) {
     },
     { sep: true },
     {
-      label: 'Показать в проводнике',
+      label: tr('file.reveal'),
       act: () => api.reveal(full),
     },
     {
-      label: 'Удалить',
+      label: tr('file.delete'),
       danger: true,
       off: !!dirtyTab,
-      hint: dirtyTab ? 'есть несохранённые правки' : 'в корзину',
+      hint: dirtyTab ? tr('file.hasUnsavedHint') : tr('file.toTrashHint'),
       act: () => trashFile(full, label),
     },
   ], { width: 250, height: 250 });
@@ -898,40 +898,40 @@ function fileContextMenu(full, x, y) {
 async function trashFile(full, label) {
   const open = findTabByPath(full);
   if (open && open.dirty) {
-    status('В «' + open.name + '» есть несохранённые правки — удаление отменено', 'err');
+    status(tr('trash.blockedIn') + open.name + tr('trash.blockedTail'), 'err');
     return;
   }
   const answer = await askConfirm(
-    'Удалить «' + label + '»?',
-    'В корзину',
+    tr('trash.title') + label + '»?',
+    tr('btn.toTrash'),
     {
-      note: 'Файл уйдёт в корзину Windows, его можно будет вернуть.',
+      note: tr('trash.note'),
       okClass: 'danger',
-      cancelText: 'Оставить',
+      cancelText: tr('btn.keep'),
     }
   );
   if (answer !== true) return;
   const res = await api.trash(full);
   if (!res || !res.ok) {
-    status('Не удалось удалить: ' + ((res && res.error) || 'неизвестно'), 'err');
+    status(tr('status.deleteFailed') + ((res && res.error) || tr('err.unknown')), 'err');
     return;
   }
   // Закрываем вкладку с удалённым файлом, чтобы не повисла со старым текстом.
   if (open) await closeTab(open.id);
   // Пересобираем дерево: файл мог лежать в корне или во вложенной папке.
   await refreshRoots();
-  status('Удалено в корзину: ' + label, 'ok');
+  status(tr('status.deleted') + label, 'ok');
 }
 
 /** Дублирование вкладки: та же заметка, новая вкладка сразу справа. */
 async function duplicateTab(id) {
   const src = tabs.get(id);
   if (!src) return;
-  if (!src.path) { status('Пустую вкладку дублировать нечего'); return; }
+  if (!src.path) { status(tr('err.nothingToDuplicate')); return; }
   // findTabByPath вернёт уже открытую вкладку, поэтому читаем файл в обход
   // openPath и создаём вкладку напрямую.
   const data = await api.read(src.path).catch(() => null);
-  if (!data) { status('Не удалось прочитать ' + src.name, 'err'); return; }
+  if (!data) { status(tr('err.cannotRead') + src.name, 'err'); return; }
   const t = blankTab();
   applyData(t, data);
   t.hist = [{ path: data.path, anchor: null }];
@@ -940,7 +940,7 @@ async function duplicateTab(id) {
   // Ставим копию сразу за исходной (moveTab перерисовывает сам).
   moveTab(t.id, id);
   renderActive();
-  status('Дублировано: ' + t.name, 'ok');
+  status(tr('status.duplicated') + t.name, 'ok');
 }
 
 /** Переставить вкладку id сразу после after (порядок задаёт Map). */
