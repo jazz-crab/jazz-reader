@@ -10,13 +10,14 @@
     "start": "electron .",
     "dist": "electron-builder --win --x64",
     "dist:dir": "electron-builder --win --x64 --dir",
-    "test": "node test/math.test.js && node test/icons.test.js && node test/icon.test.js && node test/i18n.test.js && node test/i18n.regress.js && node test/css-content.test.js && node test/page-scripts.test.js && node test/code-lines.test.js && node test/code-lines.selftest.js && node test/print.test.js && node test/quit.js",
+    "test": "node test/math.test.js && node test/icons.test.js && node test/icon.test.js && node test/i18n.test.js && node test/i18n.regress.js && node test/css-content.test.js && node test/page-scripts.test.js && node test/code-lines.test.js && node test/code-lines.selftest.js && node test/readme.test.js && node test/print.test.js && node test/quit.js",
     "test:ui": "xvfb-run -a electron --no-sandbox --disable-gpu test/smoke.js && xvfb-run -a electron --no-sandbox --disable-gpu test/audit.js",
     "icons": "node build/icon/make-icons.js",
     "postinstall": "node scripts/vendor.js",
     "test:startup": "node test/startup.js",
     "test:all": "npm test && npm run test:startup && npm run test:tabs",
-    "test:tabs": "node test/tabs.js"
+    "test:tabs": "node test/tabs.js",
+    "counts": "node test/readme-counts.js"
   },
   "devDependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

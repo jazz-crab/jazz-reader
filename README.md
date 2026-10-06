@@ -40,6 +40,8 @@ rendered by KaTeX, locally.
   clipboard trio. Also works with the "hold right button and drag" mode.
 - **Multiple instances** — run several copies and keep different projects in
   each.
+- **Two languages** — English and Russian, chosen in Settings; by default the app
+  follows the system locale.
 
 ## Keyboard shortcuts
 
@@ -214,17 +216,89 @@ against 4 110 KB for Nerd Font. The `@font-face` rules are generated into
 `src/fonts.css` with `unicode-range` so the browser does not pull the Cyrillic
 file for Latin characters and vice versa.
 
+## Languages
+
+The interface is in **English and Russian**, and the choice is in
+**Settings → Language**: `As in the system` (the default), `English` or
+`Русский`. The default follows the system locale, so the app speaks the OS
+language until you pick one yourself. Changing it takes effect immediately, with
+no restart, and covers the window chrome and the application menu too.
+
+### How it is built
+
+One runtime, `src/i18n/index.js`, loaded twice: by a `<script>` tag in the
+renderer and by `require()` in the main process. That is why it is a factory with
+no top-level `require` and no imports — the file has to be valid in both.
+
+| file | what it holds |
+|---|---|
+| `src/i18n/ru.js`, `src/i18n/en.js` | the dictionaries; keys are identical in both |
+| `src/i18n/dom.js` | translations for markup attributes, found by walking `index.html` |
+| `src/i18n/index.js` | `t()`, plural selection, `applyDom()` |
+
+`tr('key')` in the code, not the text. A missing key does not throw: it falls back
+to the fallback language, then to the key itself — visible on screen, but it never
+breaks the UI, and every miss is logged once so the hole is findable in the
+console rather than in a bug report.
+
+**Russian plurals** are an object with `one`/`few`/`many`/`other`, and the form is
+picked by `Intl.PluralRules`, so "21 заметке" and "11 заметках" come out on their
+own. There used to be a hand-rolled `plural()` doing mod10/mod100: it was correct
+for Russian, including 11 and 21, and it was removed anyway, because it hardcoded
+one language into a string suffix — which does not survive being reused for the
+second language, let alone a third.
+
+### Three places where strings live
+
+Translating a UI is not only `tr()` calls, and the other two places are where the
+mistakes happen:
+
+- **Code** — `tr('key')`. All of it.
+- **Markup attributes** — `title`, `aria-label` and `placeholder` are static in
+  `index.html`, and the file is not executed, so `tr()` cannot be called there.
+  The markup carries keys instead (`data-i18n-title="tabs.left"`), and
+  `MDV_I18N.applyDom()` fills them in on the first frame and on every change.
+- **CSS `content:`** — the one caption the split preview inserts ("second pane").
+  It comes from a CSS variable that `applySettings` sets, because a translation
+  cannot be called from a stylesheet either. `test/css-content.test.js` fails if a
+  literal text ever appears in `content:` again.
+
+There is a fourth, deliberate exception: two comments inside the CSS that
+`ipc.js` injects into the exported HTML. Those belong to the output file, not to
+the application, and a comment in someone else's CSS in a foreign language would
+be worse than a Russian one.
+
+### `--lang=`
+
+```bash
+npm start -- --lang=ru     # one launch in Russian, settings untouched
+npm start -- --lang=en
+```
+
+The argument overrides the saved setting for that launch **and does not write to
+`settings.json`** — otherwise starting with `--lang=en` would silently change the
+language of the next ordinary launch. An explicit choice in Settings cancels the
+override from then on, and that is the point: otherwise the setting would not work
+at all while you run with `--lang`, and the switch would be decoration.
+
+The tests pass `--lang=ru` so their assertions about captions do not depend on the
+locale of the machine, and `test/tabs.js` also passes its own `--user-data-dir`, so
+a run neither reads nor rewrites your settings.
+
 ## Tests
 
 ```bash
-npm test              # the whole fast suite: 247 checks
+npm test              # the whole fast suite: 378 checks
 npm run test:startup  # a real window + live DOM: startup, layout, folder tree
 npm run test:tabs     # editing, tabs, context menus, TOC, tree, blank tab
 npm run test:all      # everything together
 npm run test:ui       # smoke + audit in a real Electron window (needs xvfb)
 ```
 
-Current counts: `math` 36, `icons` 71, `icon` 55, `print` 65, `quit` 20.
+Current counts: `math` 36, `icons` 71, `icon` 55, `i18n` 41, `i18n.regress` 18,
+`css-content` 4, `page-scripts` 11, `code-lines` 8, `code-lines.selftest` 4,
+`readme` 31, `print` 65, `quit` 34. With the window suites: `test:startup` 30,
+`test:tabs` 613.
 
 Some checks run against real notes and are skipped when those are not available.
 Paths come from environment variables — they have no place in the repository:
@@ -235,6 +309,49 @@ Paths come from environment variables — they have no place in the repository:
 | `MDV_NOTES_DIR` | a directory of `.md` files, walked in full (`math`, `test:ui`) |
 | `MDV_SAMPLE_DIR` | a directory holding `AAA.md`, `BBB.md`, `DDD.md` for `test:tabs` |
 | `MDV_SAMPLE_NOTE` | one file inside `MDV_NOTES_DIR` for `test:ui` |
+
+The sample directory is spelled with a trailing slash on purpose: the tests glue it
+to a file name (`SAMPLE + 'AAA.md'`), and without the separator you get
+`keysampleAAA.md`. The variable itself does not carry the slash, hence the `+ '/'`.
+
+### Tests that guard the guards
+
+Five of the tests exist because something went wrong while writing the others, and
+their own value depends on being able to fail:
+
+- **`test/page-scripts.test.js`** parses every `<script>` from `index.html` as a
+  **page** script, not as CommonJS. `node --check` accepts things the renderer
+  rejects, and a swallowed block-comment marker leaves the file syntactically
+  valid while the page dies at load — which looks like an unrelated test hook
+  going missing.
+- **`test/code-lines.test.js`** compares the number of code lines against a
+  snapshot in `code-lines.json`. Losing code to a comment edit changes the count
+  even when the file still parses. Update the snapshot with
+  `node test/code-lines.test.js --update`, deliberately.
+- **`test/code-lines.selftest.js`** breaks a file for real — hides a line of code
+  inside a comment — and requires the counter to notice. A check that has never
+  fired is no better than no check.
+- **`test/i18n.regress.js`** pins the i18n decisions that are invisible in the
+  dictionaries: that `--lang=` is read and does not leak into the settings, that an
+  explicit choice cancels the override, that the radial captions hold keys rather
+  than baked text, and that exactly two Russian literals remain in `ipc.js`.
+- **`test/readme.test.js`** checks this file against the disk and against
+  `package.json`: the version, the licence, that the file list matches
+  `scripts.test` in both directions, that every `MDV_*` variable exists in the code
+  **and** in both READMEs, that the numbers per test add up to the stated total,
+  that the English and Russian READMEs state the same numbers, and that the build
+  sizes and the font files match what is on disk.
+
+Two of them compare against a snapshot, and refreshing those is a deliberate act:
+
+```bash
+node test/code-lines.test.js --update   # code lines moved on purpose
+npm run counts                         # re-measures every test, rewrites the count snapshot
+```
+
+`test/readme-counts.js` (`npm run counts`) runs each test from `scripts.test` on its
+own and records what it got, so the snapshot comes from a run rather than from this
+file — otherwise the check would only be confirming what it already says.
 
 `test/startup.js` is the only test that starts a real window and looks into it. It
 checks that `main.js` created the window, that the renderer reached `index.html`,
@@ -343,6 +460,7 @@ possible — objects coming from there are frozen and assignment is silently ign
 | `main.js` | main process: window, menu, multiple instances, launch arguments |
 | `ipc.js` | all IPC handlers: read/write, `.md` tree, HTML export, encodings |
 | `preload.js` | renderer → main bridge (`contextBridge`), `webUtils.getPathForFile` for drop |
+| `src/i18n/` | the i18n runtime and both dictionaries; see "Languages" above |
 | `src/md.js` | Markdown + LaTeX rendering: formula extraction, KaTeX, relative links |
 | `src/app.js` | tabs, tree, table of contents, history, search, drag-and-drop |
 | `src/index.html` | shell markup |
