@@ -200,10 +200,9 @@ if (png[256]) {
   t('буквы — blue #7aa2f7', has(TOKYO.blue, 6));
 
   if (box) {
-    // A horizontal gradient: blue on the left, cyan on the right. We take the median
+    // Solid ink of a single colour (the gradient was removed). We take the median
     // colour over the dense pixels of the outer 10% of the ink — at the very edge
-    // the colour is already mixed with the tile, and in the middle the second
-    // gradient stop has not begun yet.
+    // the colour is already mixed with the tile.
     const band = (from, to) => {
       const list = [];
       for (let y = box.y0; y <= box.y1; y++) for (let x = from; x <= to; x++) {
@@ -216,7 +215,8 @@ if (png[256]) {
     const L = band(box.x0, box.x0 + Math.round((box.x1 - box.x0) * 0.1));
     const R = band(box.x1 - Math.round((box.x1 - box.x0) * 0.1), box.x1);
     t('левый край букв #7aa2f7', !!L && near(L.r, TOKYO.blue >> 16, 10) && near(L.b, TOKYO.blue & 255, 10), L && hex(L));
-    t('правый край букв #7dcfff', !!R && near(R.r, TOKYO.cyan >> 16, 10) && near(R.b, TOKYO.cyan & 255, 10), R && hex(R));
+    t('правый край букв такой же (градиента нет)',
+      !!R && near(R.r, TOKYO.blue >> 16, 10) && near(R.g, (TOKYO.blue >> 8) & 255, 10) && near(R.b, TOKYO.blue & 255, 10), R && hex(R));
   }
 }
 
@@ -253,7 +253,7 @@ if (fs.existsSync(svgPath)) {
   const svg = fs.readFileSync(svgPath, 'utf8');
   t('рисует ровно один <text> с содержимым JR', (svg.match(/<text\b/g) || []).length === 1 && />\s*JR\s*</.test(svg));
   t('цвета TokyoNight на месте',
-    ['#1f2333', '#16161e', '#7aa2f7', '#7dcfff', '#3b4261'].every(c => svg.toLowerCase().includes(c)));
+    ['#1f2333', '#16161e', '#7aa2f7', '#3b4261'].every(c => svg.toLowerCase().includes(c)));
   t('есть запасной моноширинный шрифт (иначе на машине без JetBrains Mono будет мыло)',
     /font-family="[^"]*(sans-serif|monospace)/.test(svg));
   t('внешние ресурсы не тянутся (без <image>/http)',

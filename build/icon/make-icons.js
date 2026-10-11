@@ -7,7 +7,7 @@
  * it rasterises the SVG in a window, and Pillow shrinks it with anti-aliasing. It
  * works on Windows.
  *
- *   npm run icons        (node build/icon/make-icons.js)
+ *   npm run icons        (electron build/icon/make-icons.js)
  *
  * Why with anti-aliasing rather than "a window exactly the size in pixels": Windows
  * has a minimum window size, and a 16 px window may not even be created. We draw
