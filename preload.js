@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron');
 
 /**
  * The renderer -> main bridge. Narrow APIs, nothing extra sticking out.
@@ -52,6 +52,14 @@ contextBridge.exposeInMainWorld('mdv', {
    * it first, and the main process re-reads the file rather than an argument.
    */
   setLang: () => ipcRenderer.invoke('mdv:setLang'),
+  /**
+   * Page zoom. The single mechanism behind the toolbar field, the +/- buttons,
+   * Ctrl+= / Ctrl+- / Ctrl+0 and the View menu: it scales the whole interface
+   * (text and controls alike), not only the note's text.
+   */
+  setZoomFactor: (z) => {
+    try { webFrame.setZoomFactor(z); } catch { /* the window is closing */ }
+  },
   print: () => ipcRenderer.invoke('mdv:print'),
   exportHtml: (payload) => ipcRenderer.invoke('mdv:exportHtml', payload),
   /** PDF without the system print dialog: a finished file in Downloads. */

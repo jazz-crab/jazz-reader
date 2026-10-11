@@ -1,8 +1,8 @@
 {
   "main.js": 346,
   "ipc.js": 502,
-  "preload.js": 37,
-  "src/app.js": 3088,
+  "preload.js": 40,
+  "src/app.js": 3099,
   "src/md.js": 266,
   "scripts/vendor.js": 149,
   "build/icon/make-icons.js": 97

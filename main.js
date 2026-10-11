@@ -445,9 +445,12 @@ function buildMenu() {
         { label: tr('menu.view.back'), accelerator: 'Alt+Left', click: () => send('mdv:menu', 'back') },
         { label: tr('menu.view.forward'), accelerator: 'Alt+Right', click: () => send('mdv:menu', 'forward') },
         { type: 'separator' },
-        { role: 'resetZoom', label: tr('menu.view.zoomReset') },
-        { role: 'zoomIn', label: tr('menu.view.zoomIn') },
-        { role: 'zoomOut', label: tr('menu.view.zoomOut') },
+        // The zoom goes through the same setZoom as the toolbar: the field and
+        // the page stay in step. Ctrl+= is caught in the renderer (the Plus
+        // accelerator below does not match the unshifted =).
+        { label: tr('menu.view.zoomReset'), accelerator: 'CmdOrCtrl+0', click: () => send('mdv:menu', 'zoom-reset') },
+        { label: tr('menu.view.zoomIn'), accelerator: 'CmdOrCtrl+Plus', click: () => send('mdv:menu', 'zoom-in') },
+        { label: tr('menu.view.zoomOut'), accelerator: 'CmdOrCtrl+-', click: () => send('mdv:menu', 'zoom-out') },
         { type: 'separator' },
         { label: tr('menu.view.reload'), accelerator: 'F5', click: () => send('mdv:menu', 'reload') },
         { role: 'togglefullscreen', label: tr('menu.view.fullscreen') },

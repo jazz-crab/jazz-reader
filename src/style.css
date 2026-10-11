@@ -651,6 +651,9 @@ kbd {
 .content {
     position: absolute; inset: 0; overflow-y: auto;
     padding: 30px clamp(20px, 6vw, 74px) 90px;
+    /* The base text size; the toolbar zoom multiplies the whole page through
+       webFrame.setZoomFactor, so no further font-size handling is needed. */
+    font-size: 15px;
 }
 /* The reading column: 900px, centred. margin-inline (and NOT margin-left/right)
    deliberately: further down, h1-h6, ul, ol, pre, table, blockquote have rules

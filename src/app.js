@@ -2127,8 +2127,10 @@ let zoomEditing = false;
 
 function updateZoom() {
   if (!zoomEditing) el.zoomVal.value = Math.round(zoom * 100) + '%';
-  el.content.style.fontSize = (15 * zoom).toFixed(2) + 'px';
-  el.editor.style.fontSize = (14 * zoom).toFixed(2) + 'px';
+  // Page zoom (webFrame.setZoomFactor): text and controls scale together, the
+  // same way Ctrl+/- used to do on top of the app's own zoom. Two mechanisms
+  // meant the field could not show what the note was really at.
+  api.setZoomFactor(zoom);
   el.zoomVal.classList.toggle('pending', zoomEditing);
 }
 
@@ -4405,6 +4407,11 @@ api.onMenu((action) => {
     case 'next-tab': stepTab(1); break;
     case 'prev-tab': stepTab(-1); break;
     case 'reload': reload(); break;
+    // The View menu zoom: the same setZoom as the toolbar, so the field and the
+    // whole page stay in step.
+    case 'zoom-in': setZoom(zoom + 0.1); break;
+    case 'zoom-out': setZoom(zoom - 0.1); break;
+    case 'zoom-reset': setZoom(1); break;
   }
 });
 
@@ -4421,6 +4428,18 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')) {
     if (e.key === 'F5' || !e.shiftKey) { e.preventDefault(); reload(); }
     return;
+  }
+  // Zoom from the keyboard: Ctrl+= / Ctrl++ / Ctrl+- / Ctrl+0. One system with
+  // the toolbar field — Chromium's own zoom used to be a second, separate one,
+  // and the "100%" never followed it.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const zk = e.key;
+    if (zk === '=' || zk === '+' || zk === '-' || zk === '_') {
+      e.preventDefault();
+      setZoom(zk === '-' || zk === '_' ? zoom - 0.1 : zoom + 0.1);
+      return;
+    }
+    if (zk === '0') { e.preventDefault(); setZoom(1); return; }
   }
   // Undo and redo. We catch it on document, not on the field: the combination has
   // to work when the focus has gone past the editor (after using the ring, after

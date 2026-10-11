@@ -862,8 +862,8 @@ const SILENCE_CONFIRM = `(() => {
   t('есть «Язык интерфейса»', (r.labels || []).some((l) => /Язык интерфейса/.test(l)),
     JSON.stringify(r.labels));
   t('два ползунка и один чекбокс', r.rangeCount === 2 && r.hasCheckbox === true);
-  t('размер текста применён сразу', parseFloat(r.cssDuring) > parseFloat('15.00px'),
-    r.cssDuring + ' (было ' + (r.before && r.before.zoom) + ')');
+  t('размер текста применён сразу', r.mid && r.mid.zoom > 1.2,
+    'zoom=' + (r.mid && r.mid.zoom) + ' (было ' + (r.before && r.before.zoom) + ')');
   t('ползунок текста двигает и тулбарный зум', /^\d+%$/.test(r.zoomLabel || ''), r.zoomLabel);
   t('ширина колонки применена сразу', r.widthDuring === '1200px', r.widthDuring);
   // We check the TEXT of the button, not the object itself: /Reset/.test(btn)
@@ -897,7 +897,7 @@ const SILENCE_CONFIRM = `(() => {
   t('Esc закрывает окно настроек', r.closed === true);
   t('Esc не откатывает настройку', r.zoomAfter === r.zoomBefore,
     'стало ' + r.zoomAfter + ', было ' + r.zoomBefore);
-  t('настройка применена к тексту', r.css !== '15px', r.css);
+  t('настройка применена к тексту', r.zoomBefore > 1, 'zoom=' + r.zoomBefore);
 
   // A click outside the window saves rather than cancels
   r = JSON.parse(await js(`(async () => {
@@ -909,24 +909,25 @@ const SILENCE_CONFIRM = `(() => {
     font.value = '19';
     font.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise(r2 => setTimeout(r2, 400));
-    const during = getComputedStyle(document.getElementById('content')).fontSize;
+    const zoomDuring = M.settings().zoom;
     const saved = await M.savedSettings();
     document.querySelector('.modal-back').dispatchEvent(new MouseEvent('mousedown', {
       bubbles: true, cancelable: true }));
     await new Promise(r2 => setTimeout(r2, 400));
     return JSON.stringify({
-      opened, during, zoomSaved: saved ? saved.zoom : null,
+      opened, zoomDuring, zoomSaved: saved ? saved.zoom : null,
       closed: !document.querySelector('.modal-back'),
       after: M.settings().zoom,
-      css: getComputedStyle(document.getElementById('content')).fontSize,
     });
   })()`));
   t('окно настроек открывается', r.opened === true);
-  t('движение ползунка сразу применяется', r.during === '19px', r.during);
+  t('движение ползунка сразу применяется',
+    Math.abs(r.zoomDuring - 19 / 15) < 0.01, String(r.zoomDuring));
   t('движение ползунка сразу ложится в settings.json',
     r.zoomSaved !== null && Math.abs(r.zoomSaved - 19 / 15) < 0.01, String(r.zoomSaved));
   t('клик мимо закрывает окно', r.closed === true);
-  t('клик мимо не отменяет настройку', r.css === '19px', r.css);
+  t('клик мимо не отменяет настройку', Math.abs(r.after - 19 / 15) < 0.01,
+    String(r.after));
 
   // put it back as it was
   await js(`(async () => {
@@ -951,7 +952,6 @@ const SILENCE_CONFIRM = `(() => {
       closed: !document.querySelector('.modal-back'),
       saved,
       zoomLabel: document.getElementById('zoomVal').value,
-      css: getComputedStyle(document.getElementById('content')).fontSize,
       width: getComputedStyle(document.documentElement).getPropertyValue('--content-max-width').trim(),
     });
   })()`));
@@ -960,7 +960,7 @@ const SILENCE_CONFIRM = `(() => {
   t('настройки сохранены на диск', Math.abs((r.saved && r.saved.zoom || 0) - 18 / 15) < 0.01,
     JSON.stringify(r.saved));
   t('сохранённая ширина колонки применена', r.width === '1000px', r.width);
-  t('сохранённый размер применён', Math.abs(parseFloat(r.css) - 18) < 0.3, r.css);
+  t('сохранённый размер применён', r.zoomLabel === '120%', r.zoomLabel);
 
   // We restore the settings that the test wrote into the real settings.json.
   // Otherwise the next run of the startup check would see a column width of
@@ -2405,15 +2405,15 @@ const SILENCE_CONFIRM = `(() => {
     await type('85');
     key('Enter');
     await new Promise(r2 => setTimeout(r2, 250));
-    out.after85 = { val: z.value, font: document.getElementById('content').style.fontSize };
+    out.after85 = { val: z.value, zoom: M.zoom() };
 
     out.after85b = out.after85;
     await type('175%');
-    out.after175 = { val: z.value, font: document.getElementById('content').style.fontSize };
+    out.after175 = { val: z.value, zoom: M.zoom() };
 
     // A comma as the decimal separator: without blur, Enter works too
     await type('0,6');
-    out.after06 = { val: z.value, font: document.getElementById('content').style.fontSize };
+    out.after06 = { val: z.value, zoom: M.zoom() };
 
     return JSON.stringify(out);
   })()`));
@@ -2421,11 +2421,11 @@ const SILENCE_CONFIRM = `(() => {
   t('процент масштаба — поле ввода', r.tag === 'INPUT', r.tag);
   t('исходное значение 100%', r.initial === '100%', r.initial);
   t('вписали 85 — применилось', r.after85.val === '85%'
-    && Math.abs(parseFloat(r.after85.font) - 12.75) < 0.1, JSON.stringify(r.after85));
+    && Math.abs(r.after85.zoom - 0.85) < 0.001, JSON.stringify(r.after85));
   t('вписали 175% — применилось', r.after175.val === '175%'
-    && Math.abs(parseFloat(r.after175.font) - 26.25) < 0.1, JSON.stringify(r.after175));
+    && Math.abs(r.after175.zoom - 1.75) < 0.001, JSON.stringify(r.after175));
   t('вписали 0,6 через запятую — это 60%', r.after06.val === '60%'
-    && Math.abs(parseFloat(r.after06.font) - 9) < 0.1, JSON.stringify(r.after06));
+    && Math.abs(r.after06.zoom - 0.6) < 0.001, JSON.stringify(r.after06));
 
   // The buttons keep working, the field shows their result
   r = JSON.parse(await js(`(async () => {
