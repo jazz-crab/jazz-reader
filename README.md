@@ -58,6 +58,8 @@ rendered by KaTeX, locally.
 | `Ctrl+B` | files pane / table of contents |
 | `Ctrl+Shift+B` | table of contents |
 | `Ctrl+P` | print / PDF |
+| `Ctrl+=` / `Ctrl+-` | zoom in / zoom out |
+| `Ctrl+0` | reset zoom to 100% |
 | `Ctrl+Q` | quit (with a confirmation) |
 | `Ctrl+Space` | radial menu (for keyboard-only use) |
 | `F5` | reload the file from disk |
